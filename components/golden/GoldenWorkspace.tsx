@@ -1,6 +1,7 @@
 'use client';
 
 /** Trang Golden: Masterlist full chiều rộng + modal bản ghi (docs/DETAIL_MODEL.md 4.3). */
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapPin, Upload } from 'lucide-react';
 import { useCan } from '@/components/ViewerContext';
@@ -17,7 +18,8 @@ export function GoldenWorkspace() {
   const can = useCan();
   const list = useList<GoldenRow>('/api/golden');
 
-  const columns: Column<GoldenRow>[] = [
+  // useMemo / useCallback: Masterlist memo theo identity của các prop này (xem EquipmentWorkspace).
+  const columns = useMemo<Column<GoldenRow>[]>(() => [
     { key: 'usage', label: t('fields.usage'), value: (r) => t(`values.${r.usage}`), render: (r) => <UsageTag usage={r.usage} />, filter: true },
     { key: 'serial_number', label: t('fields.serial_number'), value: (r) => r.serial_number, render: (r) => <strong>{r.serial_number}</strong> },
     { key: 'part_number', label: t('fields.part_number'), value: (r) => r.part_number, filter: true },
@@ -29,29 +31,35 @@ export function GoldenWorkspace() {
     { key: 'tags', label: t('fields.tags'), value: (r) => r.tags.map((x) => x.display_name).join(', ') || null, filter: true,
       render: (r) => <RemarkCell tags={r.tags} remark={null} /> },
     { key: 'remark', label: t('fields.remark'), value: (r) => r.remark, wrap: true, width: 200 },
-  ];
+  ], [t]);
+
+  const mobileCard = useCallback((r: GoldenRow) => (
+    <RowCard
+      title={r.serial_number}
+      tag={<UsageTag usage={r.usage} />}
+      lines={[
+        <><MapPin size={13} aria-hidden="true" /><span className="rc-place">{r.location ?? '—'}</span>{[r.part_number, r.utd_part_number].filter(Boolean).map((x) => ` · ${x}`)}</>,
+        r.purpose,
+      ]}
+    />
+  ), []);
+
+  const quickFilters = useMemo(() => [
+    { key: 'unattached', label: t('asset.quickUnattached'), test: (r: GoldenRow) => !r.parent_id },
+  ], [t]);
 
   return (
     <ModuleWorkspace<GoldenRow>
       title={t('nav.golden')}
       list={list}
       columns={columns}
-      mobileCard={(r) => (
-        <RowCard
-          title={r.serial_number}
-          tag={<UsageTag usage={r.usage} />}
-          lines={[
-            <><MapPin size={13} aria-hidden="true" /><span className="rc-place">{r.location ?? '—'}</span>{[r.part_number, r.utd_part_number].filter(Boolean).map((x) => ` · ${x}`)}</>,
-            r.purpose,
-          ]}
-        />
-      )}
+      mobileCard={mobileCard}
       storageKey="golden"
       defaultColumns={['usage', 'serial_number', 'part_number', 'location', 'purpose', 'utd_part_number']}
       exportName="golden-boards"
       canAdd={can.edit}
       addLabel={t('gs.add')}
-      quickFilters={[{ key: 'unattached', label: t('asset.quickUnattached'), test: (r) => !r.parent_id }]}
+      quickFilters={quickFilters}
       tools={can.edit ? [{
         key: 'import', label: t('imp.button'), icon: <Upload size={14} aria-hidden="true" />,
         render: ({ onClose, reload }) => (

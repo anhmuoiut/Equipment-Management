@@ -10,6 +10,7 @@
  * Group (type-groups): Admin tự thêm / sửa / ẩn; 3 nhóm hệ thống cùng tên 3 loại hệ thống khóa như chúng.
  * Setup hiệu chuẩn: part number loại sub_equipment + chu kỳ + báo trước; due_date của lần hiệu chuẩn tự tính theo chu kỳ.
  */
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff } from 'lucide-react';
 import { api } from '@/lib/client/api';
@@ -29,9 +30,9 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
   const options = useOptions();
   const list = useList<ConfigRow>(`/api/configuration/${listKey}`);
   const listName = t(`cfg.list.${listKey}`);
-  const colorLabel = (c: StatusColor | undefined) => (c ? t(`values.${c}`) : null);
+  const colorLabel = useCallback((c: StatusColor | undefined) => (c ? t(`values.${c}`) : null), [t]);
   /** Chip màu: tag trạng thái tô đúng màu, chữ là tên màu. */
-  const colorChip = (c: StatusColor | undefined) => (c ? <StatusTag name={colorLabel(c)} color={c} /> : null);
+  const colorChip = useCallback((c: StatusColor | undefined) => (c ? <StatusTag name={colorLabel(c)} color={c} /> : null), [colorLabel]);
 
   // Hiệu chuẩn › Setup: part number chọn trong các PN loại sub_equipment, mỗi PN một dòng (bỏ PN đã có, trừ dòng đang xem).
   const taken = new Set(list.rows.map((r) => r.part_number_id));
@@ -40,7 +41,8 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
     current, ` (${t('cfg.hidden')})`);
   const partNumberHint = t('cfg.calibrationPartHint');
 
-  const columns: Column<ConfigRow>[] = def.isCalibration ? [
+  // useMemo: Masterlist memo theo identity của columns (xem EquipmentWorkspace). `def` là object cố định trong CONFIG_LISTS.
+  const columns = useMemo<Column<ConfigRow>[]>(() => (def.isCalibration ? [
     { key: 'display_name', label: t('fields.part_number'), value: (r) => r.display_name, render: (r) => <strong>{r.display_name}</strong> },
     { key: 'interval_months', label: t('fields.interval_months'), value: (r) => r.interval_months ?? null },
     { key: 'warning_days', label: t('fields.warning_days'), value: (r) => r.warning_days ?? null },
@@ -59,7 +61,7 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
     { key: 'sort_order', label: t('fields.sort_order'), value: (r) => r.sort_order },
     { key: 'is_active', label: t('fields.is_active'), value: (r) => (r.is_active ? t('cfg.active') : t('cfg.hidden')),
       render: (r) => <ToneTag text={r.is_active ? t('cfg.active') : t('cfg.hidden')} tone={r.is_active ? 'ok' : 'neutral'} />, filter: true },
-  ];
+  ]), [t, def, colorLabel, colorChip]);
 
   const sections: SectionDef<ConfigRow>[] = [{
     key: 'info', title: t('cfg.groupInfo'),

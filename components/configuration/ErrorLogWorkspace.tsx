@@ -1,6 +1,7 @@
 'use client';
 
 /** Configuration › HỆ THỐNG › Error log — chỉ xem; cùng Masterlist, bản ghi mở trong một modal chỉ đọc. */
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatTime } from '@/lib/client/api';
@@ -56,21 +57,26 @@ export function ErrorLogWorkspace() {
   const { t } = useTranslation();
   const list = useList<ErrorLogRow>('/api/configuration/error-log');
 
-  const columns: Column<ErrorLogRow>[] = [
+  // useMemo / useCallback: Masterlist memo theo identity của các prop này (xem EquipmentWorkspace).
+  const columns = useMemo<Column<ErrorLogRow>[]>(() => [
     { key: 'created_at', label: t('fields.created_at'), value: (r) => r.created_at, render: (r) => formatTime(r.created_at) },
     { key: 'request_id', label: t('err.requestId'), value: (r) => r.request_id },
     { key: 'error_code', label: t('err.code'), value: (r) => r.error_code, filter: true },
     { key: 'route', label: t('err.route'), value: (r) => r.route, filter: true },
     { key: 'user_name', label: t('err.user'), value: (r) => r.user_name, filter: true },
     { key: 'message', label: t('err.message'), value: (r) => r.message, wrap: true, width: 260 },
-  ];
+  ], [t]);
+
+  const mobileCard = useCallback((r: ErrorLogRow) => (
+    <RowCard title={r.error_code ?? '—'} tag={formatTime(r.created_at)} lines={[r.route, r.message]} />
+  ), []);
 
   return (
     <ModuleWorkspace<ErrorLogRow>
       title={t('cfg.list.error-log')}
       list={list}
       columns={columns}
-      mobileCard={(r) => <RowCard title={r.error_code ?? '—'} tag={formatTime(r.created_at)} lines={[r.route, r.message]} />}
+      mobileCard={mobileCard}
       storageKey="configuration-error-log"
       exportName="error-log"
       canAdd={false}

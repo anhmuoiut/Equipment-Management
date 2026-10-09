@@ -4,6 +4,7 @@
  * Trang Calibration: Masterlist (mỗi sub-equipment một dòng, kèm lần hiệu chuẩn mới nhất) + modal bản ghi
  * (docs/DETAIL_MODEL.md 4.2). `?q=` điền sẵn ô tìm (từ nhóm Hiệu chuẩn của một Tester).
  */
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CalendarClock, MapPin, Upload } from 'lucide-react';
 import { formatDate } from '@/lib/client/api';
@@ -21,7 +22,8 @@ export function CalibrationWorkspace() {
   const can = useCan();
   const list = useList<SubEquipmentRow>('/api/calibration');
 
-  const columns: Column<SubEquipmentRow>[] = [
+  // useMemo / useCallback: Masterlist memo theo identity của các prop này (xem EquipmentWorkspace).
+  const columns = useMemo<Column<SubEquipmentRow>[]>(() => [
     { key: 'status', label: t('cal.calibrationStatus'), value: (r) => t(`cal.status.${r.status}`), render: (r) => <CalibrationStatusTag status={r.status} />, filter: true },
     { key: 'usage', label: t('fields.usage'), value: (r) => t(`values.${r.usage}`), render: (r) => <UsageTag usage={r.usage} />, filter: true },
     { key: 'serial_number', label: t('fields.serial_number'), value: (r) => r.serial_number, render: (r) => <strong>{r.serial_number}</strong> },
@@ -39,33 +41,37 @@ export function CalibrationWorkspace() {
     { key: 'tags', label: t('fields.tags'), value: (r) => r.tags.map((x) => x.display_name).join(', ') || null, filter: true,
       render: (r) => <RemarkCell tags={r.tags} remark={null} /> },
     { key: 'remark', label: t('fields.remark'), value: (r) => r.remark, wrap: true, width: 200 },
-  ];
+  ], [t]);
+
+  const mobileCard = useCallback((r: SubEquipmentRow) => (
+    <RowCard
+      title={r.serial_number}
+      tag={<CalibrationStatusTag status={r.status} />}
+      lines={[
+        <><MapPin size={13} aria-hidden="true" /><span className="rc-place">{r.location ?? '—'}</span>{[r.part_number, r.type].filter(Boolean).map((x) => ` · ${x}`)}</>,
+        r.due_date ? <><CalendarClock size={13} aria-hidden="true" /><DueDate date={r.due_date} status={r.status} /></> : t('cal.noRecordsYet'),
+      ]}
+    />
+  ), [t]);
+
+  const quickFilters = useMemo(() => [
+    { key: 'overdue', label: t('cal.status.overdue'), test: (r: SubEquipmentRow) => r.status === 'overdue' },
+    { key: 'due_soon', label: t('cal.status.due_soon'), test: (r: SubEquipmentRow) => r.status === 'due_soon' },
+    { key: 'attention', label: t('cal.quickAttention'), test: (r: SubEquipmentRow) => r.status === 'not_calibrated' || r.status === 'failed' },
+  ], [t]);
 
   return (
     <ModuleWorkspace<SubEquipmentRow>
       title={t('nav.calibration')}
       list={list}
       columns={columns}
-      mobileCard={(r) => (
-        <RowCard
-          title={r.serial_number}
-          tag={<CalibrationStatusTag status={r.status} />}
-          lines={[
-            <><MapPin size={13} aria-hidden="true" /><span className="rc-place">{r.location ?? '—'}</span>{[r.part_number, r.type].filter(Boolean).map((x) => ` · ${x}`)}</>,
-            r.due_date ? <><CalendarClock size={13} aria-hidden="true" /><DueDate date={r.due_date} status={r.status} /></> : t('cal.noRecordsYet'),
-          ]}
-        />
-      )}
+      mobileCard={mobileCard}
       storageKey="calibration"
       defaultColumns={['status', 'serial_number', 'part_number', 'location', 'calibrated_at', 'due_date']}
       exportName="calibration"
       canAdd={can.edit}
       addLabel={t('cal.add')}
-      quickFilters={[
-        { key: 'overdue', label: t('cal.status.overdue'), test: (r) => r.status === 'overdue' },
-        { key: 'due_soon', label: t('cal.status.due_soon'), test: (r) => r.status === 'due_soon' },
-        { key: 'attention', label: t('cal.quickAttention'), test: (r) => r.status === 'not_calibrated' || r.status === 'failed' },
-      ]}
+      quickFilters={quickFilters}
       rowTone={(r) => (r.status === 'overdue' || r.status === 'failed' ? 'alert' : r.status === 'due_soon' ? 'warn' : undefined)}
       tools={can.edit ? [{
         key: 'import', label: t('imp.button'), icon: <Upload size={14} aria-hidden="true" />,
