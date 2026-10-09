@@ -1,184 +1,63 @@
 import 'server-only';
 
 /**
- * Import Excel cho Golden sample — cùng cách làm với Equipment (equipmentImport.ts):
- * file mẫu sinh lúc tải (Location lấy từ Configuration ngay lúc đó),
- * kiểm tra từng dòng như form Thêm golden sample, tất cả hoặc không, ghi một
- * lần qua RPC golden_import (lịch sử CREATE với source = import).
- * Khác Equipment: Part number là chữ tự do (không phải Configuration), không có thiết bị cha.
+ * Import Excel cho Golden board — cùng cách làm với Equipment (equipmentImport.ts): file mẫu sinh lúc tải (Location và
+ * Parent part number lấy từ Configuration ngay lúc đó), kiểm tra từng dòng như form Thêm golden board, tất cả hoặc không,
+ * database chạy thử (dry run) rồi ghi một lần qua RPC golden_import (nhật ký CREATE với source = import).
+ * Khác Equipment: Part number của golden board là chữ tự do; "Parent serial number" gắn vào tester hoặc fixture đã có.
  */
-import ExcelJS from 'exceljs';
 import { rpc, selectAll } from './core/db';
-import { loadLookups, type Lookups } from './core/lookups';
+import { kindOf, loadLookups, nameOf, type Lookups } from './core/lookups';
 import {
-  NOTE_FILL, NOTE_INK, PRUSSIAN, SHORT_LIST, STAR,
-  clip, fileError, fitHeight, headerKeys, importChoices, indexBy, normalize, readUpload, readWorkbook, serialKey, validationsOf,
-  type Entry, type SheetTable, type Text, type UploadedFile,
-} from './equipmentImport';
+  activeNames, bySerial, buildImportTemplate, fileError, findExistingParent, headerKeys, indexBy, normalize, readUpload,
+  readWorkbook, serialKey, type Entry, type ParentCandidate, type SheetTable, type UploadedFile,
+} from './core/importKit';
+import { allSerials, type ExistingEquipment } from './equipmentImport';
 import { textFor, type Language } from '@/lib/i18n/text';
-import { GOLDEN_IMPORT_COLUMNS, type GoldenImportColumn, type GoldenImportColumnKey, type GoldenImportListKey } from '@/lib/goldenImport';
+import { parentAllowed } from '@/lib/assetTree';
+import { GOLDEN_IMPORT_COLUMNS, type GoldenImportColumnKey } from '@/lib/goldenImport';
 import { IMPORT_MAX_ROWS, type ImportIssue, type ImportReport, type ImportRowReport } from '@/lib/equipmentImport';
+import type { AssetOpResult } from '@/lib/types';
 
 const HEADER_KEYS = headerKeys(GOLDEN_IMPORT_COLUMNS);
-const LIST_KEYS = [...new Set(GOLDEN_IMPORT_COLUMNS.flatMap((c) => (c.list ? [c.list] : [])))];
 const DATA_SHEET = 'Golden';
 
-/** Một dòng sẽ ghi — đúng tên cột của bảng golden_samples. */
-export type GoldenInsertRow = Record<GoldenImportColumnKey, string | null>;
+/** Một dòng sẽ ghi — đúng tên cột của bảng golden_boards. */
+export type GoldenInsertRow = {
+  part_number: string | null; serial_number: string | null; utd_part_number: string | null; location_id: string | null;
+  origin: string | null; purpose: string | null; parent_id: string | null; remark: string | null;
+};
 
 // ---------------------------------------------------------------------------
-// File mẫu
+// Giá trị chọn được + file mẫu
 // ---------------------------------------------------------------------------
 
-type Choices = Pick<ReturnType<typeof importChoices>, GoldenImportListKey>;
-
-function extraRules(col: GoldenImportColumn, choices: Choices, t: Text): string[] {
-  switch (col.key) {
-    case 'serial_number': return [t('imp.tpl.serialDuplicate')];
-    default: return [];
-  }
-}
-
-/** Ghi chú ngắn của một cột — dòng 1 của sheet nhập và chú thích khi bấm vào ô. */
-function columnNote(col: GoldenImportColumn, choices: Choices, t: Text, valuesSheet: string): string {
-  const parts: string[] = [];
-  if (col.required) parts.push(t('imp.tpl.required'));
-  if (col.list) {
-    const values = choices[col.list];
-    const joined = values.join(', ');
-    if (!values.length) parts.push(t('imp.tpl.noValues'));
-    else if (joined.length <= SHORT_LIST) parts.push(t('imp.tpl.pickShort', { values: joined }));
-    else parts.push(t('imp.tpl.pickMany', { count: values.length, sheet: valuesSheet }));
-  } else {
-    parts.push(t('imp.tpl.text', { max: col.max ?? 0 }));
-  }
-  return [...parts, ...extraRules(col, choices, t)].join(' · ');
+/** Location đang dùng; part number của tester / fixture (cột Parent part number — cha của golden board). */
+export function goldenImportChoices(lookups: Lookups) {
+  const isParentKind = (typeId: string) => ['tester', 'fixture'].includes(kindOf(lookups, typeId) ?? '');
+  return {
+    locations: activeNames([...lookups.locations.values()]),
+    part_numbers: activeNames([...lookups.part_numbers.values()].filter((p) => isParentKind(p.type_id))),
+  };
 }
 
 export async function buildGoldenTemplate(lookups: Lookups, language: Language, now = new Date()): Promise<Buffer> {
   const t = textFor(language);
-  const choices = importChoices(lookups);
-  const guideName = t('imp.tpl.sheetGuide');
-  const valuesName = t('imp.tpl.sheetValues');
-  const errorTitle = clip(t('imp.tpl.errorTitle'), 32);
-
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'Equipment Management';
-  wb.created = now;
-
-  // ---- Sheet nhập: dòng 1 ghi chú, dòng 2 tiêu đề, nhập từ dòng 3.
-  const ws = wb.addWorksheet(DATA_SHEET, { views: [{ state: 'frozen', ySplit: 2, activeCell: 'A3' }] });
-  const lastRow = IMPORT_MAX_ROWS + 2;
-  const notes = GOLDEN_IMPORT_COLUMNS.map((col) => columnNote(col, choices, t, valuesName));
-  GOLDEN_IMPORT_COLUMNS.forEach((col, i) => {
-    const text = notes[i] ?? '';
-    const column = ws.getColumn(i + 1);
-    column.width = col.width;
-    column.numFmt = '@'; // ô dạng chữ: giữ số 0 đầu serial / part number
-
-    const note = ws.getCell(1, i + 1);
-    note.value = text;
-    note.font = { size: 9, italic: true, color: { argb: NOTE_INK } };
-    note.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NOTE_FILL } };
-    note.alignment = { wrapText: true, vertical: 'top' };
-
-    const header = ws.getCell(2, i + 1);
-    const font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    header.value = col.required
-      ? { richText: [{ text: col.header, font }, { text: ' *', font: { bold: true, color: { argb: STAR } } }] }
-      : col.header;
-    header.font = font;
-    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PRUSSIAN } };
-    header.alignment = { vertical: 'middle' };
-
-    const range = `${column.letter}3:${column.letter}${lastRow}`;
-    const prompt = { showInputMessage: true, promptTitle: clip(col.header, 32), prompt: clip(text, 255) };
-    if (col.list) {
-      const count = choices[col.list].length;
-      const letter = String.fromCharCode(65 + LIST_KEYS.indexOf(col.list)); // cột của danh sách ở sheet Giá trị hợp lệ
-      validationsOf(ws).add(range, count
-        ? {
-          type: 'list', allowBlank: true, formulae: [`'${valuesName}'!$${letter}$2:$${letter}$${count + 1}`], ...prompt,
-          showErrorMessage: true, errorStyle: 'stop', errorTitle, error: clip(t('imp.tpl.errorList'), 255),
-        }
-        : { type: 'any', ...prompt });
-    } else {
-      validationsOf(ws).add(range, {
-        type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true, formulae: [col.max], ...prompt,
-        showErrorMessage: true, errorStyle: 'stop', errorTitle, error: clip(t('imp.tpl.errorText', { max: col.max ?? 0 }), 255),
-      });
-    }
+  return buildImportTemplate({
+    columns: GOLDEN_IMPORT_COLUMNS,
+    choices: goldenImportChoices(lookups),
+    sheet: DATA_SHEET,
+    guideTitle: t('gimp.tpl.guideTitle'),
+    steps: [
+      t('gimp.tpl.step1', { sheet: DATA_SHEET }), t('imp.tpl.step2'), t('imp.tpl.step3'), t('gimp.tpl.stepParent'),
+      t('gimp.tpl.step4', { max: IMPORT_MAX_ROWS }),
+    ],
+    leadingNotes: (col, tr) => col.key === 'parent_serial' ? [tr('gimp.tpl.parentSerial')]
+      : col.key === 'parent_part_number' ? [tr('imp.tpl.parentPart')] : [],
+    extraRules: (col, tr) => col.key === 'serial_number' ? [tr('imp.tpl.serialDuplicate')] : [],
+    lenientLists: ['parent_part_number'],
+    language, now,
   });
-  ws.getRow(1).height = fitHeight(GOLDEN_IMPORT_COLUMNS.map((c, i) => ({ text: notes[i] ?? '', width: c.width * 1.15 })), 12);
-  ws.getRow(2).height = 20;
-
-  // ---- Hướng dẫn
-  const guide = wb.addWorksheet(guideName);
-  guide.columns = [{ width: 22 }, { width: 14 }, { width: 58 }, { width: 58 }];
-  const time = new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
-  }).format(now);
-  guide.getCell('A1').value = t('gimp.tpl.guideTitle');
-  guide.getCell('A1').font = { bold: true, size: 14, color: { argb: PRUSSIAN } };
-  guide.getCell('A2').value = t('imp.tpl.generated', { time });
-  guide.getCell('A2').font = { italic: true, color: { argb: NOTE_INK } };
-  const steps = [
-    t('gimp.tpl.step1', { sheet: DATA_SHEET }), t('imp.tpl.step2'), t('imp.tpl.step3'), t('gimp.tpl.step4', { max: IMPORT_MAX_ROWS }),
-  ];
-  steps.forEach((step, i) => {
-    const r = 4 + i;
-    guide.mergeCells(r, 1, r, 4);
-    const cell = guide.getCell(r, 1);
-    cell.value = `${i + 1}. ${step}`;
-    cell.alignment = { wrapText: true, vertical: 'top' };
-    guide.getRow(r).height = fitHeight([{ text: cell.value, width: 140 }]);
-  });
-  const headRow = 4 + steps.length + 1;
-  guide.getRow(headRow).values = [t('imp.tpl.colColumn'), t('imp.tpl.colRequired'), t('imp.tpl.colRule'), t('imp.tpl.colValues')];
-  guide.getRow(headRow).eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PRUSSIAN } };
-  });
-  GOLDEN_IMPORT_COLUMNS.forEach((col, i) => {
-    const rules: string[] = [];
-    let values = '';
-    if (col.list) {
-      rules.push(t('imp.tpl.pick', { page: col.page ?? col.header }));
-      const list = choices[col.list];
-      const joined = list.join(', ');
-      values = !list.length ? t('imp.tpl.noValues')
-        : joined.length <= 400 ? joined : t('imp.tpl.pickMany', { count: list.length, sheet: valuesName });
-    } else {
-      rules.push(t('imp.tpl.text', { max: col.max ?? 0 }));
-    }
-    rules.push(...extraRules(col, choices, t));
-    const rule = rules.join(' — ');
-    const required = col.required ? t('imp.tpl.yes') : t('imp.tpl.no');
-
-    const row = guide.getRow(headRow + 1 + i);
-    row.values = [col.header, required, rule, values];
-    row.getCell(1).font = { bold: true };
-    if (col.required) row.getCell(2).font = { bold: true, color: { argb: 'FFC00000' } };
-    row.eachCell((cell) => { cell.alignment = { wrapText: true, vertical: 'top' }; });
-    row.height = fitHeight([{ text: required, width: 14 }, { text: rule, width: 58 }, { text: values, width: 58 }]);
-  });
-
-  // ---- Giá trị hợp lệ (nguồn của các ô thả xuống — không sửa ở đây).
-  const vs = wb.addWorksheet(valuesName, { views: [{ state: 'frozen', ySplit: 1 }] });
-  LIST_KEYS.forEach((list, i) => {
-    const col = GOLDEN_IMPORT_COLUMNS.find((c) => c.list === list)!;
-    const column = vs.getColumn(i + 1);
-    column.width = Math.max(col.width, ...choices[list].map((v) => Math.min(v.length + 2, 60)));
-    column.numFmt = '@';
-    const header = vs.getCell(1, i + 1);
-    header.value = col.header;
-    header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PRUSSIAN } };
-    choices[list].forEach((value, j) => { vs.getCell(j + 2, i + 1).value = value; });
-  });
-  await vs.protect('', { selectLockedCells: true, selectUnlockedCells: true, autoFilter: true, sort: true });
-
-  return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 export async function goldenImportTemplate(language: Language): Promise<Buffer> {
@@ -189,9 +68,11 @@ export async function goldenImportTemplate(language: Language): Promise<Buffer> 
 // Kiểm tra
 // ---------------------------------------------------------------------------
 
-/** Kiểm tra từng dòng như form Thêm golden sample; trả báo cáo + các dòng sẽ ghi. */
+const DB_KEYS = ['part_number', 'serial_number', 'utd_part_number', 'location_id', 'origin', 'purpose', 'remark'] as const;
+
+/** Kiểm tra từng dòng như form Thêm golden board; trả báo cáo + các dòng sẽ ghi. */
 export function checkGoldenTable(
-  table: SheetTable, lookups: Lookups, existingSerials: string[],
+  table: SheetTable, lookups: Lookups, equipment: ExistingEquipment[], existingSerials: string[],
 ): { report: ImportReport; inserts: GoldenInsertRow[] } {
   const columnIndex = new Map<GoldenImportColumnKey, number>();
   const ignored: string[] = [];
@@ -201,15 +82,19 @@ export function checkGoldenTable(
     if (key && !columnIndex.has(key)) columnIndex.set(key, i);
     else ignored.push(h);
   });
-  const missing = GOLDEN_IMPORT_COLUMNS.filter((c) => c.required && !columnIndex.has(c.key)).map((c) => c.header);
+  const missing = GOLDEN_IMPORT_COLUMNS
+    .filter((c) => !columnIndex.has(c.key) && (c.required || (c.requiredUnlessParent && !columnIndex.has('parent_serial'))))
+    .map((c) => c.header);
   if (missing.length) throw fileError('missing_columns', { columns: missing });
   if (!table.rows.length) throw fileError('empty');
   if (table.rows.length > IMPORT_MAX_ROWS) throw fileError('too_many_rows', { count: table.rows.length, max: IMPORT_MAX_ROWS });
 
-  const lists: Record<GoldenImportListKey, Map<string, Entry>> = {
-    locations: indexBy(lookups.locations, (r) => r.is_active),
-  };
-  const existing = new Set(existingSerials.map(serialKey));
+  const locations: Map<string, Entry> = indexBy(lookups.locations, (r) => r.is_active);
+  const pool = bySerial(equipment.map((e): ParentCandidate => ({
+    id: e.id, serial_number: e.serial_number, part_number: nameOf(lookups.part_numbers, e.part_number_id) ?? '',
+    kind: kindOf(lookups, e.type_id), location_id: e.location_id,
+  })));
+  const serialsInSystem = new Set(existingSerials.map(serialKey));
   const firstRowOfSerial = new Map<string, number>();
   const rows: ImportRowReport[] = [];
   const inserts: GoldenInsertRow[] = [];
@@ -217,32 +102,54 @@ export function checkGoldenTable(
   let duplicates = 0;
 
   for (const source of table.rows) {
+    const cell = (key: GoldenImportColumnKey) => {
+      const index = columnIndex.get(key);
+      return index === undefined ? '' : source.cells[index] ?? '';
+    };
     const issues: ImportIssue[] = [];
-    const data = {} as GoldenInsertRow;
-    for (const col of GOLDEN_IMPORT_COLUMNS) {
-      const index = columnIndex.get(col.key);
-      const raw = index === undefined ? '' : source.cells[index] ?? '';
-      data[col.key] = null;
+    const data = { parent_id: null } as GoldenInsertRow;
+    for (const key of DB_KEYS) {
+      const col = GOLDEN_IMPORT_COLUMNS.find((c) => c.key === key)!;
+      const raw = cell(key);
+      data[key] = null;
       if (!raw) {
-        if (col.required) issues.push({ column: col.key, code: 'required' });
+        if (col.required || (col.requiredUnlessParent && !cell('parent_serial'))) issues.push({ column: key, code: 'required' });
       } else if (col.list) {
-        const entry = lists[col.list].get(raw.toLowerCase());
-        if (!entry) issues.push({ column: col.key, code: 'not_found', value: raw });
-        else if (!entry.usable) issues.push({ column: col.key, code: 'inactive', value: raw });
-        else {
-          data[col.key] = entry.id;
-        }
+        const entry = locations.get(raw.toLowerCase());
+        if (!entry) issues.push({ column: key, code: 'not_found', value: raw });
+        else if (!entry.usable) issues.push({ column: key, code: 'inactive', value: raw });
+        else data[key] = entry.id;
       } else if (col.max && raw.length > col.max) {
-        issues.push({ column: col.key, code: 'too_long', max: col.max });
+        issues.push({ column: key, code: 'too_long', max: col.max });
       } else {
-        data[col.key] = raw;
+        data[key] = raw;
+      }
+    }
+
+    // Cha: tester hoặc fixture đã có; vị trí theo cha.
+    const parentSerial = cell('parent_serial');
+    if (parentSerial.length > 200) issues.push({ column: 'parent_serial', code: 'too_long', max: 200 });
+    else if (cell('parent_part_number') && !parentSerial) issues.push({ column: 'parent_serial', code: 'required' });
+    else if (parentSerial) {
+      const found = findExistingParent(parentSerial, cell('parent_part_number'), pool);
+      const shown = cell('parent_part_number') ? `${parentSerial} · ${cell('parent_part_number')}` : parentSerial;
+      if ('code' in found) {
+        issues.push({ column: 'parent_serial', code: found.code, value: shown, ...(found.code === 'parent_ambiguous' ? { count: found.count } : {}) });
+      } else if (!parentAllowed('golden_board', found.parent.kind)) {
+        issues.push({ column: 'parent_serial', code: 'parent_type_invalid', value: shown });
+      } else {
+        if (data.location_id && data.location_id !== found.parent.location_id) {
+          issues.push({ column: 'location_id', code: 'location_follows_parent', value: nameOf(lookups.locations, found.parent.location_id) ?? '' });
+        }
+        data.location_id = found.parent.location_id;
+        data.parent_id = found.parent.id;
       }
     }
 
     let duplicateOf: ImportRowReport['duplicate_of'] = null;
     if (data.serial_number) {
       const key = serialKey(data.serial_number);
-      if (existing.has(key)) duplicateOf = 'existing';
+      if (serialsInSystem.has(key)) duplicateOf = 'existing';
       else if (firstRowOfSerial.has(key)) duplicateOf = firstRowOfSerial.get(key)!;
       else firstRowOfSerial.set(key, source.row);
     }
@@ -267,16 +174,17 @@ export function checkGoldenTable(
 // Import
 // ---------------------------------------------------------------------------
 
-/** commit = false: chỉ kiểm tra. commit = true: kiểm tra lại từ đầu, hết lỗi mới ghi (tất cả hoặc không). */
+/** commit = false: chỉ kiểm tra (+ database chạy thử). commit = true: kiểm tra lại từ đầu, hết lỗi mới ghi (tất cả hoặc không). */
 export async function importGoldenFile(file: UploadedFile | null, commit: boolean, actor: string): Promise<ImportReport> {
   const table = await readWorkbook(await readUpload(file), HEADER_KEYS);
-  const [lookups, existing] = await Promise.all([
+  const [lookups, equipment, serials] = await Promise.all([
     loadLookups(),
-    selectAll<{ serial_number: string }>('golden_samples', 'serial_number'),
+    selectAll<ExistingEquipment>('equipment', 'id, serial_number, part_number_id, type_id, location_id, level_id'),
+    allSerials(),
   ]);
-  const { report, inserts } = checkGoldenTable(table, lookups, existing.map((r) => r.serial_number));
-  if (!commit || report.invalid > 0) return report;
+  const { report, inserts } = checkGoldenTable(table, lookups, equipment, serials);
+  if (report.invalid > 0) return report;
 
-  const created = await rpc<number>('golden_import', { p_rows: inserts, p_actor: actor });
-  return { ...report, committed: true, created };
+  const result = await rpc<AssetOpResult>('golden_import', { p_rows: inserts, p_actor: actor, p_dry_run: !commit });
+  return commit ? { ...report, committed: true, created: result.count } : report;
 }

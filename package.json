@@ -9,7 +9,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "seed:admin": "tsx scripts/seed-first-admin.ts"
+    "seed:admin": "tsx scripts/seed-first-admin.ts",
+    "bench": "node --use-system-ca --conditions react-server --import tsx scripts/bench-services.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -23,6 +24,7 @@
     "react-dom": "^18.3.1",
     "react-i18next": "^17.0.14",
     "server-only": "^0.0.1",
+    "undici": "^7.16.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -1,5 +1,7 @@
 'use client';
 
+import { listCache } from '@/lib/client/cache';
+
 /**
  * API client. Mọi thất bại đều thành ApiError { code, status, requestId }:
  * lỗi server ({ code, message, request_id }), phản hồi lạ (theo HTTP status),
@@ -77,8 +79,33 @@ async function call<T>(path: string, init: RequestInit = {}, timeout = TIMEOUT_M
   const headers = init.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' };
   const res = await send(path, { ...init, headers }, timeout);
   const body = (await res.json().catch(() => null)) as Envelope<T> | null;
-  if (res.ok && body?.success) return { data: body.data, meta: body.meta };
+  if (res.ok && body?.success) {
+    // Đăng nhập / đăng xuất: danh sách đã nhớ là của tài khoản trước.
+    if (path.startsWith('/api/auth/')) listCache.clear();
+    return { data: body.data, meta: body.meta };
+  }
   throw toApiError(path, res, body);
+}
+
+/**
+ * GET trùng nhau đang chạy dùng CHUNG một request: React StrictMode (dev) chạy mọi effect hai lần, và nhiều vùng màn hình có thể
+ * cùng mở một URL. Chỉ nhập vào request bắt đầu SAU lần ghi gần nhất — mỗi lần ghi (bắt đầu và xong) đổi `writes`, nên một GET
+ * sau khi lưu luôn đi lấy dữ liệu mới, không bao giờ nhận phản hồi cũ của một GET đã bay trước đó.
+ */
+let writes = 0;
+const inflight = new Map<string, { writes: number; promise: Promise<Result<unknown>> }>();
+
+function get<T>(path: string): Promise<Result<T>> {
+  const shared = inflight.get(path);
+  if (shared && shared.writes === writes) return shared.promise as Promise<Result<T>>;
+  const promise = call<T>(path).finally(() => { if (inflight.get(path)?.promise === promise) inflight.delete(path); });
+  inflight.set(path, { writes, promise });
+  return promise;
+}
+
+function write<T>(path: string, init: RequestInit, timeout?: number): Promise<Result<T>> {
+  writes++;
+  return call<T>(path, init, timeout).finally(() => { writes++; });
 }
 
 /** Lưu Blob thành file tải về. */
@@ -100,12 +127,12 @@ async function download(path: string): Promise<void> {
 }
 
 export const api = {
-  get: <T>(path: string) => call<T>(path),
-  post: <T>(path: string, body?: unknown) => call<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
-  put: <T>(path: string, body: unknown) => call<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
-  delete: <T>(path: string) => call<T>(path, { method: 'DELETE' }),
+  get,
+  post: <T>(path: string, body?: unknown) => write<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
+  put: <T>(path: string, body: unknown) => write<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: <T>(path: string) => write<T>(path, { method: 'DELETE' }),
   /** Gửi file (multipart/form-data). */
-  upload: <T>(path: string, form: FormData) => call<T>(path, { method: 'POST', body: form }, UPLOAD_TIMEOUT_MS),
+  upload: <T>(path: string, form: FormData) => write<T>(path, { method: 'POST', body: form }, UPLOAD_TIMEOUT_MS),
   download,
 };
 
@@ -127,19 +154,22 @@ export function errorMessage(error: unknown, t: Translate): string {
   return error.status >= 500 && error.requestId !== '-' ? `${text} (${error.requestId})` : text;
 }
 
+// Intl.DateTimeFormat tốn kém khi dựng (có múi giờ) — dựng MỘT lần, dùng cho mọi ô ngày trong danh sách và modal.
+const TIME_FORMAT = new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
+});
+const DATE_FORMAT = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' });
+
 /** Ngày giờ theo giờ Việt Nam. Dữ liệu lưu timestamptz. */
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
-  }).format(new Date(iso));
+  return TIME_FORMAT.format(new Date(iso));
 }
 
 /** Ngày (date hoặc timestamptz) dạng dd/mm/yyyy. */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' })
-    .format(new Date(iso.length <= 10 ? `${iso}T00:00:00+07:00` : iso));
+  return DATE_FORMAT.format(new Date(iso.length <= 10 ? `${iso}T00:00:00+07:00` : iso));
 }
 
 export function formatRelativeTime(iso: string | null | undefined, language: 'en' | 'vi'): string {

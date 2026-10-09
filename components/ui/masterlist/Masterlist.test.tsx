@@ -140,7 +140,7 @@ describe('Masterlist — docs/DETAIL_MODEL.md mục 2', () => {
   });
 });
 
-/** Phone layout: matchMedia('(max-width: 800px)') reports a match. */
+/** Phone layout: matchMedia('(max-width: 767px)') reports a match. */
 function phoneMode(on: boolean) {
   vi.mocked(window.matchMedia).mockReturnValue({ matches: on, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
 }
@@ -224,5 +224,70 @@ describe('Phone layout — a card per row instead of a squeezed table', () => {
     const { onViewChange } = setupPhone({ quickFilters: [{ key: 'many', label: 'Many', test: (r) => r.qty >= 3 }] });
     fireEvent.click(screen.getByRole('button', { name: 'Many' }));
     expect(onViewChange).toHaveBeenLastCalledWith(['a', 'd']);
+  });
+});
+
+describe('Masterlist — speed: search index and row memoization', () => {
+  const mount = (over: Partial<Parameters<typeof Masterlist<Row>>[0]> = {}) => render(
+    <Masterlist<Row> title="Test" rows={rows} loading={false} error={null} columns={columns} storageKey={`t-${Math.random()}`}
+      selectedId={null} onSelect={vi.fn()} exportName="test" {...over} />,
+  );
+
+  it('search still reaches columns that are hidden from the table', () => {
+    const onViewChange = vi.fn();
+    mount({ defaultColumns: ['serial'], onViewChange });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'base' } }); // "Type" is not shown
+    expect(lastView(onViewChange)).toEqual(['b']);
+  });
+
+  it('a search never matches across the border of two columns', () => {
+    const onViewChange = vi.fn();
+    mount({ onViewChange });
+    // "SN-2" + "Base" would read "SN-2Base" if the columns were glued together without a separator
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'sn-2base' } });
+    expect(lastView(onViewChange)).toEqual([]);
+  });
+
+  it('a new set of rows is searched from scratch (the per-row search text is not reused for other data)', () => {
+    const onViewChange = vi.fn();
+    const { rerender } = mount({ onViewChange });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzz' } });
+    expect(lastView(onViewChange)).toEqual([]);
+    const next: Row[] = [...rows, { id: 'e', serial: 'ZZZ-1', type: 'Fixture', qty: 9 }];
+    rerender(
+      <Masterlist<Row> title="Test" rows={next} loading={false} error={null} columns={columns} storageKey="t-x"
+        selectedId={null} onSelect={vi.fn()} exportName="test" onViewChange={onViewChange} />,
+    );
+    expect(lastView(onViewChange)).toEqual(['e']);
+  });
+
+  it('selecting a row (or opening / closing a modal) redraws only the rows whose state changed — not every row', () => {
+    let draws = 0;
+    const counting: Column<Row>[] = [{ key: 'serial', label: 'Serial', value: (r) => r.serial, render: (r) => { draws++; return r.serial; } }];
+    const props = { title: 'Test', rows, loading: false, error: null, columns: counting, storageKey: 't-memo', exportName: 'test' } as const;
+    const { rerender } = render(<Masterlist<Row> {...props} selectedId={null} onSelect={vi.fn()} />);
+    expect(draws).toBe(4);
+    draws = 0;
+    rerender(<Masterlist<Row> {...props} selectedId="b" onSelect={vi.fn()} />); // a new onSelect every render, as the workspace gives
+    expect(draws).toBe(1); // only the newly selected row
+    draws = 0;
+    rerender(<Masterlist<Row> {...props} selectedId="c" onSelect={vi.fn()} />);
+    expect(draws).toBe(2); // the row that lost the selection and the one that gained it
+    draws = 0;
+    rerender(<Masterlist<Row> {...props} selectedId="c" onSelect={vi.fn()} />);
+    expect(draws).toBe(0); // nothing changed
+  });
+
+  it('a row click still reaches the CURRENT onSelect after re-renders', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = mount({ onSelect: first });
+    rerender(
+      <Masterlist<Row> title="Test" rows={rows} loading={false} error={null} columns={columns} storageKey="t-y"
+        selectedId={null} onSelect={second} exportName="test" />,
+    );
+    fireEvent.click(screen.getByText('XYZ'));
+    expect(second).toHaveBeenCalledWith('d');
+    expect(first).not.toHaveBeenCalled();
   });
 });

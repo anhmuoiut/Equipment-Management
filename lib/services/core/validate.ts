@@ -39,8 +39,6 @@ export const reqText = (max = 200) => z.string().trim().min(1).max(max);
 
 export const optId = z.union([z.string().uuid(), z.null()]).optional();
 export const reqId = z.string().uuid();
-/** Thiết bị con khi di chuyển / xóa thiết bị: đi theo (mặc định) hoặc ở lại chỗ cũ. */
-export const childrenMode = z.enum(['follow', 'stay']).optional();
 export const optDate = z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]).optional();
 
 /** Bỏ các key undefined — chỉ gửi trường thật sự có trong request. */

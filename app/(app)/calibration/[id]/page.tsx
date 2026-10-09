@@ -1,15 +1,7 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { use } from 'react';
-import { RecordPage } from '@/components/ui/workspace/RecordPage';
-import { CalibrationDetail } from '@/components/calibration/CalibrationDetail';
-import type { CalibrationRow } from '@/lib/types';
-
-export default function CalibrationDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  return (
-    <RecordPage<CalibrationRow> url={`/api/calibration/${id}`} listPath="/calibration">
-      {(ctx) => <CalibrationDetail ctx={ctx} layout="page" />}
-    </RecordPage>
-  );
+/** Link cũ (mã QR đã in): chuyển sang trang với ?id= — modal chi tiết mở theo id (docs/DETAIL_MODEL.md mục 3). */
+export default async function LegacyRecordPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  redirect(`/calibration?id=${encodeURIComponent(id)}`);
 }

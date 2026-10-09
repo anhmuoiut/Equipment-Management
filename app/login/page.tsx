@@ -3,20 +3,20 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, BarChart3, Cpu, Eye, EyeOff, LockKeyhole, Mail, Package, UserPlus, UserRound, Wrench } from 'lucide-react';
+import { ArrowRight, BarChart3, Cpu, Eye, EyeOff, LockKeyhole, Package, UserRound, Wrench } from 'lucide-react';
 import { PreferenceControls } from '@/components/Preferences';
 import { JabilLogo } from '@/components/JabilLogo';
 import Image from 'next/image';
 import './login.css';
-import { api, ApiError, errorMessage } from '@/lib/client/api';
-import { normalizeUsername, safeLoginDestination } from '@/lib/auth/username';
+import { api, errorMessage } from '@/lib/client/api';
+import { safeLoginDestination } from '@/lib/auth/username';
 import { SUPPORT_EMAIL } from '@/lib/support';
 
 function SupportEmail() {
   return <a className="support-email" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>;
 }
 
-function LoginForm({ onRequestAccount }: { onRequestAccount: () => void }) {
+function LoginForm() {
   const router = useRouter();
   const destination = safeLoginDestination(useSearchParams().get('next'));
   const { t } = useTranslation();
@@ -42,7 +42,7 @@ function LoginForm({ onRequestAccount }: { onRequestAccount: () => void }) {
       router.replace(destination);
       router.refresh();
     } catch (err) {
-      // Sai mật khẩu, chờ duyệt, bị khóa, quá số lần, lỗi server, mất mạng — mỗi lỗi một câu riêng.
+      // Sai mật khẩu, bị khóa, quá số lần, lỗi server, mất mạng — mỗi lỗi một câu riêng.
       setError(errorMessage(err, t));
       setBusy(false);
     }
@@ -94,188 +94,8 @@ function LoginForm({ onRequestAccount }: { onRequestAccount: () => void }) {
         <ArrowRight size={18} aria-hidden="true" />
       </button>
       <p id="sso-availability" className="sso-availability">{t('login.ssoComingSoon')}</p>
-      <div className="auth-switch">
-        <span>{t('login.noAccount')}</span>
-        <button type="button" onClick={onRequestAccount}>{t('login.signUp')}</button>
-      </div>
     </form>
   );
-}
-
-type SignupField = 'full_name' | 'username' | 'password' | 'confirm' | 'email' | 'employee_id';
-const SIGNUP_EMPTY: Record<SignupField, string> = {
-  full_name: '', username: '', password: '', confirm: '', email: '', employee_id: '',
-};
-
-function SignupForm({ onBackToSignIn }: { onBackToSignIn: () => void }) {
-  const { t } = useTranslation();
-  const [form, setForm] = useState(SIGNUP_EMPTY);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-
-  function set(field: SignupField, value: string) {
-    setForm((f) => ({ ...f, [field]: value }));
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!form.full_name.trim()) {
-      setError(t('signup.errorFullName'));
-      return;
-    }
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      setError(t('signup.errorEmailFormat'));
-      return;
-    }
-    if (form.password !== form.confirm) {
-      setError(t('signup.errorPasswordMismatch'));
-      return;
-    }
-    if (form.password.length < 10) {
-      setError(t('signup.errorPasswordTooShort'));
-      return;
-    }
-    // Cùng quy tắc với server (lib/auth/username.ts) — báo ngay thay vì để server từ chối.
-    const username = normalizeUsername(form.username);
-    if (!username) {
-      setError(t('signup.errorUsernameFormat'));
-      return;
-    }
-    setBusy(true);
-    try {
-      await api.post('/api/auth/signup', {
-        full_name: form.full_name,
-        username,
-        password: form.password,
-        email: form.email || undefined,
-        employee_id: form.employee_id || undefined,
-      });
-      setSubmitted(true);
-    } catch (err) {
-      // Lỗi theo trường → câu hướng dẫn cụ thể của form; còn lại (trùng username / email, quá số lần, server, mạng) theo mã lỗi.
-      const fields = err instanceof ApiError ? err.fieldErrors : {};
-      setError(
-        fields.username ? t('signup.errorUsernameFormat')
-          : fields.email ? t('signup.errorEmailFormat')
-            : fields.full_name ? t('signup.errorFullName')
-              : fields.password ? t('signup.errorPasswordTooShort')
-                : errorMessage(err, t),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (submitted) {
-    return (
-      <div className="login-form signup-success" role="status">
-        <div className="login-icon"><UserPlus size={24} aria-hidden="true" /></div>
-        <p className="eyebrow">{t('signup.requestSubmitted')}</p>
-        <h1>{t('signup.almostThere')}</h1>
-        <p className="login-description">{t('signup.submittedDescription')}</p>
-        <p className="login-description">{t('signup.needHelp')} <SupportEmail /></p>
-        <button type="button" className="sign-in-button" onClick={onBackToSignIn}>
-          {t('signup.backToSignIn')}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <form noValidate onSubmit={submit} className="login-form signup-form" aria-label={t('signup.requestAnAccount')} aria-busy={busy}>
-      <div className="login-intro">
-        <h1>{t('signup.requestAnAccount')}</h1>
-        <p>{t('signup.description')}</p>
-      </div>
-
-      <div className="signup-fields">
-        <div className="signup-field">
-          <label htmlFor="full_name">{t('signup.fullName')}</label>
-          <div className="login-input">
-            <UserRound size={18} aria-hidden="true" />
-            <input id="full_name" autoComplete="name" required maxLength={200} value={form.full_name}
-              onChange={(e) => set('full_name', e.target.value)}
-              placeholder={t('signup.yourFullName')} />
-          </div>
-        </div>
-
-        <div className="signup-field">
-          <label htmlFor="signup-username">{t('signup.desiredUsername')}</label>
-          <div className="login-input">
-            <UserRound size={18} aria-hidden="true" />
-            <input id="signup-username" autoComplete="username" required maxLength={64} autoCapitalize="none" spellCheck={false}
-              value={form.username} onChange={(e) => set('username', e.target.value)}
-              placeholder={t('signup.usernameHint')} />
-          </div>
-        </div>
-
-        <div className="signup-field">
-          <label htmlFor="signup-password">{t('login.password')}</label>
-          <div className="login-input">
-            <LockKeyhole size={18} aria-hidden="true" />
-            <input id="signup-password" type="password" required minLength={10} maxLength={256}
-              autoComplete="new-password" value={form.password} onChange={(e) => set('password', e.target.value)}
-              placeholder={t('signup.passwordHint')} />
-          </div>
-        </div>
-
-        <div className="signup-field">
-          <label htmlFor="signup-confirm">{t('signup.confirmPassword')}</label>
-          <div className="login-input">
-            <LockKeyhole size={18} aria-hidden="true" />
-            <input id="signup-confirm" type="password" required maxLength={256}
-              autoComplete="new-password" value={form.confirm} onChange={(e) => set('confirm', e.target.value)}
-              placeholder={t('signup.reenterPassword')} />
-          </div>
-        </div>
-
-        <div className="signup-field">
-          <label htmlFor="signup-email">{t('signup.email')}</label>
-          <div className="login-input">
-            <Mail size={18} aria-hidden="true" />
-            <input id="signup-email" autoComplete="email" type="email" maxLength={200} value={form.email}
-              onChange={(e) => set('email', e.target.value)}
-              placeholder={t('signup.emailHint')} />
-          </div>
-        </div>
-
-        <div className="signup-field">
-          <label htmlFor="employee_id">{t('signup.employeeId')}</label>
-          <div className="login-input">
-            <UserRound size={18} aria-hidden="true" />
-            <input id="employee_id" maxLength={50} value={form.employee_id}
-              onChange={(e) => set('employee_id', e.target.value)} />
-          </div>
-        </div>
-
-        {/* No Department field here — it's now a picker over an
-            admin-managed list (see Account settings), and this form runs
-            before the requester has a session to fetch that list with.
-            They set it themselves once an admin approves the request. */}
-      </div>
-
-      {error && <p className="login-error" role="alert">{error}</p>}
-
-      <div className="signup-actions">
-        <button className="sign-in-button" type="submit" disabled={busy}>
-          {busy ? t('signup.submitting') : t('signup.submitRequest')}
-          <ArrowRight size={18} aria-hidden="true" />
-        </button>
-        <button type="button" className="request-account-link" onClick={onBackToSignIn}>
-          {t('signup.backToSignIn')}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function AuthPanel() {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-  return mode === 'signin'
-    ? <LoginForm onRequestAccount={() => setMode('signup')} />
-    : <SignupForm onBackToSignIn={() => setMode('signin')} />;
 }
 
 export default function LoginPage() {
@@ -312,7 +132,7 @@ export default function LoginPage() {
           </ul>
         </div>
         <section className="login-main" aria-label={t('login.yourWorkspace')}>
-          <div className="login-form-area"><Suspense fallback={<p role="status">{t('common.loadingEllipsis')}</p>}><AuthPanel /></Suspense></div>
+          <div className="login-form-area"><Suspense fallback={<p role="status">{t('common.loadingEllipsis')}</p>}><LoginForm /></Suspense></div>
           <div className="auth-preferences"><PreferenceControls /></div>
         </section>
       </div>

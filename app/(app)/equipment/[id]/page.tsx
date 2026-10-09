@@ -1,18 +1,7 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-/** Chi tiết thiết bị toàn trang — nút ⤢ và link QR (/equipment/{id}). */
-import { use } from 'react';
-import { RecordPage } from '@/components/ui/workspace/RecordPage';
-import { EquipmentDetail } from '@/components/equipment/EquipmentDetail';
-import { useEquipmentCalibrationSection } from '@/components/calibration/equipmentExtension';
-import type { EquipmentRow } from '@/lib/types';
-
-export default function EquipmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const calibration = useEquipmentCalibrationSection();
-  return (
-    <RecordPage<EquipmentRow> url={`/api/equipment/${id}`} listPath="/equipment">
-      {(ctx) => <EquipmentDetail ctx={ctx} layout="page" extensions={[calibration]} />}
-    </RecordPage>
-  );
+/** Link cũ (mã QR đã in): chuyển sang trang với ?id= — modal chi tiết mở theo id (docs/DETAIL_MODEL.md mục 3). */
+export default async function LegacyRecordPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  redirect(`/equipment?id=${encodeURIComponent(id)}`);
 }

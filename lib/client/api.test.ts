@@ -40,7 +40,7 @@ describe('error messages', () => {
   });
 
   it('uses the server code, falls back by HTTP status, and adds the request id to server errors', () => {
-    expect(errorMessage(new ApiError('ACCOUNT_PENDING', 'x', {}, 'req_1', 403), t)).toBe(errors.ACCOUNT_PENDING);
+    expect(errorMessage(new ApiError('USER_INACTIVE', 'x', {}, 'req_1', 403), t)).toBe(errors.USER_INACTIVE);
     expect(errorMessage(new ApiError('SOMETHING_NEW', 'x', {}, 'req_1', 404), t)).toBe(errors.NOT_FOUND);
     expect(errorMessage(new ApiError('SERVER_ERROR', 'x', {}, 'req_9', 500), t)).toBe(`${errors.SERVER_ERROR} (req_9)`);
   });
@@ -95,9 +95,73 @@ describe('api client', () => {
     expect(assign).not.toHaveBeenCalled();
 
     vi.stubGlobal('fetch', vi.fn(async () => unauthorized()));
-    await failure(api.get('/api/notifications'));
+    await failure(api.get('/api/dashboard'));
     await failure(api.get('/api/equipment'));
     expect(assign).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith('/api/auth/session-ended');
+  });
+});
+
+describe('GET sharing', () => {
+  const ok = (data: unknown) => respond(200, { success: true, data, meta: {} });
+
+  it('overlapping GETs of one URL (React StrictMode runs every effect twice) are ONE request; later ones go out again', async () => {
+    const fetchMock = vi.fn(async () => ok([1]));
+    vi.stubGlobal('fetch', fetchMock);
+    const [a, b] = await Promise.all([api.get('/api/same'), api.get('/api/same')]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(a).toBe(b);
+    await api.get('/api/same');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('different URLs are different requests', async () => {
+    const fetchMock = vi.fn(async () => ok([]));
+    vi.stubGlobal('fetch', fetchMock);
+    await Promise.all([api.get('/api/one'), api.get('/api/two')]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('a GET made after a save never receives the answer of a GET that was already in the air before it', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let reads = 0;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return ok({ saved: true });
+      const mine = ++reads;
+      if (mine === 1) await gate; // the old read is slow, and was sent before the save
+      return ok(mine === 1 ? 'before-save' : 'after-save');
+    }));
+    const old = api.get('/api/list');
+    await api.post('/api/things', {});
+    const fresh = api.get('/api/list'); // must NOT join `old`
+    release();
+    expect((await fresh).data).toBe('after-save');
+    expect((await old).data).toBe('before-save');
+  });
+
+  it('a failure is shared by the callers waiting on it and is not remembered', async () => {
+    const fetchMock = vi.fn(async () => respond(500, { success: false, error: { code: 'SERVER_ERROR', message: '', details: {}, request_id: 'r' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const [a, b] = await Promise.all([failure(api.get('/api/bad')), failure(api.get('/api/bad'))]);
+    expect(a).toBe(b);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.stubGlobal('fetch', vi.fn(async () => ok('fine')));
+    expect((await api.get('/api/bad')).data).toBe('fine');
+  });
+});
+
+describe('remembered lists', () => {
+  it('are forgotten on sign-in and sign-out — the next account must not see the previous one\'s lists', async () => {
+    const { listCache } = await import('./cache');
+    vi.stubGlobal('fetch', vi.fn(async () => respond(200, { success: true, data: {}, meta: {} })));
+    for (const path of ['/api/auth/login', '/api/auth/logout']) {
+      listCache.set('/api/users', [{ id: 'u' }]);
+      await api.post(path, {});
+      expect(listCache.get('/api/users')).toBeUndefined();
+    }
+    listCache.set('/api/users', [{ id: 'u' }]);
+    await api.post('/api/equipment', {}); // an ordinary save keeps them
+    expect(listCache.get('/api/users')).toBeDefined();
   });
 });

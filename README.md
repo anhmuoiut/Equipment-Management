@@ -2,29 +2,29 @@
 
 > **UI requirements for developers and AI assistants:** Read [docs/JABIL_UI.md](docs/JABIL_UI.md) before adding or changing UI. It defines the accepted branding, compact layout, shared components, themes and responsive behavior.
 
-Web app nội bộ quản lý Tester / Base / Fixture / Equipment, thay cách ghi chép bằng Excel.
+Web app nội bộ quản lý Tester / Base / Fixture, sub-equipment cần hiệu chuẩn và golden board, thay cách ghi chép bằng Excel.
 
-Thiết kế nằm ngay trong repo: [docs/DATABASE_MODIFIED.md](docs/DATABASE_MODIFIED.md) (database), [docs/APP_SHELL.md](docs/APP_SHELL.md), [docs/DETAIL_MODEL.md](docs/DETAIL_MODEL.md) và [docs/JABIL_UI.md](docs/JABIL_UI.md) (giao diện). Đổi thiết kế thì sửa tài liệu trong `docs/` cùng lúc với code.
+Thiết kế nằm ngay trong repo: [docs/DATABASE_MODIFIED.md](docs/DATABASE_MODIFIED.md) (database), [docs/API.md](docs/API.md) (API), [docs/APP_SHELL.md](docs/APP_SHELL.md), [docs/DETAIL_MODEL.md](docs/DETAIL_MODEL.md) và [docs/JABIL_UI.md](docs/JABIL_UI.md) (giao diện), [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (hiệu năng: vì sao nhanh / chậm, quy tắc giữ tốc độ, số đo). Đổi thiết kế thì sửa tài liệu trong `docs/` cùng lúc với code.
 
 **Quy mô mục tiêu:** pilot 10–20 người, 1.000–2.000 thiết bị, Excel vẫn chạy song song.
 
 ---
 
-## Tình trạng hiện tại
+## Tình trạng hiện tại (v2)
 
-Database và giao diện đã xong:
+Database, tầng server và giao diện (một hệ thống modal) của mô hình tài sản mới đã xong; còn dọn dẹp và kiểm thử trên dữ liệu thật.
 
-| Phần | Nội dung |
+| Phần | Trạng thái |
 |---|---|
-| Khung ứng dụng | Top bar, sidebar 6 mục, EN / VI, sáng / tối, chuông thông báo — [docs/APP_SHELL.md](docs/APP_SHELL.md) |
-| Dashboard | Số liệu tổng, trạng thái theo màu, quá hạn / sắp đến hạn hiệu chuẩn, phân bố theo vị trí / loại, thay đổi gần đây |
-| Equipment | Masterlist + Detail Panel, cây thiết bị, Đổi vị trí / Đổi cha / Swap / Tách khỏi cha / Xóa (con đi theo hoặc ở lại), Import Excel, nhãn QR in được |
-| Calibration | Dashboard hiệu chuẩn tự đồng bộ theo Setup (part number), ghi nhận hiệu chuẩn, hạn tự tính theo chu kỳ |
-| Golden | Masterlist + Detail Panel |
-| Configuration | 8 danh sách (Dữ liệu gốc; Hiệu chuẩn: Setup, Vendor) + Error log (chỉ Admin) |
-| User Management | Duyệt / từ chối tài khoản tự đăng ký, tạo tài khoản, khóa, đặt lại mật khẩu (chỉ Admin) |
+| Database | **Xong.** 18 bảng, nhật ký tài sản chung (`asset_logs`), cây Tester ⊃ Base ⊃ Fixture + sub-equipment + golden board, 6 hàm thao tác dùng chung có `p_dry_run` — [docs/DATABASE_MODIFIED.md](docs/DATABASE_MODIFIED.md) |
+| Đăng nhập, tài khoản | **Xong.** Chỉ Supabase Auth, Admin tạo tài khoản, mật khẩu tạm đổi ở lần đầu, khóa / mở khóa, bốn thao tác Admin ở User Management |
+| Configuration | **Xong.** 8 danh sách + Error log (chỉ Admin) |
+| Dashboard | **Xong.** Status theo loại tài sản, Calibration Status, quá hạn / sắp đến hạn, theo thẻ / vị trí / loại, thay đổi gần đây |
+| API tài sản | **Xong.** Equipment, Calibration (sub-equipment + lần hiệu chuẩn), Golden, Overview, thao tác cây dùng chung, Import Excel — [docs/API.md](docs/API.md) |
+| Giao diện | **Xong.** Equipment, Calibration, Golden, Configuration, User Management dùng chung Masterlist full chiều rộng + một modal (S / M / L), điện thoại toàn màn hình — [docs/DETAIL_MODEL.md](docs/DETAIL_MODEL.md). Chưa chạy thử trong trình duyệt với dữ liệu thật |
+| Overview | **Xong (chưa chạy thử với dữ liệu thật).** Bảng thẻ theo Location (mỗi cột một tài sản gốc, tối đa 3 thẻ kể cả thẻ gốc), một hàm `overview_board` — [docs/DETAIL_MODEL.md](docs/DETAIL_MODEL.md) mục 4.6, [docs/DATABASE_MODIFIED.md](docs/DATABASE_MODIFIED.md) mục 2 |
 
-Mọi module dùng chung Masterlist + Detail Panel theo [docs/DETAIL_MODEL.md](docs/DETAIL_MODEL.md). Chưa làm: module Repair.
+Chưa làm: module Repair.
 
 ---
 
@@ -41,43 +41,42 @@ Mở địa chỉ Local mà Next.js in ra khi báo Ready (thường là http://1
 
 - Giữ `.env.local` cũ là dùng lại đúng Supabase project và tài khoản — đổi máy không cần chạy lại SQL hay tạo lại admin.
 - Không chép `node_modules` hoặc `.next` giữa Windows và macOS (chứa thư viện / file build theo hệ điều hành) — mỗi máy tự `npm ci`.
+- Chậm? Đọc [docs/PERFORMANCE.md](docs/PERFORMANCE.md) mục 5: nên đặt dự án **ngoài OneDrive**, và đánh giá tốc độ bằng `npm run build` + `npm run start` (dev biên dịch từng trang ở lần mở đầu). `npm run bench` đo tầng server trên Supabase thật (chỉ đọc).
 - Không chạy `npm run build` trong lúc `npm run dev` đang chạy: hai lệnh dùng chung thư mục `.next` và làm hỏng nhau. Lỡ chạy thì tắt dev server, xóa `.next`, chạy lại `npm run dev`.
 
 ## Chạy lần đầu
 
 ```bash
 npm install
-cp .env.example .env.local     # điền giá trị từ Supabase → Settings → API
+cp .env.example .env.local     # điền 3 giá trị từ Supabase → Project Settings → API
 ```
 
-Điền thêm `LOCAL_AUTH_SECRET` — một chuỗi ngẫu nhiên bất kỳ, ít nhất 32 ký tự, giữ bí mật như `SUPABASE_SERVICE_ROLE_KEY`. Dùng để ký phiên đăng nhập của tài khoản **local** (xem [Tài khoản](#tài-khoản)). Sinh nhanh bằng:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-```
+Ba biến: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (Secret key / `service_role`, giữ bí mật). **Cả ba phải của cùng một project** — lệch project thì Supabase báo "Invalid API key".
 
 ### 1. Database
 
-Chạy lần lượt trên Supabase SQL Editor (**dev project trước**) — chi tiết và cách kiểm tra kết quả ở [database/README.md](database/README.md):
+Chạy lần lượt trên Supabase SQL Editor của project **trống** — chi tiết và cách kiểm tra ở [database/README.md](database/README.md):
 
 ```
-database/01_reset_blank.sql   ← XÓA SẠCH schema public (mọi bảng + dữ liệu)
-database/02_schema.sql        ← tạo 20 bảng + 1 view
-database/03_seed_sample.sql   ← tùy chọn: dữ liệu mẫu Configuration
-database/04_functions.sql     ← nghiệp vụ: lịch sử tự động, Move / Swap, Import, tự tính hạn hiệu chuẩn
+database/01_reset_blank.sql   ← tùy chọn (project mới thì bỏ qua): XÓA SẠCH schema public
+database/02_schema.sql        ← tạo 18 bảng
+database/03_seed.sql          ← 3 loại hệ thống Tester / Base / Fixture
+database/04_functions.sql     ← nghiệp vụ: nhật ký tự động, cây tài sản, hàm thao tác, view
 ```
 
-### 2. Admin đầu tiên
+### 2. Cài đặt Supabase Dashboard
+
+Tắt public sign-up, tắt email confirmation, nâng rate limit đăng nhập — [database/README.md](database/README.md#cài-đặt-supabase-dashboard). Bắt buộc: publishable key là công khai, để mở sign-up thì ai cũng tạo được user Auth.
+
+### 3. Admin đầu tiên
 
 ```bash
-npm run seed:admin -- admin@congty.com "Nguyen Van A" ten.dang.nhap
+npm run seed:admin -- ten.dang.nhap "Họ và tên" [mã nhân viên]
 ```
 
-Hoặc tự đăng ký trên trang đăng nhập rồi nâng quyền bằng SQL — xem [database/README.md](database/README.md#tạo-admin-đầu-tiên).
+In **mật khẩu tạm** dạng `Jabil-4827` một lần. Đăng nhập bằng username; app bắt đổi mật khẩu ngay lần đầu.
 
-Bắt buộc: duyệt và tạo tài khoản ở User Management cần quyền Admin, mà lúc đầu chưa có admin nào.
-
-### 3. Chạy
+### 4. Chạy
 
 ```bash
 npm run dev
@@ -91,8 +90,15 @@ curl localhost:3000/api/health
 ```bash
 npm run lint
 npm run typecheck
-npm test          # vitest: service, auth, API client + smoke test từng module (jsdom) — không cần database
+npm test          # vitest: service, auth, API client, import Excel + smoke test giao diện (jsdom) — không cần database
 npm run build
+```
+
+Test database (dựng 02 → 03 → 04 trên PGlite, từng trigger / hàm, kể cả dry run khớp lần gọi thật):
+
+```bash
+npm i --no-save @electric-sql/pglite
+node database/tests/assets.test.mjs
 ```
 
 ---
@@ -119,7 +125,7 @@ grep -rLn "withAuth" app/api --include=route.ts     # phải rỗng
 
 ### 3. Mọi function trong database phải có `revoke` + `grant`
 
-PostgreSQL mặc định `GRANT EXECUTE` cho `PUBLIC`. Không có khối `revoke` / `grant` ở cuối `database/02_schema.sql` và `database/04_functions.sql`, bất kỳ ai có anon key (nằm công khai trong bundle frontend) đều gọi được `app_write` / `equipment_*` và bypass toàn bộ tầng phân quyền.
+PostgreSQL mặc định `GRANT EXECUTE` cho `PUBLIC`. Không có khối `revoke` / `grant` ở cuối `database/02_schema.sql` và `database/04_functions.sql`, bất kỳ ai có publishable key (nằm công khai trong bundle frontend) đều gọi được `app_write` / `asset_*` và bypass toàn bộ tầng phân quyền.
 
 ### 4. Không dùng API riêng của Vercel
 
@@ -131,9 +137,9 @@ Tuân thủ đúng thì rời Vercel = viết một Dockerfile + đổi env ≈ 
 
 ## Ba điều dễ hiểu nhầm trong code
 
-**Lịch sử do database ghi, không phải server.** Trigger `write_history` ghi vào `<module>_histories` trong cùng giao dịch với thay đổi. Server chỉ ghi qua `app_write` / các RPC `equipment_*` (kèm người thao tác, hành động, ghi chú) — đừng tự insert dòng lịch sử.
+**Nhật ký do database ghi, không phải server.** Trigger `write_history` ghi vào `asset_logs` (equipment, sub-equipment, golden board, lần hiệu chuẩn), `configuration_histories`, `user_histories` trong cùng giao dịch với thay đổi. Server chỉ ghi qua `app_write` và các hàm `asset_*` (kèm người thao tác, hành động, ghi chú) — đừng tự insert dòng nhật ký.
 
-**Đổi cha / vị trí thiết bị luôn đi qua RPC `equipment_*`.** Cả cây con phải đi theo (hoặc ở lại chỗ cũ — tham số `p_children`) trong một giao dịch, nên `PUT /api/equipment/{id}` nhận `parent_id` / `location_id` nhưng chuyển sang các RPC này thay vì ghi thẳng. Thiết bị có cha thì vị trí theo cha (`LOCATION_INHERITED_READ_ONLY`).
+**Đổi cha / vị trí / Status của tài sản luôn đi qua hàm `asset_*`.** Một bộ 6 hàm dùng chung cho cả ba loại tài sản (`asset_change_location`, `asset_move`, `asset_detach`, `asset_swap`, `asset_delete`, `asset_set_usage`, tham số `p_type`): cả cây con luôn đi theo, trong một giao dịch, và mọi hàm có `p_dry_run` cho màn hình xem trước. `PUT /api/equipment/{id}` nhận `parent_id` / `location_id` nhưng chuyển sang các hàm này (sau khi chạy thử) thay vì ghi thẳng. Thiết bị có cha thì vị trí theo cha (`LOCATION_INHERITED_READ_ONLY`).
 
 **Lỗi trả về theo mã, chữ hiển thị nằm ở client.** API trả `{ code, message, details, request_id }`; `errorMessage()` (`lib/client/api.ts`) đổi `code` thành câu theo ngôn ngữ đang chọn (`src/i18n/locales/*.json` › `errors`). Thêm mã lỗi mới ở `lib/errors` thì thêm cả câu EN / VI — `lib/client/api.test.ts` báo thiếu.
 
@@ -159,42 +165,39 @@ Log Vercel Hobby chỉ giữ ~1 giờ, nên `error_log` trong DB mới là nơi 
 
 | Màn hình | Đường dẫn | Ai vào được |
 |---|---|---|
-| Đăng nhập / đăng ký | `/login` | Mọi người |
-| Đổi mật khẩu bắt buộc | `/change-password` | Tài khoản có mật khẩu do admin đặt |
+| Đăng nhập | `/login` | Mọi người |
+| Đổi mật khẩu | `/change-password` (bắt buộc ở lần đầu và sau khi Admin đặt lại) | Tài khoản đã đăng nhập |
 | Dashboard | `/` | Mọi nhóm |
-| Equipment | `/equipment`, `/equipment/{id}`, nhãn QR `/equipment/{id}/label` | Mọi nhóm |
-| Calibration | `/calibration`, `/calibration/{id}` | Mọi nhóm |
-| Golden | `/golden`, `/golden/{id}` | Mọi nhóm |
+| Overview | `/overview` | Mọi nhóm |
+| Equipment | `/equipment`, `/equipment?id=…`; nhãn QR `/equipment/{id}/label` | Mọi nhóm |
+| Sub-Equipment | `/calibration`, `/calibration?id=…`; nhãn QR `/calibration/{id}/label` | Mọi nhóm |
+| Golden | `/golden`, `/golden?id=…`; nhãn QR `/golden/{id}/label` | Mọi nhóm |
 | Configuration | `/configuration/{danh sách}`, `/configuration/error-log` | Admin |
-| User Management | `/users`, `/users/{id}` | Admin |
+| User Management | `/users`, `/users?id=…` | Admin |
 
-Màu, font, kích thước, sáng / tối và điện thoại theo [docs/JABIL_UI.md](docs/JABIL_UI.md). Khi đang mở chi tiết: ↑ ↓ (hoặc K / J) chuyển bản ghi theo thứ tự danh sách đang hiện, `?id=` trên đường dẫn mở lại đúng bản ghi, nút ⤢ mở chi tiết toàn trang.
+Đường dẫn cũ `/equipment/{id}`, `/calibration/{id}`, `/golden/{id}`, `/users/{id}` chuyển sang `?id=` (nhãn QR đã in vẫn dùng được). Màu, font, kích thước, sáng / tối và điện thoại theo [docs/JABIL_UI.md](docs/JABIL_UI.md).
 
 ---
 
 ## Việc còn lại trước khi mở pilot
 
-1. Khôi phục thử bản sao lưu vào project dev (RUNBOOK mục 7).
-2. Nhập dữ liệu Excel đang dùng bằng **Equipment → Import Excel** (file mẫu tải trên giao diện).
-3. Module Repair (Sửa chữa) — chưa thiết kế; [docs/DATABASE_MODIFIED.md](docs/DATABASE_MODIFIED.md) ghi là làm sau.
+1. Chạy thử giao diện trong trình duyệt với dữ liệu thật (đăng nhập → Equipment → Sub-Equipment → Golden → Overview → Configuration → User Management) và sửa những gì phát hiện.
+2. Khôi phục thử bản sao lưu vào project dev (RUNBOOK mục 7).
+3. Nhập dữ liệu Excel đang dùng bằng Import Excel của từng module (file mẫu tải trên giao diện).
+4. Module Repair (Sửa chữa) — chưa thiết kế.
+5. Nâng cấp database đang có dữ liệu cho Overview dạng thẻ: chạy lại `database/04_functions.sql` (thêm `overview_board` và `asset_tree`) → chạy app mới → **sau đó** chạy `database/migrations/2026-10-09_overview_board.sql` (bỏ hai hàm cũ mà app cũ còn gọi).
 
 ---
 
 ## Tài khoản
 
-Đăng nhập bằng **username** (chữ thường không dấu, số và `. _ + -`), không bằng email. Có hai loại tài khoản (`user_profiles.auth_provider`):
+Chỉ có **Supabase Auth**, do **Admin tạo** — không tự đăng ký, không duyệt / từ chối, không thông báo. Chi tiết ở [docs/DATABASE_MODIFIED.md](docs/DATABASE_MODIFIED.md) mục 8.
 
-- **local** — người dùng tự đăng ký ở trang đăng nhập (**Đăng ký**), hoặc Admin tạo ở User Management. Mật khẩu do app lưu và kiểm tra (`lib/auth/password.ts`, scrypt — không có dòng nào trong `auth.users`), phiên đăng nhập là cookie do app ký (`lib/auth/localSession.ts`).
-- **supabase** — admin đầu tiên tạo bằng `npm run seed:admin`. Email chỉ dùng ở server để đăng nhập qua Supabase Auth.
-
-Tài khoản tự đăng ký vào ở trạng thái **chờ duyệt** (`pending`), chưa đăng nhập được; mọi Admin nhận thông báo. Admin **Duyệt** (chọn nhóm quyền) hoặc **Từ chối** ở User Management (lọc nhanh "Chờ duyệt").
-
-Nhóm quyền ([lib/permissions/index.ts](lib/permissions/index.ts)): **Admin** — mọi thứ; **User** — xem, thêm, sửa, không xóa, không vào Configuration / User Management; **Readonly** — xem, tìm kiếm, xuất Excel. API kiểm tra lại quyền ở mọi request (`withAuth`), không dựa vào việc ẩn nút.
-
-- Mật khẩu do admin đặt (tài khoản mới, đặt lại mật khẩu) phải đổi ở lần đăng nhập tới (`/change-password`); đặt lại mật khẩu còn đăng xuất mọi phiên cũ của người đó.
-- Admin không tự đổi nhóm quyền, tự khóa hay tự đặt lại mật khẩu của mình ở User Management (`CANNOT_MODIFY_SELF`), và luôn phải còn ít nhất một Admin đang hoạt động (`LAST_ADMIN`).
-- Tài khoản không bao giờ bị xóa, chỉ khóa — còn được tham chiếu trong lịch sử.
-- Mỗi lần thêm / sửa / xóa ghi lịch sử cũ → mới: tab **Lịch sử** của từng bản ghi và **Thay đổi gần đây** trên Dashboard.
+- Đăng nhập bằng **username** (chữ thường không dấu, số và `. _ + -`). Server đổi thành email nội bộ `<username>@jabil.local` để nhờ Supabase Auth kiểm tra mật khẩu — không gửi email, người dùng không thấy email này.
+- Admin **Thêm** tài khoản: hệ thống sinh **mật khẩu tạm** dạng `Jabil-4827`, hiện **một lần** kèm nút sao chép; người dùng phải tự đặt mật khẩu mới ở lần đăng nhập đầu (`/change-password`). **Đặt lại mật khẩu** cũng vậy. Người dùng tự đổi mật khẩu bất cứ lúc nào ở menu tài khoản; việc này không ghi lịch sử.
+- **Khóa / Mở khóa**: `is_active` + `ban_duration` ở Supabase Auth; server kiểm tra `is_active` ở mọi request nên khóa có hiệu lực ngay. Tài khoản không bao giờ bị xóa — còn được tham chiếu trong lịch sử.
+- Chỉ bốn thao tác Admin: Thêm, Sửa, Đặt lại mật khẩu, Khóa / Mở khóa. Admin không tự khóa / hạ quyền mình (`ADMIN_SELF_CHANGE`) và luôn phải còn ít nhất một Admin đang hoạt động (`LAST_ADMIN`) — database chặn ở mọi đường ghi.
+- Nhóm quyền ([lib/permissions/index.ts](lib/permissions/index.ts)): **Admin** — mọi thứ; **User** — xem, thêm, sửa, không xóa, không vào Configuration / User Management; **Readonly** — xem, tìm kiếm, xuất Excel. API kiểm tra lại quyền ở mọi request (`withAuth`), không dựa vào việc ẩn nút.
+- Quyền vào app luôn dựa vào `user_profiles` (có dòng và `is_active`), không bao giờ chỉ dựa vào việc đăng nhập Supabase thành công.
 - Có giới hạn số lần đăng nhập sai trên mỗi instance (bổ sung cho giới hạn của Supabase Auth), không phải rate limit dùng chung toàn hệ thống.
-- Đổi `LOCAL_AUTH_SECRET` sẽ đăng xuất toàn bộ tài khoản local cùng lúc — coi nó như `SUPABASE_SERVICE_ROLE_KEY`, không phải một tùy chọn cấu hình.
 - Chưa có "quên mật khẩu" tự phục vụ: Admin đặt lại mật khẩu ở User Management (RUNBOOK mục 1). Hệ thống không gửi email.

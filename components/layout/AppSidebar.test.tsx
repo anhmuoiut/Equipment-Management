@@ -23,15 +23,15 @@ const links = () => within(screen.getByRole('navigation', { name: 'nav.mainNavig
 beforeEach(() => { nav.pathname = '/'; });
 
 describe('AppSidebar — docs/APP_SHELL.md', () => {
-  it('gives an admin all six items, one level, in menu order', () => {
+  it('gives an admin all seven items, one level, in menu order (Overview right after Dashboard)', () => {
     renderSidebar('admin');
-    expect(links().map((a) => a.getAttribute('href'))).toEqual(['/', '/equipment', '/calibration', '/golden', '/configuration', '/users']);
+    expect(links().map((a) => a.getAttribute('href'))).toEqual(['/', '/overview', '/equipment', '/calibration', '/golden', '/configuration', '/users']);
     expect(document.querySelector('.sidebar-divider')).not.toBeNull();
   });
 
-  it.each<Role>(['user', 'readonly'])('gives %s only the first four items and no divider', (role) => {
+  it.each<Role>(['user', 'readonly'])('gives %s only the first five items and no divider', (role) => {
     renderSidebar(role);
-    expect(links().map((a) => a.getAttribute('href'))).toEqual(['/', '/equipment', '/calibration', '/golden']);
+    expect(links().map((a) => a.getAttribute('href'))).toEqual(['/', '/overview', '/equipment', '/calibration', '/golden']);
     expect(document.querySelector('.sidebar-divider')).toBeNull();
   });
 

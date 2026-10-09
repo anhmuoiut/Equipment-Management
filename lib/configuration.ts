@@ -15,18 +15,25 @@ export type ConfigListDef = {
   /** Xóa thật (tags khi không còn dùng, calibration_configurations). */
   deletable: boolean;
   hasDescription?: boolean;
-  /** Part Number: Type bắt buộc — mọi thiết bị mang part number này có Type đó. */
+  /** Part Number: Type bắt buộc — mọi thiết bị mang part number này có Type đó (đổi được khi chưa thiết bị nào dùng). */
   hasType?: boolean;
+  /** Part Number: Level (không bắt buộc) chọn trong Configuration › Level; form Thêm thiết bị điền sẵn. */
+  hasLevel?: boolean;
+  /** Types: Group bắt buộc, chọn trong Configuration › Group (kind của Type luôn theo nhóm). */
+  hasGroup?: boolean;
+  /** Group của Type (type_groups): 3 nhóm hệ thống (tester / base / fixture) không ẩn, không xóa. */
+  isTypeGroup?: boolean;
   /** Thẻ (có màu) chọn trong phần Remark của Equipment / Calibration / Golden sample. */
   isTag?: boolean;
-  /** Hiệu chuẩn › Setup: part number (trong các PN đang có thiết bị), chu kỳ, báo trước, status mặc định. */
+  /** Hiệu chuẩn › Setup: part number loại sub_equipment, chu kỳ (tháng), báo trước (ngày). */
   isCalibration?: boolean;
 };
 
 export const CONFIG_LISTS: readonly ConfigListDef[] = [
-  { key: 'part-numbers', table: 'part_numbers', group: 'master', hideable: true, deletable: false, hasType: true },
+  { key: 'part-numbers', table: 'part_numbers', group: 'master', hideable: true, deletable: false, hasType: true, hasLevel: true },
   { key: 'locations', table: 'locations', group: 'master', hideable: true, deletable: false },
-  { key: 'types', table: 'types', group: 'master', hideable: true, deletable: false, hasDescription: true },
+  { key: 'types', table: 'types', group: 'master', hideable: true, deletable: false, hasDescription: true, hasGroup: true },
+  { key: 'type-groups', table: 'type_groups', group: 'master', hideable: true, deletable: false, isTypeGroup: true },
   { key: 'tags', table: 'tags', group: 'master', hideable: false, deletable: true, isTag: true },
   { key: 'levels', table: 'levels', group: 'master', hideable: true, deletable: false },
   { key: 'departments', table: 'departments', group: 'master', hideable: true, deletable: false },

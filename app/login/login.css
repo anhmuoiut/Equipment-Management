@@ -36,7 +36,7 @@
 .solar-overline::before { content: ''; display: block; width: 17px; height: 2px; background: var(--jabil-picton); }
 .solar-login .login-intro h1 { font-size: clamp(28px, 2.4vw, 36px); font-weight: 500; line-height: 1.2; letter-spacing: -.045em; }
 .login-intro > p:last-child { max-width: 350px; margin-top: 10px; color: var(--ink-2); font-size: 13px; line-height: 1.65; }
-.solar-login .login-form > label, .solar-login .signup-field > label { display: block; margin: 16px 0 7px; color: var(--ink); font-size: 12px; font-weight: 500; }
+.solar-login .login-form > label{ display: block; margin: 16px 0 7px; color: var(--ink); font-size: 12px; font-weight: 500; }
 .solar-login .login-input {
   display: flex;
   align-items: center;
@@ -73,13 +73,7 @@
 .solar-login .theme-switch { min-height: 36px; padding-inline: 9px; font-size: 10px; }
 .solar-login .theme-switch span { display: inline; }
 .solar-login .theme-switch:hover { background: var(--machine-tint); }
-.solar-login .signup-form { max-width: none; }
-.solar-login .signup-form h1 { font-size: 28px; letter-spacing: -.035em; }
 .solar-login .login-description { font-size: 13px; margin: 10px 0 20px; color: var(--ink-2); }
-.solar-login .signup-fields { gap: 12px; }
-.solar-login .signup-field > label { margin-top: 0; }
-.solar-login .signup-actions { display: block; }
-.solar-login .signup-form .eyebrow { display: block; }
 
 @media (min-width: 901px) and (max-height: 760px) {
   .solar-login { padding-block: 28px; }
@@ -98,7 +92,6 @@
   .login-intro { margin-bottom: 20px; }
   .solar-login .login-input input { font-size: 16px; }
   .solar-login .language-switch button, .solar-login .theme-switch { min-height: 44px; }
-  .solar-login .signup-fields { grid-template-columns: 1fr; }
 }
 @media (max-width: 380px) {
   .solar-login { padding: 20px; gap: 24px; }
@@ -144,7 +137,7 @@
 .auth-layout { display: flex; justify-content: flex-end; align-items: center; gap: clamp(24px, 3.4vw, 64px); width: 100%; }
 .auth-title { position: relative; isolation: isolate; flex: 1; min-width: 0; max-width: 600px; align-self: flex-start; margin: clamp(64px, 10vh, 100px) 0 0 auto; color: #003456; text-align: left; }
 .auth-title::before { content: ''; position: absolute; inset: -28px -36px; z-index: -1; background: radial-gradient(ellipse at 40% 45%, #fffffff2 15%, #ffffffb3 55%, #ffffff00 78%); filter: blur(12px); pointer-events: none; }
-.jabil-login .auth-title h2, .jabil-login .auth-title p, .jabil-login .login-intro h1, .jabil-login .signup-success h1 { font-family: var(--font-ui); font-weight: 600; line-height: 1.25; letter-spacing: -.04em; color: #003456; }
+.jabil-login .auth-title h2, .jabil-login .auth-title p, .jabil-login .login-intro h1{ font-family: var(--font-ui); font-weight: 600; line-height: 1.25; letter-spacing: -.04em; color: #003456; }
 .jabil-login .auth-title h2 { font-size: clamp(42px, 3.5vw, 64px); line-height: 1.02; }
 .auth-title h2 > span { display: block; }
 .auth-title h2 > span:last-child { color: #006bc8; }
@@ -158,9 +151,9 @@
 .jabil-login .login-form-area { display: block; overflow: visible; padding: 0; background: #fffffffa; color: var(--ink); border: 1px solid #fff; border-radius: 18px; box-shadow: 0 12px 36px #39749b1a; }
 .jabil-login .login-form { width: 100%; max-width: none; margin: 0; padding: 40px 36px 28px; }
 .jabil-login .login-intro { margin-bottom: 28px; }
-.jabil-login .login-intro h1, .jabil-login .signup-success h1 { font-size: 24px; }
+.jabil-login .login-intro h1{ font-size: 24px; }
 .jabil-login .login-intro > p { margin-top: 8px; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
-.jabil-login .login-form > label, .jabil-login .signup-field > label { display: block; margin: 18px 0 6px; font-size: 14px; color: #061e36; font-weight: 500; }
+.jabil-login .login-form > label{ display: block; margin: 18px 0 6px; font-size: 14px; color: #061e36; font-weight: 500; }
 .jabil-login .login-input { height: 49px; background: #fff; border: 1px solid #d6e1ee; border-radius: 8px; color: #003456; }
 .jabil-login .login-input input { font-size: 14px; color: #061e36; font-family: inherit; }
 .jabil-login .login-input input::placeholder { color: var(--ink-2); opacity: 1; }
@@ -187,13 +180,7 @@
 .jabil-login .language-switch, .jabil-login .theme-switch { background: #ffffffde; border-color: #c5d8e8; }
 .jabil-login .language-switch button[aria-pressed='true'] { background: #003456; color: #fff; }
 .jabil-login .theme-switch:hover { background: #eaf4fc; }
-.jabil-login .signup-fields { gap: 17px 14px; }
-.jabil-login .signup-field > label { margin: 0 0 6px; font-size: 13px; }
-.jabil-login .signup-form .login-intro > p { font-size: 14px; }
-.jabil-login .signup-actions { display: block; margin-top: 6px; }
 .jabil-login .request-account-link { border: 0; border-top: 1px solid #e3ebf4; border-radius: 0; color: var(--auth-link); font-size: 14px; margin-top: 20px; padding-top: 16px; }
-.jabil-login .signup-success .login-icon { width: 52px; height: 52px; margin-bottom: 20px; }
-.jabil-login .signup-success .eyebrow { color: var(--ink-2); }
 .jabil-login .login-error { background: #fff0ee; border-color: #f3b2ab; color: #a52318; }
 @media (min-width: 1600px) {
   .jabil-login .login-main { width: 460px; }
@@ -217,7 +204,6 @@
 }
 @media (max-width: 600px) {
   .jabil-login { padding-top: 140px; }
-  .jabil-login .signup-fields { grid-template-columns: 1fr; gap: 17px; }
 }
 @media (max-width: 360px) {
   .jabil-login { padding-inline: 10px; }
@@ -231,7 +217,7 @@
 /* Phone authentication: the complete brand header and four capabilities stay
    visible above the form. Compact height rules keep the initial view on one
    screen; validation messages and the keyboard can still scroll naturally. */
-@media (max-width: 800px) {
+@media (max-width: 767px) {
   .jabil-login { display: flex; min-height: 100svh; height: auto; padding: 12px 12px max(12px, env(safe-area-inset-bottom)); overflow: clip; }
   .jabil-login .auth-background { height: 100% !important; object-fit: cover; object-position: center bottom; -webkit-mask-image: linear-gradient(transparent, #000 180px); mask-image: linear-gradient(transparent, #000 180px); }
   .jabil-login .auth-layout { flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
@@ -272,16 +258,10 @@
   .jabil-login .auth-preferences { margin-top: 6px; }
   .jabil-login .language-switch { padding-block: 0; }
   .jabil-login .language-switch button, .jabil-login .theme-switch { min-height: 40px; }
-  .jabil-login .signup-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
-  .jabil-login .signup-field { min-width: 0; }
-  .jabil-login .signup-field > label { font-size: 12px; margin-bottom: 3px; }
-  .jabil-login .signup-field .login-input { padding-inline: 8px; gap: 5px; }
-  .jabil-login .signup-field .login-input > svg { display: none; }
-  .jabil-login .signup-form .login-intro > p { display: block; font-size: 12px; }
   .jabil-login .request-account-link { min-height: 40px; margin-top: 6px; padding: 6px 0; }
   .jabil-login .login-error { margin-top: 6px; padding: 8px; }
 }
-@media (max-width: 800px) and (max-height: 740px) {
+@media (max-width: 767px) and (max-height: 740px) {
   .jabil-login { padding: 8px 10px max(8px, env(safe-area-inset-bottom)); }
   .jabil-login .auth-layout { gap: 6px; }
   .jabil-login .auth-mobile-brand { gap: 10px; margin-bottom: 6px; }
@@ -300,7 +280,7 @@
   .jabil-login .login-form > label { margin-top: 4px; }
   .jabil-login .auth-preferences { margin-top: 4px; }
 }
-@media (max-width: 800px) and (max-height: 600px) {
+@media (max-width: 767px) and (max-height: 600px) {
   .jabil-login .auth-title h2 { font-size: 19px; }
   .jabil-login .auth-layout { gap: 4px; }
   .jabil-login .login-form { padding-block: 8px; }
@@ -314,7 +294,4 @@
   .jabil-login .auth-divider { margin-block: 4px; }
   .jabil-login .auth-switch button { min-height: 28px; }
   .jabil-login .language-switch button, .jabil-login .theme-switch { min-height: 32px; }
-  .jabil-login .signup-fields { gap: 6px 8px; }
-  .jabil-login .signup-actions { display: flex; gap: 8px; margin-top: 8px; }
-  .jabil-login .signup-actions > button { flex: 1; min-height: 40px; margin: 0; padding: 6px; }
 }

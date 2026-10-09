@@ -13,7 +13,7 @@ import type { Role } from '@/lib/permissions';
 const STORAGE_KEY = 'equipment-sidebar-pinned';
 // Trang Masterlist + Detail Panel chiếm đủ chiều cao (chỉ thân bảng / panel
 // cuộn) — các quy tắc data-page='masterlist' trong workspace.css.
-const FULL_HEIGHT_LIST_PAGES = ['/equipment', '/calibration', '/golden', '/configuration/', '/users'];
+const FULL_HEIGHT_LIST_PAGES = ['/overview', '/equipment', '/calibration', '/golden', '/configuration/', '/users'];
 const isListPage = (pathname: string) =>
   FULL_HEIGHT_LIST_PAGES.some((p) => (p.endsWith('/') ? pathname.startsWith(p) : pathname === p));
 

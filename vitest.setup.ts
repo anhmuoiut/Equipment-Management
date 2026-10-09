@@ -1,7 +1,9 @@
 import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { listCache } from '@/lib/client/cache';
 
-afterEach(() => cleanup());
+// Danh sách đã nhớ (lib/client/cache.ts) không được lọt từ bài test này sang bài test khác.
+afterEach(() => { cleanup(); listCache.clear(); });
 
 if (typeof window !== 'undefined') {
   window.matchMedia = vi.fn().mockImplementation((media: string) => ({

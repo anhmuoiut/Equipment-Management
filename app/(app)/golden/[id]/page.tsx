@@ -1,15 +1,7 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { use } from 'react';
-import { RecordPage } from '@/components/ui/workspace/RecordPage';
-import { GoldenDetail } from '@/components/golden/GoldenDetail';
-import type { GoldenRow } from '@/lib/types';
-
-export default function GoldenDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  return (
-    <RecordPage<GoldenRow> url={`/api/golden/${id}`} listPath="/golden">
-      {(ctx) => <GoldenDetail ctx={ctx} layout="page" />}
-    </RecordPage>
-  );
+/** Link cũ (mã QR đã in): chuyển sang trang với ?id= — modal chi tiết mở theo id (docs/DETAIL_MODEL.md mục 3). */
+export default async function LegacyRecordPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  redirect(`/golden?id=${encodeURIComponent(id)}`);
 }

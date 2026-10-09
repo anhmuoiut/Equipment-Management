@@ -13,8 +13,6 @@
 export type Role = 'admin' | 'user' | 'readonly';
 export const ROLES: readonly Role[] = ['admin', 'user', 'readonly'];
 
-export type AccountStatus = 'pending' | 'active' | 'rejected' | 'disabled';
-
 /** Nhóm được thêm / sửa / cập nhật dữ liệu nghiệp vụ. */
 export const EDITORS: readonly Role[] = ['admin', 'user'];
 /** Nhóm được xóa, vào Configuration và User Management. */
@@ -24,9 +22,9 @@ export type UserProfile = {
   id: string;
   username: string;
   full_name: string;
-  email: string | null;
   role: Role;
-  account_status: AccountStatus;
+  /** false = bị khóa: không vào được app dù còn phiên. */
+  is_active: boolean;
   must_change_password: boolean;
 };
 

@@ -2,21 +2,23 @@
 
 /**
  * Một danh sách của Configuration (Part Number, Location, …): Masterlist +
- * Detail Panel như mọi module (docs/DETAIL_MODEL.md 4.4). Chỉ Admin.
+ * modal bản ghi như mọi module (docs/DETAIL_MODEL.md 4.4). Chỉ Admin.
  * Bảng có is_active: "Xóa" = Ẩn / Hiện lại. Tag (thẻ chọn trong Remark), Hiệu chuẩn › Setup: xóa thật.
- * Part Number: Type bắt buộc — thiết bị mang part number tự lấy Type đó (database).
- * Setup hiệu chuẩn: PN (trong các PN đang có thiết bị) + chu kỳ + status mặc định; thiết bị
- * của PN tự lên Dashboard hiệu chuẩn (database).
+ * Part Number: Type bắt buộc — thiết bị mang part number tự lấy Type đó (database); đổi Type chỉ được khi chưa thiết bị nào
+ * dùng part number (PART_NUMBER_IN_USE). Level không bắt buộc (chọn trong Configuration › Level; form Thêm thiết bị điền sẵn).
+ * Types: Group bắt buộc, chọn trong Configuration › Group; 3 loại hệ thống (Tester, Base, Fixture) không ẩn / xóa / đổi Group.
+ * Group (type-groups): Admin tự thêm / sửa / ẩn; 3 nhóm hệ thống cùng tên 3 loại hệ thống khóa như chúng.
+ * Setup hiệu chuẩn: part number loại sub_equipment + chu kỳ + báo trước; due_date của lần hiệu chuẩn tự tính theo chu kỳ.
  */
 import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff } from 'lucide-react';
 import { api } from '@/lib/client/api';
-import { useFetch } from '@/lib/client/useFetch';
 import { refreshOptions, toSelect, useOptions } from '@/lib/client/options';
 import { toast } from '@/components/ui';
 import { configList, STATUS_COLORS } from '@/lib/configuration';
 import { StatusTag, ToneTag } from '@/components/ui/tags';
-import { RecordDetail, type ActionDef, type SectionDef } from '@/components/ui/detail/RecordDetail';
+import { RecordModal, type ActionDef } from '@/components/ui/record/RecordModal';
+import type { SectionDef } from '@/components/ui/record/fields';
 import { ModuleWorkspace, useList } from '@/components/ui/workspace/ModuleWorkspace';
 import type { Column } from '@/components/ui/masterlist/Masterlist';
 import type { ConfigList, ConfigRow, StatusColor } from '@/lib/types';
@@ -31,14 +33,12 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
   /** Chip màu: tag trạng thái tô đúng màu, chữ là tên màu. */
   const colorChip = (c: StatusColor | undefined) => (c ? <StatusTag name={colorLabel(c)} color={c} /> : null);
 
-  // Hiệu chuẩn › Setup: part number chọn trong các PN đang có thiết bị, mỗi PN một dòng (bỏ PN đã có, trừ dòng đang xem).
-  const equipmentPns = useFetch<string[]>(def.isCalibration ? '/api/equipment/part-numbers' : null);
-  const pool = new Set(equipmentPns.data ?? []);
+  // Hiệu chuẩn › Setup: part number chọn trong các PN loại sub_equipment, mỗi PN một dòng (bỏ PN đã có, trừ dòng đang xem).
   const taken = new Set(list.rows.map((r) => r.part_number_id));
   const partNumberChoices = (current: string | undefined) => toSelect(
-    options?.part_numbers.filter((pn) => pn.id === current || (pool.has(pn.id) && !taken.has(pn.id))),
+    options?.part_numbers.filter((pn) => pn.id === current || (pn.kind === 'sub_equipment' && !taken.has(pn.id))),
     current, ` (${t('cfg.hidden')})`);
-  const partNumberHint = equipmentPns.loading ? t('common.loadingEllipsis') : equipmentPns.error ?? t('cfg.calibrationPartHint');
+  const partNumberHint = t('cfg.calibrationPartHint');
 
   const columns: Column<ConfigRow>[] = def.isCalibration ? [
     { key: 'display_name', label: t('fields.part_number'), value: (r) => r.display_name, render: (r) => <strong>{r.display_name}</strong> },
@@ -52,8 +52,9 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
     { key: 'display_name', label: t('fields.display_name'), value: (r) => r.display_name, render: (r) => <strong>{r.display_name}</strong> },
     ...(def.hasType ? [
       { key: 'type', label: t('fields.type'), value: (r: ConfigRow) => r.type ?? null, filter: true },
-      { key: 'usage_needs_parent', label: t('fields.usage_needs_parent'), value: (r: ConfigRow) => (r.usage_needs_parent ? t('common.yes') : t('common.no')), filter: true },
     ] : []),
+    ...(def.hasLevel ? [{ key: 'level', label: t('fields.level'), value: (r: ConfigRow) => r.level ?? null, filter: true }] : []),
+    ...(def.hasGroup ? [{ key: 'group', label: t('fields.group'), value: (r: ConfigRow) => r.group ?? null, filter: true }] : []),
     ...(def.hasDescription ? [{ key: 'description', label: t('fields.description'), value: (r: ConfigRow) => r.description ?? null, wrap: true, width: 200 }] : []),
     { key: 'sort_order', label: t('fields.sort_order'), value: (r) => r.sort_order },
     { key: 'is_active', label: t('fields.is_active'), value: (r) => (r.is_active ? t('cfg.active') : t('cfg.hidden')),
@@ -81,26 +82,37 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
       // Part Number → Type: equipment with this part number always gets this Type (the database keeps them in step).
       ...(def.hasType ? [{ key: 'type_id', label: t('fields.type'), kind: 'select' as const, required: true, view: (r: ConfigRow) => r.type,
         options: (_d: unknown, r: ConfigRow | null) => toSelect(options?.types, r?.type_id, ` (${t('cfg.hidden')})`),
-        editHint: t('cfg.partTypeHint') },
-      // Usage cần cha: thiết bị loại này chỉ In use được khi đã gắn vào thiết bị cha (database, mục 3d).
-      { key: 'usage_needs_parent', label: t('fields.usage_needs_parent'), kind: 'boolean' as const, hint: t('cfg.usageNeedsParentHint'),
-        view: (r: ConfigRow) => (r.usage_needs_parent ? t('common.yes') : t('common.no')) }] : []),
+        editHint: t('cfg.partTypeHint') }] : []),
+      // Part Number → Level (không bắt buộc): Level đang dùng; Level đã ẩn mà part number đang giữ thì vẫn hiện.
+      ...(def.hasLevel ? [{ key: 'level_id', label: t('fields.level'), kind: 'select' as const, view: (r: ConfigRow) => r.level,
+        options: (_d: unknown, r: ConfigRow | null) => toSelect(options?.levels, r?.level_id, ` (${t('cfg.hidden')})`),
+        editHint: t('cfg.partLevelHint') }] : []),
+      // Types → Group (bắt buộc): chỉ các nhóm sub_equipment đang dùng; 3 Type hệ thống giữ nhóm hệ thống của chúng.
+      ...(def.hasGroup ? [{ key: 'group_id', label: t('fields.group'), kind: 'select' as const, required: true, view: (r: ConfigRow) => r.group,
+        options: (_d: unknown, r: ConfigRow | null) => toSelect(
+          options?.type_groups.filter((g) => g.kind === 'sub_equipment' || g.id === r?.group_id), r?.group_id, ` (${t('cfg.hidden')})`),
+        lock: (r: ConfigRow | null) => (r && r.kind !== 'sub_equipment' ? t('cfg.groupLocked') : null),
+        editHint: t('cfg.groupHint') }] : []),
       ...(def.hasDescription ? [{ key: 'description', label: t('fields.description'), kind: 'textarea' as const, wide: true, maxLength: 1000 }] : []),
       { key: 'sort_order', label: t('fields.sort_order'), kind: 'number', required: true, min: 0 },
       { key: 'is_active', label: t('fields.is_active'), kind: 'boolean', hint: t('cfg.activeHint'),
+        // 3 loại hệ thống (Tester, Base, Fixture) và 3 nhóm hệ thống cùng tên không ẩn được.
+        lock: (r) => ((def.hasDescription || def.isTypeGroup) && r && r.kind !== 'sub_equipment' ? t(def.isTypeGroup ? 'cfg.systemGroupLocked' : 'cfg.systemTypeLocked') : null),
         view: (r) => <ToneTag text={r.is_active ? t('cfg.active') : t('cfg.hidden')} tone={r.is_active ? 'ok' : 'neutral'} /> },
     ],
   }];
 
   const defaults = def.isCalibration ? { warning_days: 30 } : def.isTag
     ? { sort_order: 0 }
-    : { sort_order: 0, is_active: true, ...(def.hasType ? { usage_needs_parent: false } : {}) };
+    : { sort_order: 0, is_active: true };
 
   // Dữ liệu gốc vừa đổi → mọi form cần danh sách chọn mới. Thay đổi đã lưu; chỉ báo nếu chưa tải lại được.
   const refresh = () => { refreshOptions().catch(() => toast.warning(t('cfg.optionsStale'))); };
 
+  // 3 loại hệ thống của Types (Tester, Base, Fixture) và 3 nhóm hệ thống của Group không ẩn được.
+  const isSystemType = (r: ConfigRow) => (def.hasDescription || def.isTypeGroup) && r.kind !== undefined && r.kind !== 'sub_equipment';
   const actions: ActionDef<ConfigRow>[] = def.hideable ? [{
-    key: 'toggle', label: t('cfg.hide'), icon: <EyeOff size={14} aria-hidden="true" />, visible: (r) => r.is_active,
+    key: 'toggle', label: t('cfg.hide'), icon: <EyeOff size={14} aria-hidden="true" />, visible: (r) => r.is_active && !isSystemType(r),
     runMessage: t('cfg.hiddenDone'),
     run: async (r) => (await api.put<ConfigRow>(`/api/configuration/${listKey}/${r.id}`, { is_active: false })).data,
   }, {
@@ -118,14 +130,11 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
       exportName={listKey}
       canAdd
       addLabel={t('ml.add')}
+      recordUrl={(id) => `/api/configuration/${listKey}/${id}`}
       renderDetail={(ctx) => (
-        <RecordDetail<ConfigRow>
-          layout="panel"
-          record={ctx.row}
-          creating={ctx.creating}
-          loading={ctx.loading}
-          error={ctx.error}
-          onRetry={ctx.onRetry}
+        <RecordModal<ConfigRow>
+          {...ctx}
+          size="l"
           createTitle={t('cfg.addTitle', { list: listName })}
           heading={(r) => ({
             title: r.display_name,
@@ -150,12 +159,8 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
           canDelete={def.deletable}
           deleteWarning={def.isCalibration ? (r) => t('cfg.calibrationDeleteWarning', { name: r.display_name }) : undefined}
           onDelete={async (r) => { await api.delete(`/api/configuration/${listKey}/${r.id}`); refresh(); }}
-          nav={ctx.nav}
-          onClose={ctx.onClose}
           // Lưu và Ẩn / Hiện đều qua đây — tải lại danh sách chọn một lần.
-          onSaved={(row, created) => { refresh(); ctx.onSaved(row, created); }}
-          onDeleted={ctx.onDeleted}
-          leaveRef={ctx.leaveRef}
+          onSaved={(row, created, open) => { refresh(); ctx.onSaved(row, created, open); }}
         />
       )}
     />

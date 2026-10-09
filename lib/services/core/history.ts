@@ -5,6 +5,7 @@ import 'server-only';
  * Ghi lịch sử do database tự làm (trigger write_history).
  */
 import { db } from './db';
+import { loadLookups } from './lookups';
 import { mapRpcError } from '@/lib/errors';
 import type { HistoryEntry } from '@/lib/types';
 
@@ -21,14 +22,9 @@ export async function readHistory(table: string, filters: Filter[], limit = 500)
   return withActorNames(rows);
 }
 
-/** Tên người thao tác — chỉ đọc đúng những người có trong `rows`. */
+/** Tên người thao tác — lấy từ dữ liệu gốc dùng chung (đã nhớ), không đọc thêm bảng nào. */
 export async function withActorNames<T extends { created_by: string | null }>(rows: T[]): Promise<(T & { created_by_name: string | null })[]> {
-  const ids = [...new Set(rows.map((r) => r.created_by).filter((v): v is string => !!v))];
-  const names = new Map<string, string>();
-  if (ids.length) {
-    const { data, error } = await db().from('user_profiles').select('id, full_name').in('id', ids);
-    if (error) throw mapRpcError(error);
-    (data as { id: string; full_name: string }[]).forEach((u) => names.set(u.id, u.full_name));
-  }
-  return rows.map((r) => ({ ...r, created_by_name: r.created_by ? names.get(r.created_by) ?? null : null }));
+  if (!rows.some((r) => r.created_by)) return rows.map((r) => ({ ...r, created_by_name: null }));
+  const { users } = await loadLookups();
+  return rows.map((r) => ({ ...r, created_by_name: r.created_by ? users.get(r.created_by) ?? null : null }));
 }

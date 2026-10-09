@@ -1,22 +1,23 @@
 'use client';
 
 /**
- * Menu chính (docs/APP_SHELL.md mục 1–2): sáu mục, một cấp duy nhất.
+ * Menu chính (docs/APP_SHELL.md mục 1–2): bảy mục, một cấp duy nhất.
  * Nền Prussian, mục đang chọn Picton, thu gọn còn icon, ngăn kéo trên
  * điện thoại. Configuration và User Management chỉ Admin
- * thấy, ngăn với bốn mục trên bằng một đường kẻ. Không có số đếm cạnh menu,
+ * thấy, ngăn với năm mục trên bằng một đường kẻ. Không có số đếm cạnh menu,
  * không có chữ chú thích hay dòng trạng thái ở đầu / cuối menu.
  */
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
-import { Pin, PinOff, Gauge, LayoutDashboard, LayoutList, CircuitBoard, SlidersHorizontal, Users, type LucideIcon } from 'lucide-react';
+import { Pin, PinOff, Gauge, LayoutDashboard, LayoutList, CircuitBoard, Network, SlidersHorizontal, Users, type LucideIcon } from 'lucide-react';
 import type { Role } from '@/lib/permissions';
 
 type MenuItem = { href: string; labelKey: string; icon: LucideIcon; adminOnly?: boolean };
 
 export const MAIN_MENU: readonly MenuItem[] = [
   { href: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { href: '/overview', labelKey: 'nav.overview', icon: Network },
   { href: '/equipment', labelKey: 'nav.equipment', icon: LayoutList },
   { href: '/calibration', labelKey: 'nav.calibration', icon: Gauge },
   { href: '/golden', labelKey: 'nav.golden', icon: CircuitBoard },

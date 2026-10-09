@@ -14,9 +14,8 @@ button, input, select, textarea { font-family: var(--font-ui); }
 .app-topbar .language-switch, .app-topbar .theme-switch { background: transparent; color: var(--ink-2); border-color: var(--rule-soft); }
 .app-topbar .language-switch button[aria-pressed='true'] { background: var(--machine-tint); color: var(--ink); }
 .app-topbar .user-menu-trigger { color: var(--ink); }
-.app-topbar .user-menu-trigger > svg, .app-topbar .notification-trigger { color: var(--ink-2); }
-.app-topbar .user-menu-trigger:hover, .app-topbar .notification-trigger:hover { color: var(--ink); background: var(--machine-tint); border-color: var(--rule); }
-.notification-badge { background: var(--jabil-picton); color: var(--jabil-prussian); border: 2px solid var(--panel); min-width: 19px; height: 19px; }
+.app-topbar .user-menu-trigger > svg{ color: var(--ink-2); }
+.app-topbar .user-menu-trigger:hover{ color: var(--ink); background: var(--machine-tint); border-color: var(--rule); }
 .user-avatar { background: var(--machine-tint); color: var(--ink); font-weight: 600; }
 .app-sidebar { background: var(--jabil-prussian); border-right: 1px solid color-mix(in srgb, var(--jabil-white) 10%, transparent); padding-top: 20px; }
 .sidebar-link { border-radius: 10px; font-weight: 400; color: color-mix(in srgb, var(--jabil-white) 85%, var(--jabil-prussian)); }
@@ -35,8 +34,6 @@ button, input, select, textarea { font-family: var(--font-ui); }
 .ui-notice[data-tone='warn'] { border-left-style: dashed; }
 .toast-item[data-tone='error'] { border-left: 4px solid var(--alert); }
 .toast-item[data-tone='warning'] { border-style: dashed; }
-.notification-item[data-level='OVERDUE'] .notification-item-dot { border-radius: 1px; }
-.notification-item[data-level='DUE_SOON'] .notification-item-dot { background: var(--warn-tint); border: 2px solid var(--warn); }
 
 /* Controls share the login's soft corners and precise focus treatment. */
 .ui-button { border-radius: 10px; font-weight: 500; transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease; }
@@ -56,8 +53,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--machine); }
 .modal-footer { background: var(--surface); }
 .modal-close { border-radius: 50%; }
 .label-toolbar button { color: var(--action-ink); }
-.user-menu-list,
-.notification-panel { border-radius: 14px; box-shadow: 0 12px 36px color-mix(in srgb, var(--jabil-prussian) 14%, transparent); }
+.user-menu-list{ border-radius: 14px; box-shadow: 0 12px 36px color-mix(in srgb, var(--jabil-prussian) 14%, transparent); }
 .label-card { border-radius: 16px; }
 
 /* Compact workspace: the app title shares the logo's row. */
@@ -66,7 +62,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--machine); }
 .app-brand { flex-direction: row; justify-content: flex-start; align-items: center; width: auto; min-width: 0; flex: 1 1 auto; padding: 10px 16px; }
 .app-brand-row { justify-content: flex-start; min-width: 0; gap: 14px; }
 .app-brand .jabil-logo { width: 104px; }
-.app-brand-title { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; letter-spacing: -.015em; color: var(--ink); padding-left: 14px; border-left: 1px solid var(--rule); }
+.app-brand-title { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 20px; font-weight: 500; letter-spacing: -.015em; color: var(--ink); padding-left: 14px; border-left: 1px solid var(--rule); }
 .topbar-actions { gap: 10px; }
 .app-sidebar { padding: 12px 8px 16px; }
 .sidebar-collapse-toggle { margin: 0 4px 10px; }
@@ -83,7 +79,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--machine); }
   .user-menu-name { display: none; }
   .app-brand-title { font-size: 13px; }
 }
-@media (max-width: 800px) {
+@media (max-width: 767px) {
   .app-shell { --header-height: 56px; --sidebar-width: min(260px, calc(100vw - 48px)); }
   .app-topbar { gap: 4px; padding-right: 4px; }
   .app-brand { padding: 8px 8px 8px 2px; }
@@ -91,20 +87,15 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--machine); }
   .app-brand .jabil-logo { width: 72px; }
   .app-brand-title { display: block; padding-left: 8px; font-size: 12px; }
   .app-brand .sidebar-toggle { order: -1; width: 44px; min-height: 44px; border: 0; background: transparent; }
-  /* Header on a phone: menu · brand · bell · account. Language / theme live in the account menu. */
+  /* Header on a phone: menu · brand · account. Language / theme live in the account menu. */
   .topbar-actions { gap: 0; }
   .topbar-preferences { display: none; }
-  .notification-trigger { width: 44px; height: 44px; }
   .user-menu-trigger { justify-content: center; min-width: 44px; min-height: 44px; padding: 0; }
   .user-menu-trigger > svg { display: none; }
   .user-menu-list { min-width: 240px; }
   .user-menu-list button { min-height: 44px; font-size: 14px; }
   .user-menu-phone { display: block; }
   .user-menu-phone[data-first], .user-menu-signout { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--rule-soft); }
-  /* The panel is fixed to the viewport, not to the bell — anchored to the bell it ran off the left edge. */
-  .notification-panel { position: fixed; top: calc(var(--header-height) + 4px); left: 8px; right: 8px; width: auto; max-width: none; max-height: calc(100dvh - var(--header-height) - 16px); }
-  .notification-item { min-height: 56px; padding: 12px; }
-  .notification-panel-head button { min-height: 44px; }
   .app-content, .app-shell[data-page='masterlist'] .app-content { padding: 12px; }
   .ui-button--md, .ui-button--sm { min-height: 44px; }
   .sidebar-link { min-height: 44px; }
@@ -117,7 +108,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--machine); }
   .app-brand-title { padding-left: 6px; font-size: 11px; }
 }
 
-@media (max-width: 800px) {
+@media (max-width: 767px) {
   .page-heading h1 { font-size: 21px; }
 }
 @media (max-width: 420px) { .modal-dialog { border-radius: 0; } }

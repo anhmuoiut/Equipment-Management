@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 /**
- * Smoke test từng module với dữ liệu mẫu: Masterlist hiện dòng, mở Detail
- * Panel, chuyển tab, vào chế độ Sửa — bắt lỗi khi chạy (sai tên trường, crash)
- * mà không cần database.
+ * Smoke test các module dùng khung modal (User Management, Configuration, Dashboard) với dữ liệu mẫu: Masterlist hiện dòng,
+ * mở modal bản ghi, vào form Sửa, các thao tác Admin — bắt lỗi khi chạy (sai tên trường, crash) mà không cần database.
+ * Equipment / Calibration / Golden / Overview có test riêng (components/assets, equipment, calibration, golden, overview).
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
 
@@ -14,6 +14,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
   notFound: () => { throw new Error('notFound'); },
 }));
+vi.mock('@/lib/client/useUrlParams', () => import('@/lib/client/testing/urlParamsMock'));
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => <a href={href} {...rest}>{children}</a>,
 }));
@@ -29,67 +30,66 @@ const audit = {
 };
 const opt = (id: string, name: string) => ({ id, display_name: name, sort_order: 0, is_active: true });
 const options = {
-  part_numbers: [{ ...opt('pn1', 'P12316'), type_id: 't1', usage_needs_parent: false }], locations: [opt('l1', 'B3F1'), opt('l2', 'B3F2')], types: [opt('t1', 'Tester')],
-  levels: [opt('lv1', 'EOL')], departments: [opt('d1', 'TE')], calibration_vendors: [opt('v1', 'Internal')],
+  part_numbers: [
+    { ...opt('pn1', 'P12316'), type_id: 't1', kind: 'tester', level_id: 'lv1' },
+    { ...opt('pn2', 'DMM-100'), type_id: 't2', kind: 'sub_equipment', level_id: null },
+    { ...opt('pn3', 'DMM-200'), type_id: 't2', kind: 'sub_equipment', level_id: null },
+  ],
+  locations: [opt('l1', 'B3F1'), opt('l2', 'B3F2')],
+  types: [{ ...opt('t1', 'Tester'), kind: 'tester', group_id: 'g1' }, { ...opt('t2', 'DMM'), kind: 'sub_equipment', group_id: 'g4' }],
+  // Groups: three system Groups (locked), the sub-equipment Group, an Admin Group, and a hidden Admin Group.
+  type_groups: [
+    { ...opt('g1', 'Tester'), kind: 'tester' }, { ...opt('g2', 'Base'), kind: 'base' }, { ...opt('g3', 'Fixture'), kind: 'fixture' },
+    { ...opt('g4', 'Sub-equipment'), kind: 'sub_equipment' }, { ...opt('g5', 'Meters'), kind: 'sub_equipment' },
+    { ...opt('g6', 'Retired group'), is_active: false, kind: 'sub_equipment' },
+  ],
+  levels: [opt('lv1', 'EOL'), opt('lv2', 'ICT')], departments: [opt('d1', 'TE')], calibration_vendors: [opt('v1', 'Internal')],
   tags: [
     { id: 'tg1', display_name: 'Repair', sort_order: 1, color: 'yellow' },
     { id: 'tg2', display_name: 'Spare', sort_order: 2, color: 'gray' },
   ],
 };
-const repairTag = { id: 'tg1', display_name: 'Repair', color: 'yellow' };
-const equipment = [
-  { id: 'e1', jabil_id: 'J1', part_number_id: 'pn1', part_number: 'P12316', serial_number: 'SN-ROOT', asset: 'A1', type_id: 't1', type: 'Tester',
-    level_id: 'lv1', level: 'EOL', location_id: 'l1', location: 'B3F1', remark: null, tag_ids: ['tg1'], tags: [repairTag],
-    parent_id: null, parent_serial: null, has_children: true, usage: 'not_in_use', ...audit },
-  { id: 'e2', jabil_id: null, part_number_id: null, part_number: null, serial_number: 'SN-CHILD', asset: null, type_id: null, type: null,
-    level_id: null, level: null, location_id: 'l1', location: 'B3F1', remark: 'x', tag_ids: [], tags: [],
-    parent_id: 'e1', parent_serial: 'SN-ROOT', has_children: false, usage: 'in_use', ...audit },
-  { id: 'e3', jabil_id: null, part_number_id: null, part_number: null, serial_number: 'SN-OTHER', asset: null, type_id: 't1', type: 'Tester',
-    level_id: null, level: null, location_id: 'l2', location: 'B3F2', remark: null, tag_ids: [], tags: [],
-    parent_id: null, parent_serial: null, has_children: false, usage: 'not_in_use', ...audit },
+const users = [
+  {
+    id: 'u1', username: 'admin', full_name: 'Ann Admin', employee_id: '1', department_id: 'd1', department: 'TE', role: 'admin',
+    is_active: true, must_change_password: false, ...audit,
+  },
+  {
+    id: 'u2', username: 'bob', full_name: 'Bob', employee_id: '100', department_id: 'd1', department: 'TE', role: 'readonly',
+    is_active: true, must_change_password: true, ...audit,
+  },
+  {
+    id: 'u3', username: 'cat', full_name: 'Cat', employee_id: null, department_id: null, department: null, role: 'user',
+    is_active: false, must_change_password: false, ...audit,
+  },
 ];
-const calibration = [{
-  id: 'c1', equipment_id: 'e1', serial_number: 'SN-ROOT', part_number: 'P12316', type: 'Tester', location: 'B3F1',
-  status: 'overdue', vendor_id: 'v1', vendor: 'Internal', calibration_date: '2025-10-01', due_date: '2026-09-30',
-  interval_months: 12, warning_days: 30, due_state: 'overdue', remark: null, tag_ids: [], tags: [], ...audit,
-}];
-const golden = [{
-  id: 'g1', part_number: 'PCBA-1', serial_number: 'GS-1', utd_part_number: 'UTD-1', location_id: 'l2', location: 'B3F2',
-  origin: 'Customer', purpose: 'ICT', remark: null, tag_ids: [], tags: [], ...audit,
-}];
-const users = [{
-  id: 'u2', username: 'bob', full_name: 'Bob', email: null, employee_id: '100', department_id: 'd1', department: 'TE',
-  role: 'readonly', account_status: 'pending', approved_by: null, approved_by_name: null, approved_at: null,
-  auth_provider: 'local', must_change_password: false, ...audit,
-}];
 const config = {
-  'part-numbers': [{ id: 'pn1', display_name: 'P12316', type_id: 't1', type: 'Tester', usage_needs_parent: false, sort_order: 0, is_active: true, ...audit }],
+  'part-numbers': [{ id: 'pn1', display_name: 'P12316', type_id: 't1', type: 'Tester', level_id: 'lv1', level: 'EOL', sort_order: 0, is_active: true, ...audit }],
+  types: [
+    { id: 't1', display_name: 'Tester', kind: 'tester', group_id: 'g1', group: 'Tester', description: null, sort_order: 0, is_active: true, ...audit },
+    { id: 't2', display_name: 'DMM', kind: 'sub_equipment', group_id: 'g4', group: 'Sub-equipment', description: null, sort_order: 1, is_active: true, ...audit },
+  ],
+  'type-groups': [
+    { id: 'g1', display_name: 'Tester', kind: 'tester', sort_order: 1, is_active: true, ...audit },
+    { id: 'g4', display_name: 'Sub-equipment', kind: 'sub_equipment', sort_order: 4, is_active: true, ...audit },
+    { id: 'g5', display_name: 'Meters', kind: 'sub_equipment', sort_order: 5, is_active: true, ...audit },
+  ],
   tags: [{ id: 'tg1', display_name: 'Repair', sort_order: 1, is_active: true, color: 'yellow', ...audit }],
-  'calibration-setup': [{ id: 'cc1', display_name: 'P12316', sort_order: 0, is_active: true, part_number_id: 'pn1', interval_months: 12, warning_days: 30, ...audit }],
+  'calibration-setup': [{ id: 'cc1', display_name: 'DMM-100', sort_order: 0, is_active: true, part_number_id: 'pn2', interval_months: 12, warning_days: 30, ...audit }],
 };
 const errorLog = [{ id: 'x1', request_id: 'req_1', route: 'GET /api/x', user_id: null, user_name: null, error_code: 'SERVER_ERROR', message: 'boom', stack: 'at x', created_at: audit.created_at }];
 
 function respond(url: string): unknown {
   const path = url.split('?')[0]!;
   if (path === '/api/options') return options;
-  if (path === '/api/equipment') return equipment;
-  const one = path.match(/^\/api\/equipment\/([^/]+)$/);
-  if (one) return equipment.find((e) => e.id === one[1]);
-  if (/^\/api\/equipment\/[^/]+\/tree$/.test(path)) return { root_id: 'e1', nodes: [
-    { id: 'e1', parent_id: null, part_number: 'P12316', serial_number: 'SN-ROOT' },
-    { id: 'e2', parent_id: 'e1', part_number: null, serial_number: 'SN-CHILD' },
-  ] };
-  if (path.endsWith('/history')) return [{ id: 'h1', label: 'SN-ROOT', action: 'CHANGE_LOCATION', changes: { location: { old: 'B3F1', new: 'B3F2' } },
-    note: 'via_parent:SN-ROOT', source: 'ui', created_at: audit.created_at, created_by: 'u1', created_by_name: 'Admin' }];
-  // e1 đang theo dõi; e2 / e3 chưa có part number → chưa đưa vào được.
-  // e1 có PN trong Setup hiệu chuẩn (tự lên Dashboard); e2 / e3 thì không.
-  if (path === '/api/calibration/by-equipment/e1') return calibration[0];
-  if (path.startsWith('/api/calibration/by-equipment/')) return null;
-  if (path === '/api/equipment/part-numbers') return ['pn1'];
-  if (path === '/api/calibration') return calibration;
-  if (path === '/api/golden') return golden;
   if (path === '/api/users') return users;
+  const one = path.match(/^\/api\/users\/([^/]+)$/);
+  if (one) return users.find((u) => u.id === one[1]);
+  if (path.endsWith('/history')) return [{ id: 'h1', label: 'bob', action: 'PASSWORD_RESET', changes: { must_change_password: { old: false, new: true } },
+    note: null, source: 'ui', created_at: audit.created_at, created_by: 'u1', created_by_name: 'Admin' }];
   if (path === '/api/configuration/error-log') return errorLog;
+  const cfgOne = path.match(/^\/api\/configuration\/([^/]+)\/([^/]+)$/);
+  if (cfgOne) return (config[cfgOne[1] as keyof typeof config] ?? []).find((r) => r.id === cfgOne[2]);
   const cfg = path.match(/^\/api\/configuration\/([^/]+)$/);
   if (cfg) return config[cfg[1] as keyof typeof config] ?? [];
   throw new Error('unexpected GET ' + url);
@@ -100,382 +100,352 @@ vi.mock('@/lib/client/api', async (importOriginal) => {
 });
 
 import { api } from '@/lib/client/api';
+import { resetUrl } from '@/lib/client/testing/urlParamsMock';
 import { ViewerProvider } from '@/components/ViewerContext';
-import { EquipmentWorkspace } from '@/components/equipment/EquipmentWorkspace';
-import { CalibrationWorkspace } from '@/components/calibration/CalibrationWorkspace';
-import { useEquipmentCalibrationSection } from '@/components/calibration/equipmentExtension';
-import { GoldenWorkspace } from '@/components/golden/GoldenWorkspace';
 import { UsersWorkspace } from '@/components/users/UsersWorkspace';
 import { ConfigWorkspace } from '@/components/configuration/ConfigWorkspace';
 import { ErrorLogWorkspace } from '@/components/configuration/ErrorLogWorkspace';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import type { Role } from '@/lib/permissions';
 
+beforeEach(() => { resetUrl(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); });
+
 async function mount(node: ReactNode, role: Role = 'admin') {
   await act(async () => {
-    render(<ViewerProvider viewer={{ userId: 'u1', username: 'admin', fullName: 'Admin', role }}>{node}</ViewerProvider>);
+    render(<ViewerProvider viewer={{ userId: 'u1', username: 'admin', fullName: 'Ann Admin', role }}>{node}</ViewerProvider>);
   });
 }
-const header = () => document.querySelector('.dp-header') as HTMLElement;
-/** Bấm dòng đầu tiên có chữ này (chữ có thể lặp ở dòng khác, ví dụ cột Thiết bị cha). */
+const dialog = () => screen.getByRole('dialog');
+const footer = () => dialog().querySelector('.modal-footer') as HTMLElement;
+/** Bấm dòng đầu tiên có chữ này (chữ có thể lặp ở dòng khác) → modal bản ghi mở và đã tải xong. */
 async function openRow(text: string) {
   await act(async () => { fireEvent.click(screen.getAllByText(text, { selector: 'td *, td' })[0]!); });
-  expect(within(header()).getByRole('heading', { level: 2 })).toBeTruthy();
-}
-async function clickTab(name: string) {
-  await act(async () => { fireEvent.click(within(header()).getByRole('tab', { name })); });
+  expect(within(dialog()).getByRole('heading', { level: 2 })).toBeTruthy();
 }
 async function openActions() {
-  await act(async () => { fireEvent.click(within(header()).getByRole('button', { name: /dp.actionsMenu/ })); });
+  await act(async () => { fireEvent.click(within(footer()).getByRole('button', { name: /dp.actionsMenu/ })); });
 }
 async function clickEdit() {
-  await act(async () => { fireEvent.click(within(header()).getByRole('button', { name: /common.edit/ })); });
-  expect(screen.getAllByRole('button', { name: 'common.save' }).length).toBeGreaterThan(0);
+  await act(async () => { fireEvent.click(within(footer()).getByRole('button', { name: /common.edit/ })); });
+  expect(within(footer()).getByRole('button', { name: 'common.save' })).toBeTruthy();
 }
+const click = async (el: HTMLElement) => { await act(async () => { fireEvent.click(el); }); };
 
-function EquipmentPage() {
-  const calibrationSection = useEquipmentCalibrationSection();
-  return <EquipmentWorkspace extensions={[calibrationSection]} />;
-}
-
-describe('modules smoke', () => {
-  it('Equipment: list → panel → tree → history → edit; calibration group via extension point', async () => {
-    await mount(<EquipmentPage />);
-    expect(screen.getByText('SN-CHILD')).toBeTruthy();
-    await openRow('SN-ROOT');
-    expect(screen.getByText('cal.groupCalibration')).toBeTruthy();
-    expect(screen.getByText('cal.openCalibration')).toBeTruthy();
-    await clickTab('eq.tabTree');
-    expect(screen.getAllByText('SN-CHILD').length).toBeGreaterThan(1);
-    await clickTab('dp.tabHistory');
-    expect(screen.getByText('hist.action.CHANGE_LOCATION')).toBeTruthy();
-    await clickTab('dp.tabInfo');
-    await clickEdit();
+describe('User Management — Admin tạo tài khoản, bốn thao tác', () => {
+  it('lists accounts with status and "must change password"; the locked filter counts locked accounts; no approve / email / account type', async () => {
+    await mount(<UsersWorkspace />);
+    expect(screen.getByText('Bob')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /fields.account_status/ })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /fields.must_change_password/ })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: /fields.email|fields.auth_provider|fields.approved_by/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /usr.lockedFilter/ })).toBeTruthy();
+    expect(screen.getAllByText('values.locked').length).toBeGreaterThan(0);
   });
 
-  it('Equipment whose part number is not set up for calibration: says why, no manual Add', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-OTHER');
-    expect(screen.getByText('cal.notTracked')).toBeTruthy();
-    expect(screen.getByText('cal.needsPartNumber')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /cal\./ })).toBeNull();
-  });
-
-  it('Equipment child: parent is editable, location and level are locked with the reason', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-CHILD');
-    await clickEdit();
-    expect(screen.getByText('eq.locationFromParent')).toBeTruthy();
-    expect(screen.getByText('eq.parentHint')).toBeTruthy();
-    // Level theo cha: hiện Level của cha, không có ô chọn.
-    const level = screen.getByText('eq.levelFromParent').closest('.dp-field') as HTMLElement;
-    expect(within(level).getByText('EOL')).toBeTruthy();
-    expect(screen.queryByLabelText(/fields.level/)).toBeNull();
-  });
-
-  it('Equipment with a part number: Type follows the part number and is locked in Edit', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-ROOT');
-    expect(screen.getByText('eq.fromPartNumber')).toBeTruthy();
-    await clickEdit();
-    expect(screen.getByText('eq.typeFromPartNumber')).toBeTruthy();
-    expect(screen.queryByLabelText(/fields.type/)).toBeNull();
-  });
-
-  it('Equipment: Part Number is required and Type is never chosen by hand', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-OTHER');
-    await clickEdit();
-    expect(screen.getByText('eq.typeFromPartNumber')).toBeTruthy();
-    expect(screen.queryByLabelText(/fields.type/)).toBeNull();
-    const pn = screen.getByLabelText(/fields.part_number/).closest('.dp-field') as HTMLElement;
-    expect(within(pn).getByText('*')).toBeTruthy();
-  });
-
-  it('Equipment parent: lists children; Actions → Add child opens the form with the parent filled in', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-ROOT');
-    expect(screen.getByText('fields.children')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'SN-CHILD' })).toBeTruthy();
-    expect(screen.queryByText('eq.parentHint')).toBeNull();
-    // Giao diện xem chỉ để xem: thêm con / gắn cha nằm trong nút Thao tác.
-    expect(screen.queryByRole('button', { name: /eq.addChild/ })).toBeNull();
-    await openActions();
-    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: /eq.addChild/ })); });
-    expect(within(header()).getByRole('heading', { level: 2 }).textContent).toBe('eq.addChildTitle');
-    // Cha cố định: hiện SN · PN · vị trí của cha, không có ô chọn; vị trí theo cha.
-    expect(screen.getByText('eq.parentFixed')).toBeTruthy();
-    expect(screen.getByText('SN-ROOT · P12316 · B3F1')).toBeTruthy();
-    expect(screen.queryByLabelText(/fields.parent/)).toBeNull();
-    // Vị trí và Level theo cha cố định — không có ô chọn.
-    expect(screen.getAllByText('eq.followsFixedParent')).toHaveLength(2);
-    expect(screen.queryByLabelText(/fields.level/)).toBeNull();
-
-    // Lưu vẫn gửi thiết bị cha (ô khóa không nằm trong payload của form).
-    vi.mocked(api.post).mockClear();
-    vi.mocked(api.post).mockResolvedValueOnce({ data: equipment[1], meta: {} });
-    await act(async () => { fireEvent.change(screen.getByLabelText(/fields.serial_number/), { target: { value: 'SN-NEW' } }); });
-    await act(async () => { fireEvent.click(screen.getByLabelText(/fields.part_number/)); });
-    await act(async () => { fireEvent.click(screen.getByRole('option', { name: 'P12316' })); });
-    // Type follows the chosen part number and is shown, not picked.
-    const type = screen.getByText('eq.typeFromPartNumber').closest('.dp-field') as HTMLElement;
-    expect(within(type).getByText('Tester')).toBeTruthy();
-    // No Status field on the form: Status (In use / Not in use) is the system's. Tags are picked in the Remark section.
-    expect(screen.queryByLabelText(/fields.status/)).toBeNull();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Repair' })); });
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'common.save' })[0]!); });
-    expect(api.post).toHaveBeenCalledWith('/api/equipment', expect.objectContaining({ serial_number: 'SN-NEW', part_number_id: 'pn1', tag_ids: ['tg1'], parent_id: 'e1' }));
-    expect((api.post as ReturnType<typeof vi.fn>).mock.calls[0]![1]).not.toHaveProperty('status_id');
-  });
-
-  it('Remark section: tags are coloured toggles, saved as tag_ids; the list has no Status column of its own', async () => {
-    await mount(<EquipmentPage />);
-    expect(screen.queryByRole('columnheader', { name: /fields.status/ })).toBeNull();
-    await openRow('SN-ROOT');
-    expect(document.querySelector('.dp-body .tag-chips [data-status-color="yellow"]')?.textContent).toBe('Repair');
-    await clickEdit();
-    const repair = screen.getByRole('button', { name: 'Repair' });
-    const spare = screen.getByRole('button', { name: 'Spare' });
-    expect(repair.getAttribute('aria-pressed')).toBe('true');
-    expect(spare.getAttribute('aria-pressed')).toBe('false');
-    await act(async () => { fireEvent.click(spare); });
-    vi.mocked(api.put).mockClear();
-    vi.mocked(api.put).mockResolvedValueOnce({ data: equipment[0], meta: {} });
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'common.save' })[0]!); });
-    expect(api.put).toHaveBeenCalledWith('/api/equipment/e1', { tag_ids: ['tg1', 'tg2'] });
-  });
-
-  it('Golden sample and Calibration: tags in Remark; Golden has no Status, Calibration Status is computed (read-only)', async () => {
-    await mount(<GoldenWorkspace />);
-    expect(screen.queryByRole('columnheader', { name: /fields.status/ })).toBeNull();
-    await openRow('GS-1');
-    await clickEdit();
-    expect(screen.queryByLabelText(/fields.status/)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Repair' })).toBeTruthy();
-  });
-
-  it('Calibration: Status column shows the computed status', async () => {
-    await mount(<CalibrationWorkspace />);
-    expect(screen.getByRole('columnheader', { name: /fields.status/ })).toBeTruthy();
-    expect(document.querySelector('td .tag-status[data-status-color="red"]')?.textContent).toBe('cal.status.overdue');
-  });
-
-  it('Usage: Check-out is offered for Not in use (and counts the children), Check-in for In use; the note is sent', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-ROOT');
-    await openActions();
-    expect(screen.queryByRole('menuitem', { name: /eq.checkIn/ })).toBeNull();
-    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: /eq.checkOut/ })); });
-    // SN-ROOT is Not in use, its child SN-CHILD is already In use → only SN-ROOT changes.
-    expect(screen.getByText('eq.usageAffectsValue')).toBeTruthy();
-    await act(async () => { fireEvent.change(screen.getByLabelText(/eq.usageNote/), { target: { value: 'Line 3' } }); });
-    vi.mocked(api.post).mockClear();
-    vi.mocked(api.post).mockResolvedValueOnce({ data: { changed: 1 }, meta: {} });
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'eq.checkOut' }).pop()!); }); // the footer button, after the toolbar one
-    expect(api.post).toHaveBeenCalledWith('/api/equipment/usage', { ids: ['e1'], usage: 'in_use', note: 'Line 3' });
-  });
-
-  it('Usage: toolbar Check-out lists only Not in use equipment; Check-in only In use', async () => {
-    await mount(<EquipmentPage />);
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /eq.checkOut/ })); });
-    const out = screen.getByRole('group', { name: 'eq.usagePick' });
-    expect(within(out).getAllByRole('checkbox').map((c) => c.closest('label')!.querySelector('strong')!.textContent)).toEqual(['SN-OTHER', 'SN-ROOT']);
-    const confirm = screen.getAllByRole('button', { name: /eq.checkOut/ }).pop() as HTMLButtonElement;
-    expect(confirm.disabled).toBe(true);
-    await act(async () => { fireEvent.click(within(out).getByRole('checkbox', { name: /SN-ROOT/ })); });
-    // SN-ROOT (Not in use) + its child SN-CHILD (already In use): the child is not counted.
-    expect(screen.getByText('eq.usageSelected')).toBeTruthy();
-    expect((screen.getAllByRole('button', { name: /eq.checkOut/ }).pop() as HTMLButtonElement).disabled).toBe(false);
-    vi.mocked(api.post).mockClear();
-    vi.mocked(api.post).mockResolvedValueOnce({ data: { changed: 1 }, meta: {} });
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /eq.checkOut/ }).pop()!); });
-    expect(api.post).toHaveBeenCalledWith('/api/equipment/usage', { ids: ['e1'], usage: 'in_use', note: null });
-  });
-
-  it('Equipment without a parent: Actions → Attach to a parent opens the picker of existing equipment', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-ROOT');
-    expect(screen.getByText('eq.noParent')).toBeTruthy();
-    await openActions();
-    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: /eq.attachParent/ })); });
-    expect(screen.getByText('eq.newParent')).toBeTruthy();
-    expect(screen.queryByText('eq.currentParent')).toBeNull();
-  });
-
-  it('Equipment child: shows its parent; Actions offers Move / Detach, not Attach', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-CHILD');
-    expect(screen.getByRole('button', { name: /^SN-ROOT/ })).toBeTruthy();
-    // Vị trí và Level: ghi nhỏ "theo thiết bị cha".
-    expect(screen.getAllByText('eq.fromParent')).toHaveLength(2);
-    await openActions();
-    expect(screen.getByRole('menuitem', { name: /eq.move/ })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: /eq.detach/ })).toBeTruthy();
-    expect(screen.queryByRole('menuitem', { name: /eq.attachParent/ })).toBeNull();
-  });
-
-  it('Swap of an equipment with children: must choose go along / stay; the choice is sent', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-ROOT');
-    await openActions();
-    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: /eq.swap/ })); });
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'eq.swapWith' })); });
-    await act(async () => { fireEvent.click(screen.getByRole('option', { name: /SN-OTHER/ })); });
-    expect(screen.getByText(/eq.chooseChildren/)).toBeTruthy();
-    const confirm = screen.getByRole('button', { name: 'eq.swap' }) as HTMLButtonElement; // the button says what it does, not "Confirm"
-    expect(confirm.disabled).toBe(true);
-    await act(async () => { fireEvent.click(screen.getByRole('radio', { name: /eq.childrenStay/ })); });
-    expect(confirm.disabled).toBe(false);
-    expect(screen.getByText('eq.kidsStay')).toBeTruthy();
-    vi.mocked(api.post).mockResolvedValueOnce({ data: equipment[0], meta: {} });
-    await act(async () => { fireEvent.click(confirm); });
-    expect(api.post).toHaveBeenCalledWith('/api/equipment/swap', { a: 'e1', b: 'e3', children: 'stay' });
-  });
-
-  it('Swap only offers equipment of the same Type', async () => {
-    const other = equipment.find((e) => e.id === 'e3')!;
-    other.type_id = 't2'; other.type = 'Base';
-    try {
-      await mount(<EquipmentPage />);
-      await openRow('SN-ROOT');
-      await openActions();
-      await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: /eq.swap/ })); });
-      expect(screen.getByText('eq.swapNoSameType')).toBeTruthy();
-      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'eq.swapWith' })); });
-      expect(screen.queryByRole('option', { name: /SN-OTHER/ })).toBeNull();
-    } finally {
-      other.type_id = 't1'; other.type = 'Tester';
-    }
-  });
-
-  it('Delete of an equipment with children: its own screen asks delete the branch or keep the children', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-ROOT');
-    await openActions();
-    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: /common.delete/ })); });
-    expect(screen.getByText('eq.deleteTitle')).toBeTruthy();
-    const confirm = screen.getAllByRole('button', { name: /common.delete/ }).at(-1) as HTMLButtonElement;
-    expect(confirm.disabled).toBe(true);
-    expect(screen.getByRole('radio', { name: /eq.deleteFollow/ })).toBeTruthy();
-    await act(async () => { fireEvent.click(screen.getByRole('radio', { name: /eq.deleteStay/ })); });
-    expect(confirm.disabled).toBe(false);
-  });
-
-  it('Edit of an equipment with children: changing the parent asks go along / stay', async () => {
-    await mount(<EquipmentPage />);
-    await openRow('SN-ROOT');
-    await clickEdit();
-    expect(screen.queryByText('eq.childrenQuestion')).toBeNull();
-    const panel = document.querySelector('.dp') as HTMLElement;
-    await act(async () => { fireEvent.click(within(panel).getByRole('button', { name: 'fields.parent' })); });
-    await act(async () => { fireEvent.click(screen.getByRole('option', { name: /SN-OTHER/ })); });
-    expect(screen.getByText('eq.childrenQuestion')).toBeTruthy();
-    expect(screen.getByRole('radio', { name: 'eq.editFollow' })).toBeTruthy();
-    expect(screen.getByRole('radio', { name: 'eq.editStayAlone' })).toBeTruthy();
-  });
-
-  it('Equipment for Readonly: no Add, no Edit', async () => {
-    await mount(<EquipmentPage />, 'readonly');
-    expect(screen.queryByRole('button', { name: /eq.add/ })).toBeNull();
-    await openRow('SN-ROOT');
-    expect(within(header()).queryByRole('button', { name: /common.edit/ })).toBeNull();
-    expect(within(header()).queryByRole('button', { name: /dp.actionsMenu/ })).toBeNull();
-  });
-
-  it('Calibration: overdue row, Record calibration screen', async () => {
-    await mount(<CalibrationWorkspace />);
-    await openRow('SN-ROOT');
-    await act(async () => { fireEvent.click(within(header()).getByRole('button', { name: /cal.record/ })); });
-    expect(screen.getByText('cal.newDueDate')).toBeTruthy();
-  });
-
-  it('Golden: list → panel → edit', async () => {
-    await mount(<GoldenWorkspace />);
-    await openRow('GS-1');
-    await clickEdit();
-  });
-
-  it('Users: pending account shows Approve / Reject', async () => {
+  it('another account offers Reset password and Lock in the actions menu; an admin cannot lock or reset themself', async () => {
     await mount(<UsersWorkspace />);
     await openRow('Bob');
-    expect(within(header()).getByRole('button', { name: /usr.approve/ })).toBeTruthy();
-    await act(async () => { fireEvent.click(within(header()).getByRole('button', { name: /usr.approve/ })); });
-    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    await openActions();
+    expect(screen.getByRole('menuitem', { name: /usr.resetPassword/ })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /usr.disable/ })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: /usr.approve|usr.reject/ })).toBeNull();
   });
 
-  it.each(['part-numbers', 'tags', 'calibration-setup'] as const)('Configuration %s: list → panel → edit', async (list) => {
+  it('own row: no Reset password / Lock', async () => {
+    await mount(<UsersWorkspace />);
+    await openRow('Ann Admin');
+    // Không còn thao tác nào dành cho chính mình → không có menu Thao tác, chỉ còn Sửa.
+    expect(within(footer()).queryByRole('button', { name: /dp.actionsMenu/ })).toBeNull();
+    expect(within(footer()).getByRole('button', { name: /common.edit/ })).toBeTruthy();
+  });
+
+  it('a locked account can be unlocked', async () => {
+    await mount(<UsersWorkspace />);
+    await openRow('Cat');
+    await openActions();
+    expect(screen.getByRole('menuitem', { name: /usr.enable/ })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: /usr.disable/ })).toBeNull();
+  });
+
+  it('Reset password asks for confirmation, then shows the temporary password once with a Copy button', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { user: users[1], temp_password: 'Jabil-4827' }, meta: {} });
+    await mount(<UsersWorkspace />);
+    await openRow('Bob');
+    await openActions();
+    await click(screen.getByRole('menuitem', { name: /usr.resetPassword/ }));
+    // Breadcrumb ← Bob › usr.resetPassword; nút chính ở footer.
+    await click(within(footer()).getByRole('button', { name: 'usr.resetPassword' }));
+    expect(api.post).toHaveBeenCalledWith('/api/users/u2/password');
+    expect(screen.getByTestId('temp-password').textContent).toBe('Jabil-4827');
+    expect(within(footer()).getByRole('button', { name: /usr.temp.copy/ })).toBeTruthy();
+  });
+
+  it('closing the temporary password without copying asks first (inside the same modal); copying lets it close', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { user: users[1], temp_password: 'Jabil-1111' }, meta: {} });
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(async () => undefined) } });
+    await mount(<UsersWorkspace />);
+    await openRow('Bob');
+    await openActions();
+    await click(screen.getByRole('menuitem', { name: /usr.resetPassword/ }));
+    await click(within(footer()).getByRole('button', { name: 'usr.resetPassword' }));
+
+    await click(within(footer()).getByRole('button', { name: 'usr.temp.done' }));
+    expect(screen.getByText('usr.temp.closeTitle')).toBeTruthy(); // hỏi lại, chưa đóng
+    expect(screen.getAllByRole('dialog')).toHaveLength(1); // cùng một modal, không hộp thoại thứ hai
+    await click(screen.getByRole('button', { name: 'usr.temp.stay' }));
+    expect(screen.queryByText('usr.temp.closeTitle')).toBeNull();
+    await click(within(footer()).getByRole('button', { name: /usr.temp.copy/ }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Jabil-1111');
+    await click(within(footer()).getByRole('button', { name: 'usr.temp.done' }));
+    expect(screen.queryByTestId('temp-password')).toBeNull();
+    expect(screen.queryByText('usr.temp.closeTitle')).toBeNull();
+  });
+
+  it('Add: no password field and no email; saving shows the temporary password the server generated, then opens the new account', async () => {
+    const created = { ...users[1], id: 'u9', username: 'dan', full_name: 'Dan' };
+    vi.mocked(api.post).mockResolvedValue({ data: { user: created, temp_password: 'Jabil-2222' }, meta: {} });
+    const get = vi.mocked(api.get).getMockImplementation()!;
+    vi.mocked(api.get).mockImplementation(async (url: string) => (url === '/api/users/u9' ? { data: created, meta: {} } : get(url)));
+    await mount(<UsersWorkspace />);
+    await click(screen.getAllByRole('button', { name: /usr.add/ })[0]!);
+    expect(screen.queryByLabelText(/usr.initialPassword|fields.email/)).toBeNull();
+    await act(async () => { fireEvent.change(screen.getByLabelText(/fields.username/), { target: { value: 'dan' } }); });
+    await act(async () => { fireEvent.change(screen.getByLabelText(/fields.full_name/), { target: { value: 'Dan' } }); });
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
+    expect(api.post).toHaveBeenCalledWith('/api/users', expect.objectContaining({ username: 'dan', full_name: 'Dan', role: 'readonly' }));
+    expect(screen.getByTestId('temp-password').textContent).toBe('Jabil-2222');
+
+    await click(within(footer()).getByRole('button', { name: /usr.temp.copy/ }));
+    await click(within(footer()).getByRole('button', { name: 'usr.temp.done' }));
+    // Modal M đóng, chi tiết tài khoản vừa tạo mở trong modal mới.
+    expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toBe('Dan');
+  });
+
+  it('Edit: the username is locked with the reason', async () => {
+    await mount(<UsersWorkspace />);
+    await openRow('Bob');
+    await clickEdit();
+    expect(screen.getByText('usr.usernameLocked')).toBeTruthy();
+  });
+
+  it('Edit with an unsaved change: Esc asks "discard?" inside the modal; Stay keeps the form, Discard closes the modal', async () => {
+    await mount(<UsersWorkspace />);
+    await openRow('Bob');
+    await clickEdit();
+    await act(async () => { fireEvent.change(screen.getByLabelText(/fields.full_name/), { target: { value: 'Bobby' } }); });
+    await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
+    expect(screen.getByText('dp.discardTitle')).toBeTruthy();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    // Esc trên màn hình đó = Ở lại.
+    await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
+    expect(screen.queryByText('dp.discardTitle')).toBeNull();
+    expect((screen.getByLabelText(/fields.full_name/) as HTMLInputElement).value).toBe('Bobby');
+    await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
+    await click(screen.getByRole('button', { name: 'dp.discard' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it('the ← in the breadcrumb leaves the form for the detail view (asking first when there are unsaved changes)', async () => {
+    await mount(<UsersWorkspace />);
+    await openRow('Bob');
+    await clickEdit();
+    await act(async () => { fireEvent.change(screen.getByLabelText(/fields.full_name/), { target: { value: 'Bobby' } }); });
+    await click(within(dialog()).getByRole('button', { name: 'dp.back' }));
+    expect(screen.getByText('dp.discardTitle')).toBeTruthy();
+    await click(screen.getByRole('button', { name: 'dp.discard' }));
+    expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toBe('Bob');
+    expect(within(footer()).getByRole('button', { name: /common.edit/ })).toBeTruthy();
+  });
+});
+
+describe('Configuration', () => {
+  it.each(['part-numbers', 'tags', 'calibration-setup', 'types'] as const)('%s: list → modal → edit', async (list) => {
     await mount(<ConfigWorkspace listKey={list} />);
-    await openRow(list === 'tags' ? 'Repair' : 'P12316');
+    await openRow(list === 'tags' ? 'Repair' : list === 'calibration-setup' ? 'DMM-100' : list === 'types' ? 'DMM' : 'P12316');
     await clickEdit();
     // Setup hiệu chuẩn: part number khóa khi sửa (đổi PN = xóa rồi thêm lại).
     if (list === 'calibration-setup') expect(screen.getByText('cfg.partNumberFixed')).toBeTruthy();
   });
 
-  it('Configuration part numbers: Type column in the list; Type is required when adding', async () => {
+  it('part numbers: Type column and required Type, and no "needs a parent" setting any more', async () => {
     await mount(<ConfigWorkspace listKey="part-numbers" />);
     expect(screen.getByRole('columnheader', { name: /fields.type/ })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: /fields.usage_needs_parent/ })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: /usage_needs_parent/ })).toBeNull();
     expect(screen.getAllByText('Tester').length).toBeGreaterThan(0);
 
-    const { api } = await import('@/lib/client/api');
-    vi.mocked(api.post).mockClear();
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /ml.add/ })[0]!); });
+    await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
     expect(screen.getByText('cfg.partTypeHint')).toBeTruthy();
-    expect(screen.getByText('cfg.usageNeedsParentHint')).toBeTruthy();
+    expect(screen.queryByText(/usageNeedsParent/)).toBeNull();
     await act(async () => { fireEvent.change(screen.getByLabelText(/fields.display_name/), { target: { value: 'P99999' } }); });
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'common.save' })[0]!); });
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
     expect(api.post).not.toHaveBeenCalled();
     expect(within(screen.getByLabelText(/fields.type/).closest('.dp-field') as HTMLElement).getByRole('alert').textContent).toBe('dp.required');
   });
 
-  it('Calibration masterlist has no manual Add (equipment joins via Configuration › Calibration › Setup)', async () => {
-    await mount(<CalibrationWorkspace />);
-    expect(screen.queryByRole('button', { name: /ml.add/ })).toBeNull();
+  it('types: shows the Group by name; the three system Types cannot be hidden, Admin-added Types can', async () => {
+    await mount(<ConfigWorkspace listKey="types" />);
+    expect(screen.getByRole('columnheader', { name: /fields.group/ })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: /fields.kind/ })).toBeNull();
+    expect(screen.getAllByText('Tester').length).toBeGreaterThan(1); // Type và Group cùng tên
+    expect(screen.getByText('Sub-equipment')).toBeTruthy();
+
+    await openRow('Tester');
+    // Loại hệ thống: không có thao tác Ẩn → không có menu Thao tác.
+    expect(within(footer()).queryByRole('button', { name: /dp.actionsMenu/ })).toBeNull();
+    // Đóng modal (✕) rồi mở dòng DMM.
+    await click(within(dialog()).getByRole('button', { name: 'common.close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await openRow('DMM');
+    await openActions();
+    expect(screen.getByRole('menuitem', { name: /cfg.hide/ })).toBeTruthy();
   });
 
-  it('Configuration tags: color chip in list; 5-color picker, required when adding; no remark / calibration fields', async () => {
+  it('types: the Group of a system Type is fixed; an Admin Type picks from the sub-equipment Groups in use (never a system Group)', async () => {
+    vi.mocked(api.put).mockResolvedValue({ data: { ...config.types[1]!, group_id: 'g5', group: 'Meters' }, meta: {} });
+    await mount(<ConfigWorkspace listKey="types" />);
+    await openRow('Tester');
+    await clickEdit();
+    expect(screen.getByText('cfg.groupLocked')).toBeTruthy();
+    expect(screen.queryByLabelText(/fields.group/)).toBeNull();
+    await click(within(dialog()).getByRole('button', { name: 'common.close' }));
+    await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
+
+    await openRow('DMM');
+    await clickEdit();
+    await click(screen.getByLabelText(/fields.group/));
+    // Sub-equipment và Meters; không có Tester / Base / Fixture (nhóm hệ thống) và không có nhóm đã ẩn.
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Sub-equipment', 'Meters']);
+    await click(screen.getByRole('option', { name: 'Meters' }));
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
+    expect(api.put).toHaveBeenCalledWith('/api/configuration/types/t2', { group_id: 'g5' });
+  });
+
+  it('types: Group is required when adding a Type; the kind is not asked (it follows the Group)', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { ...config.types[1]!, id: 't9', display_name: 'Scope', group_id: 'g5', group: 'Meters' }, meta: {} });
+    await mount(<ConfigWorkspace listKey="types" />);
+    await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
+    expect(screen.queryByLabelText(/fields.kind/)).toBeNull();
+    await act(async () => { fireEvent.change(screen.getByLabelText(/fields.display_name/), { target: { value: 'Scope' } }); });
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
+    expect(api.post).not.toHaveBeenCalled();
+    expect(within(screen.getByLabelText(/fields.group/).closest('.dp-field') as HTMLElement).getByRole('alert').textContent).toBe('dp.required');
+    await click(screen.getByLabelText(/fields.group/));
+    await click(screen.getByRole('option', { name: 'Meters' }));
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
+    expect(api.post).toHaveBeenCalledWith('/api/configuration/types', expect.objectContaining({ display_name: 'Scope', group_id: 'g5' }));
+  });
+
+  it('groups: a plain list; the system Groups cannot be hidden, an Admin Group can; Admin can add one', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { ...config['type-groups'][2]!, id: 'g9', display_name: 'Probes' }, meta: {} });
+    await mount(<ConfigWorkspace listKey="type-groups" />);
+    expect(screen.getByRole('columnheader', { name: /fields.display_name/ })).toBeTruthy();
+    expect(screen.getByText('Meters')).toBeTruthy();
+    await openRow('Tester');
+    await clickEdit();
+    expect(screen.getByText('cfg.systemGroupLocked')).toBeTruthy();
+    await click(within(dialog()).getByRole('button', { name: 'common.close' }));
+    await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
+    await openRow('Meters');
+    await openActions();
+    expect(screen.getByRole('menuitem', { name: /cfg.hide/ })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: /common.delete/ })).toBeNull(); // nhóm chỉ ẩn, không xóa
+    await act(async () => { fireEvent.keyDown(document, { key: 'Escape' }); });
+    await click(within(dialog()).getByRole('button', { name: 'common.close' }));
+
+    await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
+    await act(async () => { fireEvent.change(screen.getByLabelText(/fields.display_name/), { target: { value: 'Probes' } }); });
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
+    expect(api.post).toHaveBeenCalledWith('/api/configuration/type-groups', { display_name: 'Probes', sort_order: 0, is_active: true });
+  });
+
+  it('part numbers: a Level column; Level is a dropdown of the Level master data and is optional', async () => {
+    vi.mocked(api.put).mockResolvedValue({ data: { ...config['part-numbers'][0]!, level_id: 'lv2', level: 'ICT' }, meta: {} });
+    vi.mocked(api.post).mockResolvedValue({ data: { ...config['part-numbers'][0]!, id: 'pn9', display_name: 'P99999' }, meta: {} });
+    await mount(<ConfigWorkspace listKey="part-numbers" />);
+    expect(screen.getByRole('columnheader', { name: /fields.level/ })).toBeTruthy();
+    expect(screen.getByText('EOL')).toBeTruthy();
+    await openRow('P12316');
+    await clickEdit();
+    await click(screen.getByLabelText(/fields.level/));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['dp.selectPlaceholder', 'EOL', 'ICT']); // có dòng bỏ chọn
+    await click(screen.getByRole('option', { name: 'ICT' }));
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
+    expect(api.put).toHaveBeenCalledWith('/api/configuration/part-numbers/pn1', { level_id: 'lv2' });
+
+    await click(within(dialog()).getByRole('button', { name: 'common.close' }));
+    await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
+    expect(within(screen.getByLabelText(/fields.level/).closest('.dp-field') as HTMLElement).queryByText('*')).toBeNull(); // không có dấu * bắt buộc
+    await act(async () => { fireEvent.change(screen.getByLabelText(/fields.display_name/), { target: { value: 'P99999' } }); });
+    await click(screen.getByLabelText(/fields.type/));
+    await click(screen.getByRole('option', { name: 'Tester' }));
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
+    expect(api.post).toHaveBeenCalledWith('/api/configuration/part-numbers', expect.not.objectContaining({ level_id: expect.anything() }));
+  });
+
+  it('calibration setup: only sub-equipment part numbers that are not set up yet can be chosen', async () => {
+    await mount(<ConfigWorkspace listKey="calibration-setup" />);
+    await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
+    expect(screen.getByText('cfg.calibrationPartHint')).toBeTruthy();
+    await click(screen.getByLabelText(/fields.part_number/));
+    const labels = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(labels).toEqual(['DMM-200']); // DMM-100 đã có Setup; P12316 là part number của tester
+  });
+
+  it('tags: color chip in list; 5-color picker, required when adding', async () => {
     await mount(<ConfigWorkspace listKey="tags" />);
     expect(document.querySelector('td .tag-status[data-status-color="yellow"]')?.textContent).toBe('values.yellow');
-    expect(screen.queryByRole('columnheader', { name: /fields.requires_remark|fields.calibration_role/ })).toBeNull();
     await openRow('Repair');
     await clickEdit();
     const picker = screen.getByRole('radiogroup', { name: 'fields.color' });
     expect(within(picker).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['green', 'yellow', 'red', 'blue', 'gray']);
     expect((within(picker).getByRole('radio', { checked: true }) as HTMLInputElement).value).toBe('yellow');
 
-    const { api } = await import('@/lib/client/api');
-    vi.mocked(api.post).mockClear();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /ml.add/ })); });
+    await click(within(dialog()).getByRole('button', { name: 'common.close' }));
+    await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
     await act(async () => { fireEvent.change(screen.getByLabelText(/fields.display_name/), { target: { value: 'Scrap' } }); });
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'common.save' })[0]!); });
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
     expect(api.post).not.toHaveBeenCalled();
     expect(within(screen.getByRole('radiogroup', { name: 'fields.color' }).closest('.dp-field') as HTMLElement).getByRole('alert').textContent).toBe('dp.required');
   });
 
-  it('Error log: read-only panel', async () => {
+  it('Error log: read-only modal', async () => {
     await mount(<ErrorLogWorkspace />);
     await act(async () => { fireEvent.click(screen.getByText('req_1')); });
     expect(screen.getByText('at x')).toBeTruthy();
+    expect(within(footer()).getByRole('button', { name: 'common.close' })).toBeTruthy();
   });
+});
 
-  it('Dashboard renders KPIs, due lists and recent changes', async () => {
-    const { api } = await import('@/lib/client/api');
+describe('Dashboard', () => {
+  it('Dashboard renders KPIs, Status bars per asset kind + Calibration Status, due lists and recent changes', async () => {
+    const alert = {
+      id: 's1', serial_number: 'DMM-1', part_number: 'DMM-100', type: 'DMM', tester_serial: 'TESTER-01', location: 'B3F1',
+      due_date: '2026-09-30', status: 'overdue',
+    };
     vi.mocked(api.get).mockImplementation(async (url: string) => {
       if (url === '/api/dashboard') {
-        return { data: { equipment_total: 2, golden_total: 1, calibration_total: 1, pending_users: 1,
-          by_status: {
-            equipment: [{ id: 'in_use', label: null, count: 1, color: 'green' }, { id: 'not_in_use', label: null, count: 1, color: 'gray' }],
-            calibration: [{ id: 'overdue', label: null, count: 1, color: 'red' }],
-          },
-          by_location: [], by_type: [],
-          overdue: calibration, due_soon: [] }, meta: {} };
+        const usage = (inUse: number, notInUse: number) => [
+          { id: 'in_use', label: null, count: inUse, color: 'green' }, { id: 'not_in_use', label: null, count: notInUse, color: 'gray' },
+        ];
+        return { data: {
+          equipment_total: 2, sub_equipment_total: 3, golden_total: 1,
+          by_usage: { equipment: usage(1, 1), sub_equipment: usage(2, 1), golden_board: usage(0, 1) },
+          by_calibration_status: [
+            { id: 'not_calibrated', label: null, count: 1, color: 'gray' }, { id: 'failed', label: null, count: 0, color: 'red' },
+            { id: 'overdue', label: null, count: 1, color: 'red' }, { id: 'due_soon', label: null, count: 0, color: 'yellow' },
+            { id: 'valid', label: null, count: 1, color: 'green' },
+          ],
+          by_tag: [{ id: 'tg1', label: 'Repair', count: 2 }], by_location: [{ id: 'l1', label: 'B3F1', count: 4 }], by_type: [],
+          overdue: [alert], due_soon: [],
+        }, meta: {} };
       }
       if (url.startsWith('/api/dashboard/activities')) {
         const base = { created_at: audit.created_at, created_by: 'u1', created_by_name: 'Admin', item_count: 1 };
         return { data: [
           { ...base, id: 'a1', module: 'equipment', object_id: 'e1', label: 'SN-ROOT', action: 'UPDATE',
             changes: { asset: { old: null, new: 'A1' } }, note: 'swap_with:SN-2', source: 'ui' },
-          { ...base, id: 'a2', module: 'golden_sample', object_id: 'g1', label: 'G-1', action: 'CREATE',
+          { ...base, id: 'a2', module: 'golden_board', object_id: 'g1', label: 'G-1', action: 'CREATE',
             changes: {}, note: null, source: 'import', item_count: 40 },
         ], meta: {} };
       }
@@ -483,16 +453,17 @@ describe('modules smoke', () => {
     });
     await mount(<Dashboard />);
     expect(screen.getByText('dash.overdueTitle')).toBeTruthy();
-    // Tổng quan trạng thái: mỗi trang một thanh màu, chú thích có tên + số.
     expect(screen.getByText('dash.byStatus')).toBeTruthy();
-    expect(screen.getAllByRole('img').map((el) => el.getAttribute('aria-label'))).toEqual(['dash.statusOf', 'dash.statusOf']);
-    // Status do hệ thống quản: server gửi khóa, màn hình dịch ra chữ.
-    expect(document.querySelectorAll('.dash-stack-seg[data-status-color="red"]').length).toBe(1);
-    expect(screen.getByText('values.in_use')).toBeTruthy();
-    expect(screen.getByText('cal.status.overdue')).toBeTruthy();
-    expect(screen.getAllByText('SN-ROOT').length).toBeGreaterThan(0);
+    // Bốn khối Status: Equipment, Sub-equipment, Golden board (In use / Not in use) và Calibration Status.
+    expect(screen.getAllByRole('img').map((el) => el.getAttribute('aria-label'))).toEqual(['dash.statusOf', 'dash.statusOf', 'dash.statusOf', 'dash.statusOf']);
+    expect(document.querySelectorAll('.dash-stack-seg[data-status-color="red"]').length).toBe(2);
+    expect(screen.getByText('cal.status.not_calibrated')).toBeTruthy();
+    expect(screen.getAllByText('cal.status.overdue').length).toBeGreaterThan(0);
+    expect(screen.getByText('DMM-1')).toBeTruthy();
+    expect(screen.getByText('dash.byTag')).toBeTruthy();
+    expect(screen.queryByText('dash.pendingUsers')).toBeNull();
     expect(screen.getByText('hist.action.UPDATE')).toBeTruthy();
-    // Note của lịch sử hiện ở Dashboard; một lần import gộp thành một dòng, không liệt kê từng bản ghi.
+    // Một lần import gộp thành một dòng, không liệt kê từng bản ghi.
     expect(screen.getByText('hist.swapWith')).toBeTruthy();
     expect(screen.getByText('dash.importedBatch')).toBeTruthy();
     expect(screen.queryByText('G-1')).toBeNull();

@@ -1,19 +1,19 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { LOCAL_SESSION_COOKIE, verifyLocalSession } from '@/lib/auth/localSession';
 
 /**
  * Middleware chỉ làm hai việc: refresh session cookie và redirect khi chưa
  * đăng nhập. Middleware KHÔNG chứa logic phân quyền — logic đó nằm ở withAuth
  * để chỉ có một nơi duy nhất quyết định quyền.
  *
- * "Logged in" here also accepts a valid local-account session cookie
- * (auth_provider = 'local' accounts have no Supabase Auth session at all).
- * This only checks the cookie's signature and expiry — not account_status or
- * whether the password has changed since (token_version) — the same way
- * this middleware never re-checked those for Supabase sessions either. The
- * authoritative check is always withAuth / the server layouts, on every
- * request.
+ * "Logged in" = có phiên Supabase Auth. Middleware không đọc user_profiles (is_active,
+ * must_change_password): kiểm tra thật luôn nằm ở withAuth / layout của server, ở mọi request.
+ *
+ * Tốc độ: middleware chạy ở MỌI lần chuyển trang. getUser() là một vòng mạng tới Supabase (~0.3 s), nên chỉ dùng ở nơi không
+ * còn ai kiểm tra sau nó: /login (phiên hỏng phải coi như chưa đăng nhập, không thì /login ↔ / quay vòng) và trang nhãn (không
+ * có layout kiểm tra phiên). Mọi trang còn lại nằm dưới layout (app) / tự gọi requirePageViewer — hỏi Supabase thật ở đó — nên
+ * ở đây getSession() là đủ: đọc cookie, chỉ gọi mạng khi cần làm mới token hết hạn; phiên không hợp lệ vẫn bị layout chuyển về
+ * /login, và dữ liệu luôn đi qua withAuth.
  */
 export async function middleware(req: NextRequest) {
   let res = NextResponse.next({ request: req });
@@ -33,13 +33,13 @@ export async function middleware(req: NextRequest) {
     },
   );
 
-  const { data } = await supabase.auth.getUser();
   const { pathname } = req.nextUrl;
   const isLogin = pathname.startsWith('/login');
+  const verifyHere = isLogin || pathname.endsWith('/label');
 
-  const hasLocalSession = !data.user &&
-    !!(await verifyLocalSession(req.cookies.get(LOCAL_SESSION_COOKIE)?.value));
-  const isLoggedIn = !!data.user || hasLocalSession;
+  const isLoggedIn = verifyHere
+    ? !!(await supabase.auth.getUser()).data.user
+    : !!(await supabase.auth.getSession()).data.session;
 
   if (!isLoggedIn && !isLogin) {
     const url = req.nextUrl.clone();

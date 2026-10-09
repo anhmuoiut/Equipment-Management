@@ -6,7 +6,6 @@ import { ChevronLeft, Menu } from 'lucide-react';
 import { PreferenceControls } from '@/components/Preferences';
 import { JabilLogo } from '@/components/JabilLogo';
 import { UserMenu } from '@/components/UserMenu';
-import { NotificationBell } from '@/components/NotificationBell';
 
 type TopBarProps = {
   username: string;
@@ -25,7 +24,7 @@ export function TopBar({ username, fullName, sidebarOpen, onToggleSidebar, toggl
         <div className="app-brand-row">
           <JabilLogo />
           <span className="app-brand-title" title="SolarEdge Equipment Management">SolarEdge Equipment Management</span>
-          {/* Hamburger — mobile only (CSS-hidden above 800px). The sidebar's
+          {/* Hamburger — mobile only (CSS-hidden from 768px). The sidebar's
               own collapse toggle handles the desktop case; see AppSidebar. */}
           <button ref={toggleRef} type="button" className="sidebar-toggle"
             onClick={onToggleSidebar} aria-expanded={sidebarOpen} aria-controls="app-sidebar-panel"
@@ -39,7 +38,6 @@ export function TopBar({ username, fullName, sidebarOpen, onToggleSidebar, toggl
       <div className="topbar-actions">
         {/* Phones: language and theme live in the account menu instead (UserMenu). */}
         <div className="topbar-preferences"><PreferenceControls /></div>
-        <NotificationBell />
         <UserMenu username={username} fullName={fullName} />
       </div>
     </header>

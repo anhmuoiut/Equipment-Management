@@ -184,7 +184,7 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 .toast-item-message { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; }
 .toast-item-close { flex-shrink: 0; color: var(--ink-3); }
 .toast-item-close:hover { color: var(--ink); }
-@media (max-width: 800px) {
+@media (max-width: 767px) {
   .toast-viewport { top: calc(var(--header-height, 56px) + var(--space-3)); right: var(--space-3); left: var(--space-3); width: auto; }
   /* The × is 13px; give it a 44px touch area without making the toast taller. */
   .toast-item-close { display: grid; place-items: center; align-self: center; min-width: 44px; min-height: 44px; margin: -12px -8px -12px 0; }
@@ -201,10 +201,9 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 .login-form-area { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: flex-start; overflow-y: auto; padding: clamp(8px, 2dvh, 24px) 4px; overscroll-behavior: contain; }
 .login-form { width: 100%; max-width: 370px; min-width: 0; flex-shrink: 0; margin-block: auto; }
 .login-icon { display: grid; place-items: center; width: 40px; height: 40px; background: var(--machine-tint); color: var(--ok); border: 1px solid var(--rule); border-radius: 14px; margin-bottom: 12px; }
-.eyebrow { font-size: 10px; font-weight: 600; letter-spacing: .13em; color: var(--ok); margin-bottom: 8px; }
 .login-form h1 { font-size: clamp(24px, 2.3vw, 30px); line-height: 1.3; font-weight: 600; letter-spacing: -.03em; }
 .login-description { color: var(--ink-2); font-size: 13px; line-height: 1.5; margin: 8px 0 16px; }
-.login-form > label, .signup-field > label { display: block; font-size: 12px; font-weight: 500; margin: 12px 0 6px; }
+.login-form > label{ display: block; font-size: 12px; font-weight: 500; margin: 12px 0 6px; }
 .login-input { display: flex; align-items: center; gap: 11px; height: 44px; padding: 0 13px; background: var(--surface); border: 1px solid var(--rule); border-radius: 9px; color: var(--ink-3); }
 .login-input:focus-within { border-color: var(--machine); box-shadow: 0 0 0 3px var(--machine-tint); }
 .login-input input { min-width: 0; width: 100%; height: 100%; background: transparent; outline: none; border: 0; font-size: 13px; }
@@ -325,49 +324,6 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 .user-menu-phone { display: none; }
 .user-menu-check { margin-left: auto; color: var(--machine); }
 
-/* Notification bell — same non-portal dropdown pattern as the user menu
-   beside it (header sits outside any overflow:hidden ancestor, so a plain
-   absolutely-positioned panel is enough; no portal needed). */
-.notification-bell { position: relative; }
-.notification-trigger {
-  position: relative; display: grid; place-items: center; width: 36px; height: 36px;
-  border-radius: 50%; border: 1px solid transparent; color: color-mix(in srgb, var(--jabil-prussian) 16%, var(--jabil-white));
-}
-.notification-trigger:hover { background: color-mix(in srgb, var(--jabil-white) 7.06%, transparent); border-color: color-mix(in srgb, var(--jabil-white) 12.55%, transparent); color: white; }
-.notification-badge {
-  position: absolute; top: 2px; right: 2px; display: grid; place-items: center;
-  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
-  background: var(--alert); color: white; font-size: 10px; font-weight: 700; line-height: 1;
-}
-.notification-panel {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 65; width: 360px; max-width: calc(100vw - 32px);
-  display: flex; flex-direction: column; max-height: 70vh;
-  border: 1px solid var(--rule); border-radius: 9px; background: var(--panel); box-shadow: 0 10px 28px color-mix(in srgb, var(--jabil-prussian) 13.33%, transparent);
-  overflow: hidden;
-}
-.notification-panel-head {
-  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
-  padding: 10px 12px; border-bottom: 1px solid var(--rule-soft); font-size: 13px; font-weight: 600; color: var(--ink);
-}
-.notification-panel-head button {
-  display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; color: var(--ok);
-}
-.notification-panel-head button:hover { text-decoration: underline; }
-.notification-list { min-height: 0; overflow-y: auto; }
-.notification-empty { padding: 24px 12px; text-align: center; font-size: 12.5px; color: var(--ink-3); }
-.notification-item {
-  display: flex; align-items: flex-start; gap: 9px; width: 100%; padding: 10px 12px;
-  border-bottom: 1px solid var(--rule-soft); text-align: left;
-}
-.notification-item:last-child { border-bottom: none; }
-.notification-item:hover { background: var(--surface); }
-.notification-item-dot { flex-shrink: 0; margin-top: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
-.notification-item[data-level='OVERDUE'] .notification-item-dot { background: var(--alert); }
-.notification-item[data-level='DUE_SOON'] .notification-item-dot { background: var(--warn); }
-.notification-item[data-unread='false'] { opacity: 0.55; }
-.notification-item-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.notification-item-title { font-size: 12.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.notification-item-meta { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The theme/language pickers default to a light --panel pill, sized for a
    white topbar. Both app themes' --navy is dark, so give them a translucent
    white treatment here instead of relying on --panel/--rule contrast. */
@@ -407,14 +363,56 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 .ui-button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; line-height: 1.4; border-radius: 8px; }
 .ui-button--md { min-height: 40px; }
 .ui-button--sm { min-height: 32px; }
-.modal-overlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 24px; }
-.modal-dialog { display: flex; flex-direction: column; width: 100%; max-width: 480px; max-height: calc(100dvh - 48px); min-width: 0; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; outline: none; box-shadow: 0 24px 80px color-mix(in srgb, var(--jabil-prussian) 18.82%, transparent); }
-.modal-dialog--wide { max-width: 760px; }
-.modal-header { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--rule-soft); }
-.modal-header h2 { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+/* Modal system (docs/DETAIL_MODEL.md 3, docs/JABIL_UI.md): size is a prop (S ~440 / M ~640 / L ~960), fixed by the screen that opens it. */
+.modal-overlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 16px; animation: modal-fade 140ms ease-out; }
+.modal-dialog { display: flex; flex-direction: column; width: 100%; max-height: 85dvh; min-width: 0; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; outline: none; box-shadow: 0 24px 80px color-mix(in srgb, var(--jabil-prussian) 18.82%, transparent); animation: modal-pop 160ms ease-out; }
+.modal-dialog--s { max-width: 440px; }
+.modal-dialog--m { max-width: 640px; }
+.modal-dialog--l { max-width: 960px; min-height: min(600px, 85dvh); }
+.modal-header { display: flex; flex-shrink: 0; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 14px 12px 20px; border-bottom: 1px solid var(--rule-soft); }
+.modal-header:has(+ .modal-tabs) { border-bottom: 0; padding-bottom: 4px; }
+.modal-header-main { flex: 1; min-width: 0; padding-top: 2px; }
+.modal-header h2 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; overflow-wrap: anywhere; outline: none; }
 .modal-close { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 8px; color: var(--ink-2); background: var(--surface); }
-.modal-body { padding: 24px; overflow: auto; min-height: 0; overscroll-behavior: contain; }
-.modal-footer { display: flex; flex-shrink: 0; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--rule-soft); }
+.modal-close:disabled { opacity: .4; }
+.modal-tabs { display: flex; flex-shrink: 0; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--rule); overflow-x: auto; scrollbar-width: none; }
+.modal-tab { padding: 9px 14px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink-2); font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.modal-tab[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--jabil-picton); font-weight: 600; }
+.modal-body { flex: 1; padding: 18px 24px; overflow: auto; min-height: 0; overscroll-behavior: contain; }
+.modal-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--rule); background: var(--surface); }
+.modal-footer:empty { display: none; }
+.mf-left { margin-right: auto; display: flex; align-items: center; gap: 8px; }
+.mf-right { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.mf-note { margin-right: auto; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+/* Form / action screens: in an L modal the content is ~640px and centred (header and footer keep the full width). */
+.ms { display: flex; flex-direction: column; gap: 16px; }
+.modal-dialog--l .ms { max-width: 640px; width: 100%; margin-inline: auto; }
+.rm-screen, .rm-info { display: flex; flex-direction: column; gap: 16px; }
+.rm-screen[hidden] { display: none; }
+/* RecordModal header: ‹ › · title · tags / breadcrumb · quick facts */
+.rm-head { display: flex; align-items: flex-start; gap: 6px; }
+.rm-nav { display: flex; gap: 2px; flex-shrink: 0; }
+.rm-titles { flex: 1; min-width: 0; padding-top: 3px; }
+.rm-line1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.rm-line1 h2 { min-width: 0; }
+.rm-crumbwrap { display: inline-flex; align-items: center; gap: 2px; color: var(--ink-3); }
+.rm-crumb { padding: 2px 6px; border: 0; border-radius: 6px; background: none; color: var(--ink-2); font: inherit; font-size: 14px; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.rm-crumb:hover { background: var(--machine-tint); color: var(--ink); }
+.rm-sep { flex-shrink: 0; color: var(--ink-3); }
+.rm-sub { display: flex; flex-direction: column; gap: 2px; margin-top: 3px; }
+.rm-subtitle { font-size: 13px; color: var(--ink-2); }
+@keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-pop { from { transform: translateY(8px) scale(.985); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Action menu (Thao tác ▾): a popover next to its button, portaled above the modal (z-index over the overlay). */
+.am { display: inline-block; }
+.am-trigger { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.am-trigger[aria-expanded='true'] { background: var(--machine-tint); border-color: var(--jabil-picton); }
+.am-list { position: fixed; z-index: 100; min-width: 210px; max-width: calc(100vw - 16px); overflow-y: auto; list-style: none; margin: 0; padding: 4px;
+  border: 1px solid var(--rule); border-radius: 10px; background: var(--panel); box-shadow: 0 10px 28px color-mix(in srgb, var(--jabil-prussian) 14%, transparent); }
+.am-list button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: none; color: var(--ink); font-size: 13px; text-align: left; cursor: pointer; }
+.am-list button:hover { background: var(--machine-tint); }
+.am-list button[data-danger] { color: var(--alert); border-top: 1px solid var(--rule-soft); border-radius: 0 0 7px 7px; }
+.toast-viewport { z-index: 120; }
 @media (max-width: 1250px) {
   .app-shell { --sidebar-width: 204px; }
   .app-topbar { gap: 20px; padding-right: 20px; }
@@ -423,7 +421,7 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
   .user-menu-trigger { padding-right: 4px; }
   .app-content { padding: 24px; }
 }
-@media (max-width: 800px) {
+@media (max-width: 767px) {
   .login-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: clamp(48px, 12dvh, 110px) minmax(0, 1fr); }
   .login-main { min-height: 0; padding: 10px 20px; }
   .login-form-area { padding: 8px 4px; }
@@ -457,36 +455,52 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
     transform: translateX(0); visibility: visible;
     transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0s;
   }
-  .modal-overlay { padding: 12px; }
-  .modal-dialog { max-height: calc(100dvh - 24px); }
-  .modal-header { padding: 12px 16px; }
+  /* Every modal size is full screen on a phone: no rounded corners, no dimmed backdrop, fixed header and footer, only the body scrolls. */
+  .modal-overlay { padding: 0; align-items: stretch; }
+  .modal-dialog { max-width: none; width: 100%; height: 100dvh; max-height: 100dvh; min-height: 0; border: 0; border-radius: 0; animation: none; }
+  .modal-header { padding: calc(8px + env(safe-area-inset-top)) 6px 8px 10px; }
   .modal-close { width: 44px; height: 44px; }
-  .modal-body { padding: 18px 16px; }
-  .modal-body .grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
-  .modal-footer { padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-  .modal-footer .ui-button { min-height: 44px; }
+  .modal-tabs { padding: 0 6px; }
+  .modal-tab { min-height: 44px; padding-block: 0; }
+  .modal-body { padding: 14px 14px 20px; }
+  .modal-footer { flex-wrap: nowrap; padding: 10px 12px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  .modal-footer .ui-button { min-height: 48px; }
+  .mf-note { flex: 1 1 auto; }
+  /* Form / action screens: [Hủy] [nút chính] share the width. */
+  .modal-footer > .ui-button { flex: 1; min-width: 0; justify-content: center; }
+  .mf-right { flex-wrap: nowrap; flex: 1; justify-content: flex-end; }
+  .mf-right .ui-button { flex: 1; min-width: 0; justify-content: center; }
+  .am-trigger { min-height: 48px; padding-inline: 14px; font-size: 14px; }
+  .am-list { min-width: 200px; }
+  .am-list button { min-height: 48px; font-size: 15px; }
+  .dp-icon-btn { width: 44px; height: 44px; }
+  .rm-head { align-items: center; gap: 0; }
+  .rm-titles { padding-top: 0; }
+  .rm-line1 h2 { font-size: 17px; }
+  .rm-sub .dp-meta span:nth-child(n + 2) { display: none; }
+  /* View: short fields two to a row; edit / create: one column. */
+  .rm-info .dp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+  .modal-body .dp-grid { grid-template-columns: minmax(0, 1fr); }
+  .modal-body .rm-info .dp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .modal-body .dp-field[data-wide] { grid-column: 1 / -1; }
   /* 16px stops iOS from zooming the page when a field is focused; 44px is a comfortable touch height. */
   .modal-body :is(input:not([type='checkbox']):not([type='radio']), select, textarea), .modal-body button[aria-haspopup='listbox'] { min-height: 44px; font-size: 16px; }
   .modal-body .login-input button { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; margin-right: -13px; }
-  /* Sheet (filters, pickers): bottom-aligned, full width, rounded top. */
-  .modal-overlay--sheet { align-items: flex-end; padding: 0; }
-  .modal-dialog.modal-dialog--sheet { max-width: none; max-height: 85dvh; border-radius: 16px 16px 0 0; border-bottom: 0; animation: sheet-in 200ms var(--sidebar-ease, ease-out); }
+  /* Sheet (list filters, opened while no modal is open): bottom-aligned, full width, rounded top. */
+  .modal-overlay--sheet { align-items: flex-end; }
+  .modal-dialog.modal-dialog--sheet { height: auto; max-height: 85dvh; border-radius: 16px 16px 0 0; border-bottom: 0; animation: sheet-in 200ms var(--sidebar-ease, ease-out); }
+  .modal-dialog--sheet .modal-header { padding-top: 12px; }
   .modal-dialog--sheet .modal-footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }
-/* SearchableSelect on a phone (components/ui/SearchableSelect.tsx): option rows are 48px. */
-.ss-search { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 0 12px; height: 44px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink-3); }
-.ss-search input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--ink); font-size: 16px; outline: none; }
-.ss-options { display: flex; flex-direction: column; gap: 2px; }
-.ss-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 48px; padding: 8px 12px; border: 0; border-radius: 10px; background: none; color: var(--ink); font-size: 15px; text-align: left; overflow-wrap: anywhere; }
-.ss-option[aria-selected='true'] { background: var(--machine-tint); font-weight: 600; }
-.ss-option:disabled { opacity: .4; }
-.ss-option--clear { color: var(--ink-3); }
-.ss-empty { padding: 20px 12px; text-align: center; color: var(--ink-3); font-size: 14px; }
-@keyframes sheet-in { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
-@media (max-width: 420px) {
-  .modal-overlay { padding: 0; }
-  .modal-dialog { max-height: 100dvh; border-radius: 0; }
+/* SearchableSelect on a phone (components/ui/SearchableSelect.tsx): same popover, at most half the screen, 48px rows. */
+@media (max-width: 767px) {
+  .ss-popover { max-height: 50dvh; }
+  .ss-searchrow { min-height: 48px; padding-inline: 12px; }
+  .ss-searchrow input { font-size: 16px; }
+  .ss-list { max-height: none; }
+  .ss-opt { min-height: 48px; font-size: 15px; padding-inline: 12px; }
 }
+@keyframes sheet-in { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   /* transition-delay also zeroed — several sidebar transitions above stage
      their fade behind a delay (see --sidebar-label-out-delay etc.), which
@@ -497,12 +511,6 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 
 /* Keep authentication inside the viewport; only the form can scroll when
    a keyboard, zoom, or unusually short display leaves insufficient space. */
-.signup-form { max-width: 480px; }
-.signup-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
-.signup-field { min-width: 0; display: flex; flex-direction: column; }
-.signup-field .login-input { margin-top: auto; flex-shrink: 0; }
-.signup-field > label { margin: 0 0 5px; }
-.signup-form .login-icon { display: none; }
 @media (max-height: 740px) {
   .login-icon { display: none; }
   .login-form h1 { font-size: 24px; }
@@ -510,22 +518,15 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
   .login-form > label { margin: 10px 0 4px; }
   .sign-in-button { margin-top: 12px; }
   .login-form-area { padding-block: 6px; }
-  .signup-fields { gap: 8px 12px; }
 }
-@media (max-width: 800px) and (max-height: 740px) {
+@media (max-width: 767px) and (max-height: 740px) {
   .login-page { grid-template-rows: 48px minmax(0, 1fr); }
   .login-main { padding: 8px 16px; }
   .login-form-area { padding-block: 4px; }
 }
 
-@media (max-width: 800px) and (max-height: 600px) {
+@media (max-width: 767px) and (max-height: 600px) {
   .login-page { grid-template-rows: 36px minmax(0, 1fr); }
-  .signup-form .eyebrow { display: none; }
-  .signup-form h1 { font-size: 22px; }
-  .signup-fields { gap: 6px 10px; }
-  .signup-field > label { font-size: 11px; line-height: 1.3; }
-  .signup-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-  .signup-actions > button { height: auto; min-height: 44px; margin-top: 0; padding: 6px; }
 }
 
 /* ---------------------------------------------------------------------- */

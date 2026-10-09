@@ -6,7 +6,6 @@ import { createSchema } from './schema';
 
 export const GET = withAuth(async (_req, { requestId }) => ok(await listGolden(), requestId));
 
-export const POST = withAuth(async (req, { requestId, profile }) => {
-  const { row, duplicate } = await createGolden(defined(parseBody(createSchema, await readJson(req))), profile.id);
-  return ok(row, requestId, { duplicate });
-}, { role: EDITORS });
+export const POST = withAuth(async (req, { requestId, profile }) =>
+  ok(await createGolden(defined(parseBody(createSchema, await readJson(req))), profile.id), requestId),
+{ role: EDITORS });

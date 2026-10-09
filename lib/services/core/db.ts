@@ -10,19 +10,48 @@ import 'server-only';
  */
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { AppError, mapRpcError } from '@/lib/errors';
+import { invalidateLookups, LOOKUP_TABLES } from './lookupCache';
 
 export const db = supabaseAdmin;
 
 const PAGE = 1000;
 
+/**
+ * Trang đầu kèm tổng số dòng: bảng lớn hơn một trang thì các trang còn lại tải SONG SONG (trước đây lần lượt từng
+ * trang, mỗi trang một vòng mạng). Không có tổng số (null) thì quay về đọc lần lượt cho tới khi hết.
+ */
 export async function selectAll<T>(table: string, columns = '*', order = 'id'): Promise<T[]> {
+  const page = async (from: number, count?: 'exact') => {
+    const { data, error, count: total } = await db().from(table).select(columns, count ? { count } : undefined)
+      .order(order).range(from, from + PAGE - 1);
+    if (error) throw mapRpcError(error);
+    return { rows: (data ?? []) as T[], total: total ?? null };
+  };
+  const first = await page(0, 'exact');
+  if (first.rows.length < PAGE) return first.rows;
+
+  const out = first.rows;
+  if (first.total !== null) {
+    const starts = Array.from({ length: Math.ceil((first.total - PAGE) / PAGE) }, (_, i) => (i + 1) * PAGE);
+    for (const part of await Promise.all(starts.map((from) => page(from)))) out.push(...part.rows);
+    return out;
+  }
+  for (let from = PAGE; ; from += PAGE) {
+    const { rows } = await page(from);
+    out.push(...rows);
+    if (rows.length < PAGE) return out;
+  }
+}
+
+/** Đọc các dòng có id trong danh sách (cắt đợt 150 id để URL PostgREST không quá dài). */
+export async function selectIn<T>(table: string, columns: string, ids: readonly string[], column = 'id'): Promise<T[]> {
   const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db().from(table).select(columns).order(order).range(from, from + PAGE - 1);
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await db().from(table).select(columns).in(column, ids.slice(i, i + 150));
     if (error) throw mapRpcError(error);
     out.push(...((data ?? []) as T[]));
-    if (!data || data.length < PAGE) return out;
   }
+  return out;
 }
 
 export async function selectOne<T>(table: string, id: string, columns = '*'): Promise<T | null> {
@@ -51,6 +80,8 @@ export async function appWrite<T = Record<string, unknown>>(
     p_note: options.note ?? null,
     p_source: options.source ?? 'ui',
   });
+  // Sau MỌI lần ghi (kể cả lỗi — an toàn hơn đoán): dữ liệu gốc dùng chung đọc lại ở lần dùng kế tiếp (lookupCache.ts).
+  if (LOOKUP_TABLES.has(table)) invalidateLookups();
   if (error) throw mapRpcError(error);
   if (!result) throw new AppError('NOT_FOUND');
   return result as T;

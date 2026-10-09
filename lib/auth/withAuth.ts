@@ -10,7 +10,7 @@ import 'server-only';
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { AppError, type ErrorCode } from '@/lib/errors';
-import { getCurrentSession, isSessionRevoked } from '@/lib/auth/session';
+import { getCaller } from '@/lib/auth/session';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { Role, UserProfile } from '@/lib/permissions';
 
@@ -23,7 +23,7 @@ export type AuthContext = {
 type Options = {
   /** Nhóm được phép. Mặc định: mọi nhóm đã đăng nhập. */
   role?: readonly Role[];
-  /** Chỉ cho đăng nhập / đăng ký / health. */
+  /** Chỉ cho đăng nhập / đăng xuất / health. */
   allowAnonymous?: true;
   /** Vẫn gọi được khi đang bị bắt đổi mật khẩu (/api/me, /api/me/password). */
   allowPendingPasswordChange?: true;
@@ -67,23 +67,17 @@ export function withAuth(handler: Handler, options: Options = {}) {
         return await handler(req, { requestId, params, profile: null as unknown as UserProfile });
       }
 
-      const session = await getCurrentSession();
-      if (!session) throw new AppError('UNAUTHORIZED');
-      userId = session.userId;
+      const caller = await getCaller();
+      if (!caller) throw new AppError('UNAUTHORIZED');
+      userId = caller.userId;
 
-      const { data: profile, error } = await supabaseAdmin().from('user_profiles')
-        .select('id, username, full_name, email, role, account_status, must_change_password, token_version, sessions_revoked_at')
-        .eq('id', userId)
-        .maybeSingle<UserProfile & { token_version: number; sessions_revoked_at: string | null }>();
-      if (error) throw new AppError('SERVER_ERROR', {}, { stage: 'load_profile', pg: error.message });
+      const { profile } = caller;
       if (!profile) throw new AppError('UNAUTHORIZED');
-      if (isSessionRevoked(session, profile)) throw new AppError('UNAUTHORIZED');
-      if (profile.account_status !== 'active') throw new AppError('USER_INACTIVE');
+      if (!profile.is_active) throw new AppError('USER_INACTIVE');
       if (profile.must_change_password && !options.allowPendingPasswordChange) throw new AppError('PASSWORD_CHANGE_REQUIRED');
       if (options.role && !options.role.includes(profile.role)) throw new AppError('FORBIDDEN', { required_role: options.role });
 
-      const { token_version: _tv, sessions_revoked_at: _sr, ...identity } = profile;
-      return await handler(req, { requestId, profile: identity, params });
+      return await handler(req, { requestId, profile, params });
     } catch (e) {
       if (e instanceof AppError) {
         if (e.status >= 500) {

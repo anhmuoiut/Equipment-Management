@@ -6,11 +6,10 @@ import { assertUuid, defined, parseBody, readJson, z, optText, optId, reqText } 
 export const GET = withAuth(async (_req, { requestId, params }) =>
   ok(await getUser(assertUuid(params.id)), requestId), { role: ADMINS });
 
+/** Sửa họ tên, mã nhân viên, phòng ban, nhóm quyền. Username không đổi sau khi tạo (key lạ bị từ chối). */
 export const PUT = withAuth(async (req, { requestId, profile, params }) => {
   const body = defined(parseBody(z.object({
-    username: reqText(64),
     full_name: reqText(200),
-    email: optText(200).refine((v) => v == null || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), { message: 'invalid' }),
     employee_id: optText(100),
     department_id: optId,
     role: z.enum(['admin', 'user', 'readonly']),

@@ -1,13 +1,56 @@
 'use client';
 
-/** Configuration › HỆ THỐNG › Error log — chỉ xem; cùng Masterlist + Detail Panel. */
+/** Configuration › HỆ THỐNG › Error log — chỉ xem; cùng Masterlist, bản ghi mở trong một modal chỉ đọc. */
 import { useTranslation } from 'react-i18next';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatTime } from '@/lib/client/api';
-import { DetailPanel, DetailSection, DetailValue } from '@/components/ui/detail/DetailPanel';
-import { ErrorState, Spinner } from '@/components/ui';
-import { ModuleWorkspace, useList } from '@/components/ui/workspace/ModuleWorkspace';
+import { Button, ErrorState, Modal, ModalFooter, Skeleton } from '@/components/ui';
+import { DetailSection, DetailValue } from '@/components/ui/record/fields';
+import { ModuleWorkspace, useList, type DetailCtx } from '@/components/ui/workspace/ModuleWorkspace';
 import { RowCard, type Column } from '@/components/ui/masterlist/Masterlist';
 import type { ErrorLogRow } from '@/lib/types';
+
+function ErrorLogModal({ ctx }: { ctx: DetailCtx<ErrorLogRow> }) {
+  const { t } = useTranslation();
+  const row = ctx.record;
+  const title = row?.request_id ?? '…';
+  const header = (
+    <div className="rm-head">
+      {(ctx.nav.onPrev || ctx.nav.onNext) && (
+        <div className="rm-nav">
+          <button type="button" className="dp-icon-btn" onClick={ctx.nav.onPrev} disabled={!ctx.nav.onPrev} aria-label={t('dp.prev')} title={t('dp.prev')}>
+            <ChevronLeft size={18} aria-hidden="true" />
+          </button>
+          <button type="button" className="dp-icon-btn" onClick={ctx.nav.onNext} disabled={!ctx.nav.onNext} aria-label={t('dp.next')} title={t('dp.next')}>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+      <div className="rm-titles">
+        <div className="rm-line1"><h2>{row ? title : <Skeleton className="h-5" style={{ width: 160 }} />}</h2></div>
+        {row && <div className="rm-sub"><div className="rm-subtitle">{formatTime(row.created_at)}</div></div>}
+      </div>
+    </div>
+  );
+  return (
+    <Modal size="l" title={title} header={header} onClose={ctx.onClose}>
+      {ctx.error ? <ErrorState message={ctx.error} onRetry={ctx.onRetry} /> : !row ? (
+        <div className="dp-skeleton">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
+      ) : (
+        <DetailSection title={t('err.group')}>
+          <DetailValue label={t('err.requestId')}>{row.request_id}</DetailValue>
+          <DetailValue label={t('err.code')}>{row.error_code}</DetailValue>
+          <DetailValue label={t('err.route')} wide>{row.route}</DetailValue>
+          <DetailValue label={t('err.user')}>{row.user_name}</DetailValue>
+          <DetailValue label={t('fields.created_at')}>{formatTime(row.created_at)}</DetailValue>
+          <DetailValue label={t('err.message')} wide>{row.message}</DetailValue>
+          <DetailValue label={t('err.stack')} wide>{row.stack && <pre className="dp-pre">{row.stack}</pre>}</DetailValue>
+        </DetailSection>
+      )}
+      <ModalFooter><Button onClick={ctx.onClose}>{t('common.close')}</Button></ModalFooter>
+    </Modal>
+  );
+}
 
 export function ErrorLogWorkspace() {
   const { t } = useTranslation();
@@ -23,7 +66,7 @@ export function ErrorLogWorkspace() {
   ];
 
   return (
-    <ModuleWorkspace<ErrorLogRow & { created_by_name?: null }>
+    <ModuleWorkspace<ErrorLogRow>
       title={t('cfg.list.error-log')}
       list={list}
       columns={columns}
@@ -31,25 +74,7 @@ export function ErrorLogWorkspace() {
       storageKey="configuration-error-log"
       exportName="error-log"
       canAdd={false}
-      renderDetail={(ctx) => (
-        <DetailPanel layout="panel" title={ctx.row?.request_id ?? '…'}
-          subtitle={ctx.row ? formatTime(ctx.row.created_at) : undefined} nav={ctx.nav} onClose={ctx.onClose}>
-          {ctx.error ? <ErrorState message={ctx.error} onRetry={ctx.onRetry} />
-            : !ctx.row ? <Spinner label={t('common.loadingEllipsis')} /> : (
-            <div className="dp-body-inner">
-              <DetailSection title={t('err.group')}>
-                <DetailValue label={t('err.requestId')}>{ctx.row.request_id}</DetailValue>
-                <DetailValue label={t('err.code')}>{ctx.row.error_code}</DetailValue>
-                <DetailValue label={t('err.route')} wide>{ctx.row.route}</DetailValue>
-                <DetailValue label={t('err.user')}>{ctx.row.user_name}</DetailValue>
-                <DetailValue label={t('fields.created_at')}>{formatTime(ctx.row.created_at)}</DetailValue>
-                <DetailValue label={t('err.message')} wide>{ctx.row.message}</DetailValue>
-                <DetailValue label={t('err.stack')} wide>{ctx.row.stack && <pre className="dp-pre">{ctx.row.stack}</pre>}</DetailValue>
-              </DetailSection>
-            </div>
-          )}
-        </DetailPanel>
-      )}
+      renderDetail={(ctx) => <ErrorLogModal ctx={ctx} />}
     />
   );
 }

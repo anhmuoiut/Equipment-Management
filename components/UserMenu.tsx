@@ -18,17 +18,15 @@ import { api, errorMessage } from '@/lib/client/api';
 import { useFetch } from '@/lib/client/useFetch';
 import { toSelect, useOptions } from '@/lib/client/options';
 import { Button, ErrorState, Modal, Notice, Spinner, toast } from '@/components/ui';
-import { ActionField } from '@/components/ui/detail/RecordDetail';
+import { ActionField } from '@/components/ui/record/fields';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { PreferenceMenuItems } from '@/components/Preferences';
 
 type OwnAccount = {
   full_name: string;
-  email: string | null;
   username: string;
   employee_id: string | null;
   department_id: string | null;
-  auth_provider: 'supabase' | 'local';
 };
 
 export function UserMenu({ username, fullName }: { username: string; fullName: string }) {
@@ -102,7 +100,7 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { data: account, error, reload } = useFetch<OwnAccount>('/api/me');
   return (
-    <Modal wide title={t('userMenu.accountSettings')} onClose={onClose}>
+    <Modal size="m" title={t('userMenu.accountSettings')} onClose={onClose}>
       {error ? <ErrorState message={error} onRetry={reload} />
         : !account ? <Spinner label={t('common.loadingEllipsis')} />
           : <AccountForms account={account} />}
@@ -165,7 +163,7 @@ function AccountForms({ account }: { account: OwnAccount }) {
         <div>
           <h3 className="text-[14px] font-semibold">{t('userMenu.yourInformation')}</h3>
           <p className="ident mt-0.5 text-[12px]" style={{ color: 'var(--ink-3)' }}>
-            {account.username}{account.email ? ` · ${account.email}` : ''}
+            {account.username}
           </p>
         </div>
 

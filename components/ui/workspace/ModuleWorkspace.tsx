@@ -1,19 +1,19 @@
 'use client';
 
 /**
- * Trang của một module: Masterlist + Detail Panel (docs/DETAIL_MODEL.md).
- * Lo chọn dòng, ‹ › theo thứ tự đang hiện, phím ↑ ↓ / J K, đường dẫn
- * `?id=` (mở lại / chia sẻ được), `?new=1` (thêm mới), `?tool=` (công cụ
- * như Import), và hỏi trước khi rời bản ghi đang sửa. Module chỉ truyền cột
- * và cách vẽ chi tiết.
+ * Trang của một module: Masterlist full chiều rộng + modal của bản ghi (docs/DETAIL_MODEL.md).
+ * URL là nguồn sự thật: `?id=` (chi tiết, mở lại / chia sẻ được), `?new=1` (thêm mới), `?tool=` (công cụ
+ * như Import). Mở từ danh sách → `push` (nút Back của trình duyệt đóng modal); chuyển bản ghi (‹ ›, thêm
+ * mới → chi tiết) → `replace`. Module chỉ truyền cột và cách vẽ modal; bản ghi được tải theo id.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
 import { useFetch } from '@/lib/client/useFetch';
+import { useUrlParams } from '@/lib/client/useUrlParams';
 import { PageHeading } from '@/components/layout/PageHeading';
 import { Masterlist, type Column, type QuickFilter } from '@/components/ui/masterlist/Masterlist';
+import type { TrailItem } from '@/components/ui/record/RecordModal';
 
 export type ListState<R> = {
   rows: R[];
@@ -27,9 +27,12 @@ export type ListState<R> = {
 /** Mảng rỗng cố định: `rows` phải giữ nguyên identity khi chưa có dữ liệu (Masterlist memo theo nó). */
 const NO_ROWS: never[] = [];
 
-/** Tải danh sách của module một lần; sửa / thêm / xóa cập nhật tại chỗ, tải lại giữ dòng cũ. */
+/**
+ * Tải danh sách của module một lần; sửa / thêm / xóa cập nhật tại chỗ, tải lại giữ dòng cũ. Quay lại trang thì hiện ngay
+ * danh sách lần trước trong lúc tải bản mới (useFetch `cache`).
+ */
 export function useList<R extends { id: string }>(url: string): ListState<R> {
-  const { data, setData, loading, error, reload } = useFetch<R[]>(url);
+  const { data, setData, loading, error, reload } = useFetch<R[]>(url, { cache: true });
   return {
     rows: data ?? NO_ROWS, loading, error, reload,
     upsert: (row) => setData((list) => {
@@ -40,43 +43,45 @@ export function useList<R extends { id: string }>(url: string): ListState<R> {
   };
 }
 
+/**
+ * Những gì ModuleWorkspace đưa cho phần vẽ modal của module — phẳng, để module truyền thẳng vào
+ * RecordModal (`<RecordModal {...ctx} />`) rồi bổ sung phần riêng.
+ */
 export type DetailCtx<R> = {
-  row: R | null;
+  record: R | null;
   creating: boolean;
   loading: boolean;
   error: string | null;
-  /** Thử tải lại bản ghi khi `error` (trang chi tiết riêng). */
-  onRetry?: () => void;
+  onRetry: () => void;
   nav: { onPrev?: () => void; onNext?: () => void };
+  trail: TrailItem[];
   onClose: () => void;
-  onExpand?: () => void;
-  onSaved: (row: R, created: boolean) => void;
+  /** `open = false`: thêm mới xong nhưng còn một màn hình nữa (mật khẩu tạm) — chỉ cập nhật danh sách. */
+  onSaved: (row: R, created: boolean, open?: boolean) => void;
   onDeleted: (row: R) => void;
-  /** Mở bản ghi khác trong cùng module (cha / con…). */
-  open: (id: string) => void;
-  /** Mở form thêm mới với giá trị điền sẵn (ví dụ thêm thiết bị con: { parent_id }). */
-  create?: (defaults?: Record<string, unknown>) => void;
-  /** Giá trị điền sẵn của form thêm mới đang mở. */
+  /** Tải lại cả masterlist và bản ghi — khi thao tác đổi cả các dòng khác (Swap, Move, xóa cả cây). */
+  reload: () => void;
+  /** Tăng sau mỗi lần `reload` — phần tải riêng của modal (cây, thiết bị con) đưa vào URL để tải lại theo. */
+  version: number;
+  /** Giá trị điền sẵn của form thêm mới đang mở (ví dụ thêm thiết bị con: { parent_id }). */
   defaults?: Record<string, unknown>;
-  /** Tải lại cả masterlist — khi thao tác đổi cả các dòng khác (ví dụ Swap, xóa cả cây). */
-  reload?: () => void;
-  leaveRef: MutableRefObject<((proceed: () => void) => void) | null>;
+  /** Mở bản ghi liên quan trong cùng module (cha / con…); `fromLabel` = tên bản ghi đang xem, để hiện ở breadcrumb. */
+  open: (id: string, fromLabel: string) => void;
+  /** Mở form thêm mới với giá trị điền sẵn. */
+  create?: (defaults?: Record<string, unknown>) => void;
 };
 
-/**
- * Công cụ của module (ví dụ Import Excel): nút trên thanh công cụ, mở trong
- * khung bên phải — cùng chỗ với Detail Panel, không mở hộp thoại riêng.
- */
+/** Công cụ của module (ví dụ Import Excel): nút trên thanh công cụ, mở một modal (`?tool=`). */
 export type WorkspaceTool = {
   key: string;
   label: string;
   icon?: ReactNode;
-  render: (ctx: { onClose: () => void }) => ReactNode;
+  render: (ctx: { onClose: () => void; reload: () => void }) => ReactNode;
 };
 
 export function ModuleWorkspace<R extends { id: string }>({
   title, list, columns, storageKey, defaultColumns, exportName, quickFilters, leading, rowTone, canAdd, addLabel,
-  tools, renderDetail, detailPath, beforeList, mobileCard,
+  tools, recordUrl, renderDetail, beforeList, mobileCard,
 }: {
   title: string;
   list: ListState<R>;
@@ -94,91 +99,109 @@ export function ModuleWorkspace<R extends { id: string }>({
   addLabel?: string;
   /** Nút công cụ đứng sau Xuất Excel, trước + Thêm (điện thoại: mục trong menu ⋮). */
   tools?: WorkspaceTool[];
+  /** API của một bản ghi, ví dụ (id) => `/api/equipment/${id}`. Không có: lấy bản ghi từ danh sách (Error log). */
+  recordUrl?: (id: string) => string;
   renderDetail: (ctx: DetailCtx<R>) => ReactNode;
-  /** Trang chi tiết toàn trang (nút ⤢). */
-  detailPath?: (id: string) => string;
   /** Nội dung trên masterlist (ví dụ danh sách con của Configuration). */
   beforeList?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('id'));
-  const [creating, setCreating] = useState(searchParams.get('new') === '1' && canAdd);
-  // ?new=1&defaults={...}: form thêm mới điền sẵn (trang chi tiết riêng mở "Thêm thiết bị con").
-  const [createDefaults, setCreateDefaults] = useState<Record<string, unknown> | undefined>(() => {
-    try { return JSON.parse(searchParams.get('defaults') ?? 'null') ?? undefined; } catch { return undefined; }
-  });
-  const [toolKey, setToolKey] = useState<string | null>(searchParams.get('tool'));
+  const { searchParams, update, back } = useUrlParams();
+  const id = searchParams.get('id');
+  const creating = searchParams.get('new') === '1' && canAdd;
+  const toolKey = searchParams.get('tool');
   const tool = tools?.find((x) => x.key === toolKey) ?? null;
-  const activeTool = tool?.key ?? null;
+  const open = id !== null || creating || tool !== null;
+
   const [viewIds, setViewIds] = useState<string[]>([]);
-  const leaveRef = useRef<((proceed: () => void) => void) | null>(null);
+  const [version, setVersion] = useState(0);
+  const [createDefaults, setCreateDefaults] = useState<Record<string, unknown> | undefined>();
+  const [trailState, setTrailState] = useState<{ owner: string; items: { id: string; label: string }[] }>({ owner: '', items: [] });
+  /** Modal này do một lần `push` mở ra: đóng bằng Back để lịch sử trình duyệt không thừa một bước. */
+  const pushedRef = useRef(false);
   const lastSelected = useRef<string | null>(null);
 
-  const open = selectedId !== null || creating || tool !== null;
+  useEffect(() => { if (!open) pushedRef.current = false; }, [open]);
 
-  // Đồng bộ đường dẫn: ?id=… hoặc ?new=1 (giữ các tham số khác).
-  useEffect(() => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete('id');
-    params.delete('new');
-    params.delete('tool');
-    params.delete('defaults');
-    if (selectedId) params.set('id', selectedId);
-    if (creating) params.set('new', '1');
-    if (activeTool) params.set('tool', activeTool);
-    const next = params.toString();
-    if (next !== searchParams.toString()) router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, creating, activeTool]);
+  /** Mở một màn hình của modal: từ danh sách (chưa có modal) thì push, đang ở trong modal thì replace. */
+  const go = useCallback((changes: Record<string, string | null>) => {
+    const base = { id: null, new: null, tool: null, ...changes };
+    if (open) update(base, 'replace');
+    else { pushedRef.current = true; update(base, 'push'); }
+  }, [open, update]);
 
-  const guarded = useCallback((go: () => void) => {
-    if (leaveRef.current) leaveRef.current(go);
-    else go();
-  }, []);
-
-  const select = useCallback((id: string) => {
-    guarded(() => { setCreating(false); setToolKey(null); setSelectedId(id); lastSelected.current = id; });
-  }, [guarded]);
+  const select = useCallback((rowId: string) => {
+    lastSelected.current = rowId;
+    setTrailState({ owner: '', items: [] });
+    go({ id: rowId });
+  }, [go]);
 
   const create = useCallback((defaults?: Record<string, unknown>) => {
-    guarded(() => { setSelectedId(null); setToolKey(null); setCreateDefaults(defaults); setCreating(true); });
-  }, [guarded]);
+    setCreateDefaults(defaults);
+    go({ new: '1' });
+  }, [go]);
 
   const close = useCallback(() => {
-    const back = lastSelected.current;
-    setSelectedId(null);
-    setCreating(false);
-    setToolKey(null);
-    if (back) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-row-id="${back}"]`)?.focus());
-  }, []);
+    const focusRow = lastSelected.current;
+    setTrailState({ owner: '', items: [] });
+    if (pushedRef.current) { pushedRef.current = false; back(); } else update({ id: null, new: null, tool: null }, 'replace');
+    if (focusRow) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-row-id="${focusRow}"]`)?.focus());
+  }, [back, update]);
 
-  const index = selectedId ? viewIds.indexOf(selectedId) : -1;
+  // Bản ghi theo id (chi tiết đầy đủ); useFetch giữ dữ liệu cũ khi đổi id nên che bằng id. Trong lúc chờ, hiện NGAY dòng của danh sách
+  // (cùng một dạng dữ liệu với chi tiết — dịch vụ dùng chung một toRow) rồi thay bằng bản vừa tải; tải lỗi thì báo lỗi như cũ.
+  const fetched = useFetch<R>(recordUrl && id && !creating ? recordUrl(id) : null);
+  const fromList = useMemo(() => (id ? list.rows.find((r) => r.id === id) ?? null : null), [id, list.rows]);
+  const loaded = fetched.data && fetched.data.id === id ? fetched.data : null;
+  const record = recordUrl ? (loaded ?? (fetched.error ? null : fromList)) : fromList;
+  const reload = useCallback(() => { setVersion((v) => v + 1); list.reload(); fetched.reload(); }, [list, fetched]);
+
+  const index = id ? viewIds.indexOf(id) : -1;
   const prevId = index > 0 ? viewIds[index - 1] : undefined;
   const nextId = index >= 0 && index < viewIds.length - 1 ? viewIds[index + 1] : undefined;
   const nav = useMemo(() => ({
-    onPrev: prevId ? () => { setSelectedId(prevId); lastSelected.current = prevId; } : undefined,
-    onNext: nextId ? () => { setSelectedId(nextId); lastSelected.current = nextId; } : undefined,
-  }), [prevId, nextId]);
+    onPrev: prevId ? () => { lastSelected.current = prevId; update({ id: prevId }, 'replace'); } : undefined,
+    onNext: nextId ? () => { lastSelected.current = nextId; update({ id: nextId }, 'replace'); } : undefined,
+  }), [prevId, nextId, update]);
 
-  // ↑ / ↓ (hoặc K / J) chuyển bản ghi khi không gõ trong ô nhập.
-  useEffect(() => {
-    if (!selectedId) return;
-    function onKey(e: KeyboardEvent) {
-      const target = e.target instanceof Element ? e.target : null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="listbox"], .tree')) return;
-      if (e.altKey || e.ctrlKey || e.metaKey) return;
-      if ((e.key === 'ArrowUp' || e.key === 'k') && nav.onPrev) { e.preventDefault(); guarded(nav.onPrev); }
-      if ((e.key === 'ArrowDown' || e.key === 'j') && nav.onNext) { e.preventDefault(); guarded(nav.onNext); }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, nav, guarded]);
+  const items = trailState.owner === id || trailState.items.length === 0 ? trailState.items : [];
+  const trail: TrailItem[] = items.map((item, i) => ({
+    label: item.label,
+    onClick: () => {
+      setTrailState({ owner: item.id, items: items.slice(0, i) });
+      update({ id: item.id }, 'replace');
+    },
+  }));
 
-  const row = selectedId ? list.rows.find((r) => r.id === selectedId) ?? null : null;
-  const notFound = !!selectedId && !list.loading && !row && !list.error;
+  const detail: DetailCtx<R> = {
+    record: creating ? null : record,
+    creating,
+    loading: (recordUrl ? fetched.loading : list.loading) && !record,
+    error: recordUrl ? fetched.error : !record && list.error ? list.error : !record && !list.loading && id ? t('dp.notFound') : null,
+    onRetry: recordUrl ? fetched.reload : list.reload,
+    nav,
+    trail,
+    onClose: close,
+    onSaved: (saved, created, openDetail = true) => {
+      list.upsert(saved);
+      if (created && !openDetail) return;
+      if (created) {
+        lastSelected.current = saved.id;
+        fetched.setData(saved);
+        update({ new: null, id: saved.id }, 'replace');
+      } else fetched.setData(saved);
+    },
+    onDeleted: (deleted) => { list.remove(deleted.id); close(); },
+    reload,
+    version,
+    defaults: creating ? createDefaults : undefined,
+    open: (target, fromLabel) => {
+      if (!id) return;
+      setTrailState({ owner: target, items: [...items, { id, label: fromLabel }] });
+      update({ id: target }, 'replace');
+    },
+    create: canAdd ? create : undefined,
+  };
 
   return (
     <div className="ws" data-open={open || undefined} data-add={canAdd || undefined}>
@@ -196,42 +219,19 @@ export function ModuleWorkspace<R extends { id: string }>({
           <Masterlist
             title={title} rows={list.rows} loading={list.loading} error={list.error} onRetry={list.reload}
             columns={columns} mobileCard={mobileCard} storageKey={storageKey} defaultColumns={defaultColumns} exportName={exportName} quickFilters={quickFilters}
-            leading={leading} rowTone={rowTone} selectedId={selectedId} onSelect={select}
+            leading={leading} rowTone={rowTone} selectedId={id} onSelect={select}
             onAdd={canAdd ? () => create() : undefined}
-            addLabel={addLabel} onViewChange={setViewIds}
+            addLabel={addLabel} onViewChange={setViewIds} initialSearch={searchParams.get('q') ?? undefined}
             tools={tools?.map((x) => ({
               key: x.key, label: x.label, icon: x.icon, active: toolKey === x.key,
-              onClick: () => guarded(() => { setSelectedId(null); setCreating(false); setToolKey(x.key); }),
+              onClick: () => go({ tool: x.key }),
             }))}
           />
         </div>
-        {open && <div className="ws-scrim" aria-hidden="true" />}
-        {open && (
-          <div className="ws-panel">
-            {tool ? tool.render({ onClose: close }) : renderDetail({
-              row: creating ? null : row,
-              creating,
-              loading: list.loading && !row,
-              // Danh sách tải lỗi → panel báo cùng lỗi (không kẹt ở khung đang tải).
-              error: !row && list.error ? list.error : notFound ? t('dp.notFound') : null,
-              onRetry: list.reload,
-              nav,
-              onClose: close,
-              onExpand: detailPath && selectedId ? () => router.push(detailPath(selectedId)) : undefined,
-              onSaved: (saved, created) => {
-                list.upsert(saved);
-                if (created) { setCreating(false); setSelectedId(saved.id); lastSelected.current = saved.id; }
-              },
-              onDeleted: (deleted) => { list.remove(deleted.id); close(); },
-              open: select,
-              create: canAdd ? create : undefined,
-              reload: list.reload,
-              defaults: creating ? createDefaults : undefined,
-              leaveRef,
-            })}
-          </div>
-        )}
       </div>
+      {/* key: thêm mới (M) → chi tiết (L) là hai modal khác nhau; mỗi bản ghi mở thẳng cũng là một modal mới. */}
+      {tool ? <Fragment key={`tool:${tool.key}`}>{tool.render({ onClose: close, reload: list.reload })}</Fragment>
+        : (id !== null || creating) && <Fragment key={creating ? 'new' : 'record'}>{renderDetail(detail)}</Fragment>}
     </div>
   );
 }

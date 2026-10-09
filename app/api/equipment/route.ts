@@ -7,9 +7,8 @@ import { createSchema } from './schema';
 /** Masterlist thiết bị — mọi nhóm. */
 export const GET = withAuth(async (_req, { requestId }) => ok(await listEquipment(), requestId));
 
-/** Thêm thiết bị — Admin, User. `meta.duplicate` = serial đã có (chỉ cảnh báo). */
+/** Thêm thiết bị — Admin, User. Serial trùng chỉ cảnh báo: màn hình gọi /api/assets/serial-matches trước khi lưu. */
 export const POST = withAuth(async (req, { requestId, profile }) => {
   const body = defined(parseBody(createSchema, await readJson(req)));
-  const { row, duplicate } = await createEquipment(body, profile.id);
-  return ok(row, requestId, { duplicate });
+  return ok(await createEquipment(body, profile.id), requestId);
 }, { role: EDITORS });

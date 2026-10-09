@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, Info, Loader2, RotateCcw, TriangleAlert, X, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -66,19 +66,73 @@ export function Notice({
 /** Open dialogs, oldest first — Escape and Tab only act on the newest (a picker sheet over a dialog). */
 const openModals: object[] = [];
 
-/** Hộp thoại — mount khi mở, unmount khi đóng (trả focus về chỗ cũ). */
+/** Cỡ cố định theo màn hình mở đầu (docs/DETAIL_MODEL.md 3.1): S ~440px, M ~640px, L ~960px; dưới 768px luôn toàn màn hình. */
+export type ModalSize = 's' | 'm' | 'l';
+
+type ModalContextValue = { footerEl: HTMLElement | null; size: ModalSize };
+const ModalContext = createContext<ModalContextValue | null>(null);
+/** Màn hình đang bị che (ví dụ "Hủy bỏ thay đổi?" đang hiện trên form): nút footer của nó tạm ngừng hiện. */
+const SuspendedContext = createContext(false);
+
+/** True khi nằm trong một Modal — popover (SearchableSelect…) khi đó không được mở thêm hộp thoại. */
+export function useInModal(): boolean {
+  return useContext(ModalContext) !== null;
+}
+
+export function ModalSuspend({ suspended, children }: { suspended: boolean; children: ReactNode }) {
+  return <SuspendedContext.Provider value={suspended}>{children}</SuspendedContext.Provider>;
+}
+
+/**
+ * Nút ở footer của Modal gần nhất, viết ngay cạnh màn hình sở hữu chúng (trạng thái đang gửi, đang chạy thử…)
+ * thay vì phải đẩy lên khung. Không làm gì ngoài Modal hoặc khi màn hình đang bị che.
+ */
+export function ModalFooter({ children }: { children: ReactNode }) {
+  const ctx = useContext(ModalContext);
+  const suspended = useContext(SuspendedContext);
+  if (!ctx?.footerEl || suspended) return null;
+  return createPortal(children, ctx.footerEl);
+}
+
+let pageLocks = 0;
+/** Modal mở: nền không cuộn và không nhận focus / bấm (inert); modal cuối cùng đóng thì trả lại. */
+function lockPage() {
+  if (pageLocks++ > 0) return;
+  document.body.style.overflow = 'hidden';
+  document.querySelector('.app-shell')?.setAttribute('inert', '');
+}
+function unlockPage() {
+  if (--pageLocks > 0) return;
+  pageLocks = 0;
+  document.body.style.overflow = '';
+  document.querySelector('.app-shell')?.removeAttribute('inert');
+}
+
+/**
+ * Hộp thoại — mount khi mở, unmount khi đóng (trả focus về chỗ cũ). Vẽ ra `document.body`.
+ * `header` thay tiêu đề mặc định (RecordModal: ‹ ›, breadcrumb, tag); `tabs` đứng cố định dưới header;
+ * `busy`: đang gửi — không đóng được.
+ */
 export function Modal({
-  title, onClose, children, wide, sheet, footer,
+  title, onClose, children, size = 's', sheet, footer, header, tabs, busy, ariaLabel,
 }: {
-  title: string; onClose: () => void; children: ReactNode; wide?: boolean;
-  /** Phones: slides up from the bottom as a sheet (filters, pickers); elsewhere the same centred dialog. */
+  title: string; onClose: () => void; children: ReactNode;
+  size?: ModalSize;
+  /** Phones: slides up from the bottom as a sheet (filters); elsewhere the same centred dialog. */
   sheet?: boolean;
   /** Action buttons pinned below the scrolling body — so Save/Cancel stay
-   *  reachable on a long form instead of scrolling away with the content. */
+   *  reachable on a long form instead of scrolling away with the content.
+   *  Without it, screens place their buttons with <ModalFooter>. */
   footer?: ReactNode;
+  header?: ReactNode;
+  tabs?: ReactNode;
+  busy?: boolean;
+  ariaLabel?: string;
 }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  const [footerEl, setFooterEl] = useState<HTMLElement | null>(null);
   // Callers pass an inline `onClose`, a fresh function identity on every
   // render (e.g. every keystroke in a field this modal contains). Reading
   // it through a ref updated on every render — instead of depending on it
@@ -86,20 +140,28 @@ export function Modal({
   // as "something about the modal changed" and re-grabbing focus mid-type.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  const requestClose = () => { if (!busyRef.current) onCloseRef.current(); };
   // A press that starts inside the dialog (selecting text in a field) and is released over the backdrop
   // still produces a click on the backdrop — that must not close the dialog and throw the form away.
   const pressStartedInside = useRef(false);
 
+  // document.body chỉ có ở trình duyệt: vẽ sau lần render đầu (server và lần đầu của client giống nhau).
+  useEffect(() => { setHost(document.body); }, []);
+
   useEffect(() => {
+    if (!host) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const self = {};
     openModals.push(self);
+    lockPage();
     const onKey = (e: KeyboardEvent) => {
       if (openModals[openModals.length - 1] !== self) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        onCloseRef.current();
+        requestClose();
       } else if (e.key === 'Tab' && ref.current) {
         const items = Array.from(ref.current.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
@@ -121,28 +183,40 @@ export function Modal({
     return () => {
       window.removeEventListener('keydown', onKey);
       openModals.splice(openModals.indexOf(self), 1);
+      unlockPage();
       previousFocus?.focus();
     };
-    // Chạy một lần khi mở — onClose đọc qua onCloseRef ở trên.
-  }, []);
+    // Chạy một lần khi mở — onClose / busy đọc qua ref ở trên.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [host]);
 
-  return (
-    <div className={`modal-overlay${sheet ? ' modal-overlay--sheet' : ''}`}
-         data-action-dialog="true"
-         style={{ background: 'var(--overlay)' }}
-         onMouseDown={(e) => { pressStartedInside.current = e.target !== e.currentTarget; }}
-         onClick={(e) => { e.stopPropagation(); if (!pressStartedInside.current) onClose(); pressStartedInside.current = false; }}>
-      <div
-        ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-        className={`modal-dialog ${wide ? 'modal-dialog--wide' : ''}${sheet ? ' modal-dialog--sheet' : ''}`}
-        style={{ background: 'var(--panel)', borderColor: 'var(--rule)', color: 'var(--ink)' }}
-      >
-        <div className="modal-header"><h2>{title}</h2><button type="button" className="modal-close" onClick={onClose} aria-label={t('common.close')}><X size={20} aria-hidden="true" /></button></div>
-        <div className="modal-body">{children}</div>
-        {footer && <div className="modal-footer">{footer}</div>}
+  const context = useMemo<ModalContextValue>(() => ({ footerEl, size }), [footerEl, size]);
+  if (!host) return null;
+
+  return createPortal(
+    <ModalContext.Provider value={context}>
+      <div className={`modal-overlay${sheet ? ' modal-overlay--sheet' : ''}`}
+           data-action-dialog="true"
+           style={{ background: 'var(--overlay)' }}
+           onMouseDown={(e) => { pressStartedInside.current = e.target !== e.currentTarget; }}
+           onClick={(e) => { e.stopPropagation(); if (!pressStartedInside.current) requestClose(); pressStartedInside.current = false; }}>
+        <div
+          ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={ariaLabel ?? title}
+          onClick={(e) => e.stopPropagation()}
+          className={`modal-dialog modal-dialog--${sheet ? 'sheet' : size}`} data-size={size}
+          style={{ background: 'var(--panel)', borderColor: 'var(--rule)', color: 'var(--ink)' }}
+        >
+          <div className="modal-header">
+            <div className="modal-header-main">{header ?? <h2>{title}</h2>}</div>
+            <button type="button" className="modal-close" onClick={requestClose} disabled={busy} aria-label={t('common.close')}><X size={20} aria-hidden="true" /></button>
+          </div>
+          {tabs}
+          <div className="modal-body">{children}</div>
+          {footer ? <div className="modal-footer">{footer}</div> : <div className="modal-footer" ref={setFooterEl} />}
+        </div>
       </div>
-    </div>
+    </ModalContext.Provider>,
+    host,
   );
 }
 

@@ -36,35 +36,9 @@
 /* Title and record count on one line: the count is context, not a second heading row. */
 .ws .page-heading > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; }
 .ws .page-heading p { margin: 0; }
-.ws-main { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; flex: 1; min-height: 0; }
-.ws-list { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-/* Desktop: the toolbar adapts to the width of the list (a Detail Panel beside it narrows it), not the window.
-   Not on phones: containment would make this box the anchor of the filter sheet's fixed overlay. */
-@media (min-width: 801px) { .ws-list { container: ws-list / inline-size; } }
-/* Narrow list: Columns / Export / module tools keep their icon and name (aria-label, tooltip) but drop the text, so the toolbar stays on one row. */
-@container ws-list (max-width: 800px) {
-  .ml-btn--collapsible .ml-btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  /* Flex wraps by each item's basis before it shrinks, so the search must start smaller to share the row. */
-  .ml-toolbar .ml-search { flex-basis: 190px; min-width: 150px; }
-}
-.ws-panel { min-width: 0; min-height: 0; display: flex; }
-.ws-scrim { display: none; }
+.ws-main { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.ws-list { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .ws-add-fab { display: none; }
-
-/* Desktop rộng: panel đặt cạnh masterlist — 640px, hẹp dần tới 560px trên laptop nhỏ (1280–1450px) để danh sách còn đủ chỗ. */
-@media (min-width: 1280px) {
-  .ws[data-open] .ws-main { grid-template-columns: minmax(0, 1fr) clamp(560px, 44vw, 640px); }
-}
-/* Laptop nhỏ / tablet: panel phủ lên phần phải; phần còn thấy làm mờ, bấm vào không đóng. */
-@media (min-width: 801px) and (max-width: 1279px) {
-  .ws-panel { position: fixed; z-index: 45; top: var(--header-height); right: 0; bottom: 0; width: min(640px, calc(100vw - 48px));
-    box-shadow: -18px 0 40px color-mix(in srgb, var(--jabil-prussian) 18%, transparent); }
-  .ws-scrim { display: block; position: fixed; z-index: 44; inset: var(--header-height) 0 0 0; background: color-mix(in srgb, var(--jabil-prussian) 22%, transparent); }
-}
-/* Điện thoại: panel toàn màn hình. */
-@media (max-width: 800px) {
-  .ws-panel { position: fixed; z-index: 70; inset: 0; }
-}
 
 /* ----------------------------------------------------------- Masterlist */
 .ml { display: flex; flex-direction: column; flex: 1; min-height: 0; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); overflow: hidden; }
@@ -116,47 +90,15 @@ th.ml-col-leading { padding: 10px 8px !important; }
 .ml-more { text-align: center; color: var(--ink-3); }
 .rel { display: inline-grid; place-items: center; color: var(--ink-2); }
 
-/* -------------------------------------------------------- Detail Panel */
-.dp { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); overflow: hidden; }
-.dp-header { flex-shrink: 0; padding: 12px 14px 0; border-bottom: 1px solid var(--rule); background: var(--panel); }
-.dp-header-row { display: flex; align-items: flex-start; gap: 8px; }
-.dp-nav { display: flex; gap: 2px; }
+/* ------------------------------------------- Bản ghi trong modal (trường, thao tác) */
 .dp-icon-btn { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--ink-2); cursor: pointer; flex-shrink: 0; font-size: 20px; line-height: 1; }
 .dp-icon-btn:hover:not(:disabled) { background: var(--machine-tint); border-color: var(--rule); color: var(--ink); }
 .dp-icon-btn:disabled { opacity: .3; cursor: default; }
-.dp-back { display: none; }
-.dp-title { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding-top: 4px; }
-.dp-title h2 { font-size: 18px; font-weight: 600; letter-spacing: -.02em; line-height: 1.3; overflow-wrap: anywhere; }
 .dp-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.dp-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.dp-sub { display: contents; }
-/* The second and third header lines sit under the title: indented past whatever precedes it in the first row
-   (‹ › = 2 × 32px + 2px gap, ← = 32px, plus the 8px row gap). */
-.dp-subtitle { margin: 2px 0 0; font-size: 13px; color: var(--ink-2); }
-.dp-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 0; font-size: 12px; color: var(--ink-3); }
+.dp-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-size: 12px; color: var(--ink-3); }
 .dp-meta span { display: inline-flex; align-items: center; gap: 4px; }
 /* The place is the fact people look for first: ink, not grey (phones show it alone, in its own style). */
-@media (min-width: 801px) { .dp-meta [data-primary] { color: var(--ink); font-weight: 500; } }
-:where(.dp-header[data-nav]) :is(.dp-subtitle, .dp-meta) { margin-left: 74px; }
-[data-layout='page'] :is(.dp-subtitle, .dp-meta) { margin-left: 40px; }
-/* Full page (⤢, QR link): "← Back to list" instead of ✕, which would read as "close the page". */
-[data-layout='page'] .dp-back { display: grid; }
-[data-layout='page'] .dp-close { display: none; }
-.dp-tabs { display: flex; gap: 2px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
-.dp-tab { padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink-2); font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
-.dp-tab[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--jabil-picton); font-weight: 600; }
-.dp-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.dp-body-inner { display: flex; flex-direction: column; gap: 16px; padding: 14px 16px 20px; }
-.dp-footer, .dp-mobilebar { flex-shrink: 0; border-top: 1px solid var(--rule); background: var(--surface); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
-.dp-footer-row { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-.dp-footer-row[data-tone='alert'] { color: var(--alert); }
-.dp-footer-row[data-tone='warn'] { color: var(--warn); }
-.dp-footer:has([data-tone='alert']) { background: var(--alert-tint); }
-.dp-footer:has([data-tone='warn']) { background: var(--warn-tint); }
-.dp-footer-msg { margin-right: auto; font-size: 13px; font-weight: 500; }
-.dp-mobilebar-row { display: flex; align-items: center; gap: 8px; }
-.dp-mobilebar-actions { display: flex; flex: 1; min-width: 0; gap: 8px; }
-.dp-mobilebar-actions .ui-button { flex: 1; min-width: 0; justify-content: center; }
+@media (min-width: 768px) { .dp-meta [data-primary] { color: var(--ink); font-weight: 500; } }
 .dp-section { display: flex; flex-direction: column; gap: 10px; }
 .dp-section-title { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--rule-soft); padding-bottom: 5px; }
 .dp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
@@ -180,7 +122,6 @@ th.ml-col-leading { padding: 10px 8px !important; }
 .dp-radios label:has(input:focus-visible) { outline: 3px solid var(--jabil-picton); outline-offset: 2px; }
 .dp-radios input { margin: 0; accent-color: var(--machine); }
 .dp-pre { white-space: pre-wrap; font-size: 11px; line-height: 1.5; max-height: 320px; overflow: auto; padding: 8px; border-radius: 8px; background: var(--surface); }
-.dp-preview { margin: 0; padding-left: 18px; font-size: 13px; }
 /* Quan hệ cha – con: chip SN · PN, bấm để mở (thêm / gắn / đổi nằm ở nút Thao tác). */
 .eq-rel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; white-space: normal; }
 .eq-chip { display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%; padding: 1px 8px; border: 1px solid var(--rule); border-radius: 8px;
@@ -190,38 +131,13 @@ th.ml-col-leading { padding: 10px 8px !important; }
 .eq-chip-serial { font-weight: 600; overflow-wrap: anywhere; }
 .eq-chip-part { font-size: 12px; color: var(--ink-3); }
 .eq-note { margin-left: 8px; font-size: 12px; color: var(--ink-3); }
-/* Thiết bị con khi di chuyển / xóa: thẻ chọn Đi theo / Ở lại chỗ cũ (tiêu đề + mô tả kết quả). */
-.eq-choice { display: grid; gap: 8px; }
-.eq-choice label { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 10px;
-  background: var(--panel); cursor: pointer; }
-.eq-choice label:hover { border-color: var(--jabil-picton); }
-.eq-choice label:has(input:checked) { border-color: var(--machine); box-shadow: inset 0 0 0 1px var(--machine); background: var(--machine-tint); }
-.eq-choice label:has(input:focus-visible) { outline: 3px solid var(--jabil-picton); outline-offset: 2px; }
-.eq-choice input { margin: 3px 0 0; accent-color: var(--machine); }
-.eq-choice-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
-.eq-choice-text strong { font-weight: 600; color: var(--ink); }
-.eq-choice-text span { color: var(--ink-2); line-height: 1.5; }
-.dp-skeleton { display: flex; flex-direction: column; gap: 18px; padding: 16px; }
-.dp-more { position: relative; }
-.dp-more-trigger { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.dp-more-trigger[aria-expanded='true'] { background: var(--machine-tint); border-color: var(--jabil-picton); }
-.dp-more-backdrop { display: none; }
-.dp-more-list { position: absolute; z-index: 65; top: calc(100% + 4px); right: 0; min-width: 210px; list-style: none; margin: 0; padding: 4px;
-  border: 1px solid var(--rule); border-radius: 10px; background: var(--panel); box-shadow: 0 10px 28px color-mix(in srgb, var(--jabil-prussian) 14%, transparent); }
-.dp-more-list button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: none; color: var(--ink); font-size: 13px; text-align: left; cursor: pointer; }
-.dp-more-list button:hover { background: var(--machine-tint); }
-.dp-more-list button[data-danger] { color: var(--alert); border-top: 1px solid var(--rule-soft); border-radius: 0 0 7px 7px; }
+.dp-skeleton { display: flex; flex-direction: column; gap: 18px; }
 .dp-action { display: flex; flex-direction: column; gap: 12px; }
-.dp-action-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; border: 0; background: none; color: var(--ink-2); font-size: 13px; cursor: pointer; }
-.dp-action-title { font-size: 16px; font-weight: 600; }
 .dp-action-desc { font-size: 13px; color: var(--ink-2); line-height: 1.6; }
 .dp-action-body { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-.dp-action-footer { position: sticky; bottom: -20px; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0; margin-top: 4px; border-top: 1px solid var(--rule-soft); background: var(--panel); }
-.record-page { display: flex; flex: 1; min-height: calc(100dvh - var(--header-height) - 56px); max-width: 1100px; margin: 0 auto; width: 100%; }
-.record-page .dp-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 
 /* ---------------------------------------------------------------- Lịch sử */
-.hist { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.hist { display: flex; flex-direction: column; gap: 10px; }
 .hist-filter { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
 .hist-empty, .dash-empty { color: var(--ink-3); font-size: 13px; padding: 8px 0; }
 .hist-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -262,9 +178,9 @@ th.ml-col-leading { padding: 10px 8px !important; }
 .imp-table li[data-tone='warn'] { color: var(--warn); }
 .imp-num { width: 56px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .imp-serial { width: 30%; font-weight: 600; overflow-wrap: anywhere; }
-@media (max-width: 800px) { .imp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 767px) { .imp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-.tree { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
+.tree { display: flex; flex-direction: column; gap: 8px; }
 .tree-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .tree-search { flex: 1 1 180px; min-width: 160px; }
 .tree-count { font-size: 12px; color: var(--ink-3); }
@@ -361,43 +277,8 @@ li[data-match] > .tree-row .tree-sn, li[data-match] > .tree-row .tree-pn { backg
 }
 
 /* -------------------------------------------------------------- Điện thoại */
-/* Detail Panel: tiêu đề + ‹ › ở trên, nút chính + Thao tác ở đáy (vùng ngón cái). */
-@media (max-width: 800px) {
-  .dp { border-radius: 0; border: 0; }
-  .dp-header { padding: calc(6px + env(safe-area-inset-top)) 6px 0; }
-  .dp-header-row { align-items: center; gap: 0; }
-  .dp-icon-btn { width: 44px; height: 44px; }
-  .dp-back { display: grid; }
-  .dp-nav { order: 3; }
-  .dp-expand, .dp-close, .dp-primary, .dp-edit { display: none; }
-  .dp-title { padding-top: 0; }
-  .dp-title h2 { font-size: 17px; }
-  .dp-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; padding-left: 50px; }
-  .dp .dp-subtitle, .dp .dp-meta { margin: 0; }
-  .dp-meta span:nth-child(n + 2) { display: none; }
-  .dp-tabs { margin-top: 4px; }
-  .dp-tab { min-height: 44px; padding-block: 0; }
-  .dp-body-inner { padding: 12px 12px 20px; gap: 14px; }
-  .dp-grid { grid-template-columns: minmax(0, 1fr); }
-  /* Xem: trường ngắn đứng hai cột cho đỡ cuộn; Sửa / thêm mới: một cột để gõ cho dễ. */
-  .dp-body-inner[data-mode='view'] .dp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
-  .dp-input input:not([type='checkbox']):not([type='radio']), .dp-input textarea, .dp-input select, .dp-input [role='combobox'], .dp-input > button { min-height: 44px; font-size: 16px; }
-  .dp-mobilebar-actions .ui-button { min-height: 48px; font-size: 14px; }
-  .dp-mobilebar-actions .ui-button--primary { flex: 2; }
-  .dp-mobilebar .dp-more-trigger { min-height: 48px; padding-inline: 14px; font-size: 14px; }
-  .dp-footer-row { gap: 8px; }
-  .dp-footer-row .ui-button { flex: 1; min-height: 48px; }
-  .dp-footer-row .ui-button--primary { flex: 1.5; }
-  .dp-footer-msg { flex: 1 1 100%; margin-right: 0; }
-  .dp-more-backdrop { display: block; position: fixed; inset: 0; z-index: 64; background: var(--overlay); }
-  .dp-more-list { position: fixed; top: auto; left: 0; right: 0; bottom: 0; border-radius: 14px 14px 0 0; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); }
-  .dp-more-list button { min-height: 48px; font-size: 15px; }
-  /* Màn hình thao tác: [Hủy] [Xác nhận] bám đáy; "Quay lại" thừa vì đã có Hủy. */
-  .dp-body-inner:has(> .dp-action) { min-height: 100%; }
-  .dp-action { flex: 1; }
-  .dp-action-back { display: none; }
-  .dp-action-footer { margin-top: auto; }
-  .dp-action-footer .ui-button { flex: 1; min-height: 48px; }
+/* Modal toàn màn hình, danh sách dạng thẻ: xem khối riêng ở globals.css và bên dưới. */
+@media (max-width: 767px) {
   .dp-radios label, .dp-checks label, .dp-switch { min-height: 44px; }
   .eq-chip { min-height: 44px; align-items: center; }
   /* Text links inside detail values keep their look but get a 44px touch area. */
@@ -405,7 +286,6 @@ li[data-match] > .tree-row .tree-sn, li[data-match] > .tree-row .tree-pn { backg
   .tree-row { min-height: 44px; }
   .tree-toggle { width: 34px; height: 40px; }
   .tree-toggle-space { width: 34px; }
-  .record-page { height: 100%; min-height: 0; }
   /* Configuration: ô chọn danh sách ở đầu trang đã nêu tên danh sách → bỏ tiêu đề lặp (giữ cho trình đọc màn hình). */
   .cfg { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 10px; }
   .cfg-nav { padding: 0; border: 0; background: none; }
@@ -416,7 +296,7 @@ li[data-match] > .tree-row .tree-sn, li[data-match] > .tree-row .tree-pn { backg
 }
 
 /* Desktop auto-hide rail: opening overlays content without resizing tables. */
-@media (min-width: 801px) {
+@media (min-width: 768px) {
   .app-body { position: relative; padding-left: var(--sidebar-rail-width); }
   .app-shell[data-sidebar-pinned='true'] .app-body { padding-left: var(--sidebar-width); }
   .sidebar-region { position: absolute; inset: 0 auto 0 0; z-index: 40; overflow-x: hidden; }
@@ -433,12 +313,12 @@ li[data-match] > .tree-row .tree-sn, li[data-match] > .tree-row .tree-pn { backg
 /* ---------------------------------------------- Điện thoại: danh sách dạng thẻ */
 /* Không ép bảng vào màn hình hẹp: mỗi dòng là một thẻ (Masterlist `mobileCard` / RowCard);
    thanh công cụ chỉ còn tìm kiếm + Lọc & sắp xếp + menu ⋮; nút + nổi thay nút Thêm. */
-@media (max-width: 800px) {
+@media (max-width: 767px) {
   .ws .page-heading { flex-shrink: 0; margin-bottom: 8px; }
   .ml-toolbar { flex-shrink: 0; flex-wrap: nowrap; gap: 6px; padding: 8px; }
   .ml-search { flex: 1 1 auto; min-width: 0; height: 44px; }
   .ml-search input { align-self: stretch; font-size: 16px; }
-  .ml-icon-btn, .dp-more-trigger--icon { position: relative; flex-shrink: 0; width: 44px; min-height: 44px; padding: 0; }
+  .ml-icon-btn, .am-trigger--icon { position: relative; flex-shrink: 0; width: 44px; min-height: 44px; padding: 0; }
   .ml-icon-btn .ml-badge { position: absolute; top: 2px; right: 2px; }
   .ml-quick { display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0; padding: 0 8px 8px; }
   .ml-quick .ui-button { min-height: 44px; }
@@ -485,7 +365,7 @@ li[data-match] > .tree-row .tree-sn, li[data-match] > .tree-row .tree-pn { backg
 }
 
 /* ------------------------------------------------------- Điện thoại: Dashboard */
-@media (max-width: 800px) {
+@media (max-width: 767px) {
   .dash { gap: 10px; }
   .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .kpi { padding: 10px 12px; gap: 2px; }
@@ -507,17 +387,6 @@ li[data-match] > .tree-row .tree-sn, li[data-match] > .tree-row .tree-pn { backg
 }
 
 /* Check-out / Check-in: chọn nhiều thiết bị */
-.use-search { width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--rule); border-radius: var(--radius-control); font: inherit; background: var(--panel); color: var(--ink); }
-.use-all { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; cursor: pointer; }
-.use-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 340px; overflow: auto; border: 1px solid var(--rule); border-radius: var(--radius-control); }
-.use-list li + li { border-top: 1px solid var(--rule); }
-.use-list label { display: flex; align-items: center; gap: 8px; padding: 7px 10px; min-height: 36px; font-size: 14px; cursor: pointer; }
-.use-list label:hover { background: var(--machine-tint); }
-.use-list input, .use-all input { margin: 0; accent-color: var(--machine); }
-.use-meta { color: var(--ink-3); font-size: 12px; overflow-wrap: anywhere; }
-.use-blocked { color: var(--warn); font-weight: 600; }
-.use-list label:has(input:disabled) { cursor: not-allowed; opacity: 0.75; }
-@media (max-width: 767px) { .use-list label, .use-all { min-height: 44px; } }
 /* Usage: In use = xanh lá tươi đặc, chấm trắng có quầng (nổi bật); Not in use = xám nhạt, chấm xám. Khác tag Status (không chấm). */
 .tag-usage { font-weight: 700; letter-spacing: 0.1px; }
 .tag-usage[data-usage='in_use'] { color: #fff; background: linear-gradient(180deg, #22c55e, #16a34a); border-color: #15803d; box-shadow: 0 1px 2px rgba(22, 163, 74, 0.35); }
@@ -534,3 +403,77 @@ li[data-match] > .tree-row .tree-sn, li[data-match] > .tree-row .tree-pn { backg
 .tag-pick[aria-pressed='true'] { opacity: 1; box-shadow: 0 0 0 1.5px var(--sc-ink, var(--ink)); }
 .tag-pick:focus-visible { outline: 3px solid var(--jabil-picton); outline-offset: 2px; }
 @media (max-width: 767px) { .tag-pick { min-height: 36px; padding-inline: 12px; } }
+
+/* ------------------------------------------- Thao tác tài sản: mục Kết quả, cây, Overview */
+.op-result { display: flex; flex-direction: column; gap: 8px; }
+.op-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.op-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px; border: 1px solid var(--rule-soft); border-radius: 8px; background: var(--surface); }
+.op-loc { color: var(--ink-2); }
+.op-note { color: var(--ink-3); font-style: italic; }
+.tree-kind { flex-shrink: 0; margin-left: 8px; padding: 0 6px; border: 1px solid var(--rule); border-radius: 5px; font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; line-height: 16px; color: var(--ink-3); }
+.cal-tab { display: flex; flex-direction: column; gap: 10px; }
+.cal-records td:last-child { width: 1%; text-align: right; }
+
+.ob { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
+.ob .page-heading { margin-bottom: 0; }
+.ob-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ob-seg { display: inline-flex; flex-shrink: 0; border: 1px solid var(--rule); border-radius: var(--radius-control); overflow: hidden; background: var(--panel); }
+.ob-seg button { height: 32px; padding: 0 12px; border: 0; border-right: 1px solid var(--rule); background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; }
+.ob-seg button:last-child { border-right: 0; }
+.ob-seg button:hover { background: var(--machine-tint); }
+.ob-seg button[aria-pressed='true'] { background: var(--machine-tint); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px var(--jabil-picton); }
+.ob-seg button:focus-visible { outline: 2px solid var(--jabil-picton); outline-offset: -2px; }
+.ob-kind { min-width: 150px; height: 34px; padding: 0 10px; border: 1px solid var(--rule); border-radius: var(--radius-control); font-size: 13px; }
+.ob-error { margin: 0; font-size: 13px; color: var(--alert); }
+.ob-body { flex: 1; min-height: 160px; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; }
+
+/* Section theo Location: header là một nút cả dòng; lưới tự điền cột rộng tối thiểu 150px (≈ 7 cột ở nội dung 1100px). */
+.ob-section { display: flex; flex-direction: column; gap: 8px; }
+.ob-head { margin: 0; font: inherit; }
+.ob-head button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--rule-soft); background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.ob-head button:hover { background: var(--machine-tint); }
+.ob-head button:focus-visible { outline: 2px solid var(--jabil-picton); outline-offset: -2px; }
+.ob-head-name { font-size: 13px; font-weight: 600; }
+.ob-head-counts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 12px; font-size: 12px; color: var(--ink-2); }
+.ob-head-alerts { display: inline-flex; align-items: center; gap: 3px; }
+.ob-head-alerts[data-tone='warn'] { color: var(--warn); }
+.ob-head-alerts[data-tone='alert'] { color: var(--alert); }
+.ob-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-items: start; }
+
+/* Cột: thẻ gốc (nền đậm hơn) + hàng thẻ con. Mỗi hàng: các ô đường cây 10px rồi thẻ; đường nối liền vì khoảng cách là padding của hàng. */
+.ob-col { display: flex; flex-direction: column; min-width: 0; }
+.ob-row { display: flex; align-items: stretch; min-width: 0; padding-top: 4px; }
+.ob-row > .ob-card, .ob-row > .ob-more { flex: 1; min-width: 0; }
+.ob-guide { position: relative; flex: 0 0 10px; }
+.ob-guide[data-kind='line']::before, .ob-guide[data-kind='mid']::before, .ob-guide[data-kind='last']::before { content: ''; position: absolute; left: 4px; top: 0; bottom: 0; border-left: 1px solid var(--rule); }
+.ob-guide[data-kind='last']::before { bottom: calc(50% - 2px); }
+.ob-guide[data-kind='mid']::after, .ob-guide[data-kind='last']::after { content: ''; position: absolute; left: 4px; right: 0; top: calc(50% + 2px); border-top: 1px solid var(--rule); }
+.ob-card { display: flex; flex-direction: column; justify-content: center; gap: 1px; width: 100%; min-width: 0; min-height: 52px; padding: 6px 8px; border: 1px solid var(--rule); border-left: 3px solid var(--sc-mark, var(--rule)); border-radius: var(--radius-control); background: var(--panel); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.ob-card[data-root] { background: var(--surface); }
+.ob-card:hover { background: var(--machine-tint); }
+.ob-card:focus-visible { outline: 2px solid var(--jabil-picton); outline-offset: 1px; }
+.ob-card[data-matched] { outline: 2px solid var(--machine); outline-offset: 0; background: var(--machine-tint); }
+.ob-line { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.ob-type { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ob-warn { display: inline-flex; flex-shrink: 0; }
+.ob-warn[data-tone='warn'] { color: var(--warn); }
+.ob-warn[data-tone='alert'] { color: var(--alert); }
+.ob-label { flex-shrink: 0; font-size: 10px; line-height: 1.35; color: var(--ink-3); }
+.ob-val { min-width: 0; font-size: 11px; line-height: 1.35; color: var(--ink-2); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ob-unattached { font-size: 10px; line-height: 1.35; color: var(--ink-3); }
+.ob-more { display: flex; align-items: center; min-height: 28px; padding: 0 2px; border: 0; background: none; color: var(--machine); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.ob-more:hover { text-decoration: underline; }
+.ob-more:focus-visible { outline: 2px solid var(--jabil-picton); outline-offset: 1px; border-radius: 4px; }
+.ob-skeleton { display: flex; flex-direction: column; gap: 12px; }
+.ob-skel-head { height: 36px; border-radius: 0; }
+.ob-skel-col { height: 120px; }
+.ob-skel-col[data-tall] { height: 190px; }
+@media (max-width: 767px) {
+  .ob-toolbar { gap: 6px; }
+  .ob-seg button { height: 44px; }
+  .ob-kind { height: 44px; font-size: 16px; }
+  .ob-toolbar .ml-search { flex: 1 1 100%; }
+  .ob-head button { min-height: 44px; }
+  .ob-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ob-more { min-height: 44px; }
+}

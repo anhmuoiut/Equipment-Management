@@ -10,7 +10,7 @@ function Probe() {
 describe('usePhone', () => {
   afterEach(() => vi.mocked(window.matchMedia).mockReset());
 
-  it('follows the (max-width: 800px) media query and reacts when it changes', () => {
+  it('follows the (max-width: 767px) media query and reacts when it changes', () => {
     let listener: (() => void) | undefined;
     const media = {
       matches: false, media: PHONE_QUERY,

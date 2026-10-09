@@ -1,21 +1,26 @@
 import 'server-only';
 
 /**
- * Dữ liệu gốc dùng chung (Configuration) + tên người dùng, đọc một lần mỗi
- * request để đổi id → chữ hiển thị cho danh sách và chi tiết.
+ * Dữ liệu gốc dùng chung (Configuration) + tên người dùng, để đổi id → chữ hiển thị cho danh sách và chi tiết.
+ * Được nhớ trong tiến trình (lookupCache.ts): các Map trả về dùng chung cho mọi request — CHỈ ĐỌC, không sửa.
  */
 import { selectAll } from './db';
+import { cachedLookups } from './lookupCache';
 import { AppError } from '@/lib/errors';
-import type { OptionItem, Options, PartNumberOption, TagItem, TagOption } from '@/lib/types';
+import type { OptionItem, Options, PartNumberOption, TagItem, TagOption, TypeGroupOption, TypeKind, TypeOption } from '@/lib/types';
 
 type Named = { id: string; display_name: string; sort_order: number; is_active: boolean };
-/** `type_id`: Type của mọi thiết bị mang part number này. */
-type PartNumber = Named & { type_id: string; usage_needs_parent: boolean };
+/** `type_id`: Type của mọi thiết bị mang part number này; `level_id`: Level của part number (không bắt buộc). */
+type PartNumber = Named & { type_id: string; level_id: string | null };
+/** `group_id`: nhóm của Type; `kind` luôn bằng kind của nhóm. */
+type TypeRow = Named & { kind: TypeKind; group_id: string };
+type TypeGroupRow = Named & { kind: TypeKind };
 
 export type Lookups = {
   part_numbers: Map<string, PartNumber>;
   locations: Map<string, Named>;
-  types: Map<string, Named>;
+  types: Map<string, TypeRow>;
+  type_groups: Map<string, TypeGroupRow>;
   levels: Map<string, Named>;
   departments: Map<string, Named>;
   calibration_vendors: Map<string, Named>;
@@ -29,11 +34,14 @@ const byOrder = <T extends { sort_order: number; display_name: string }>(a: T, b
 const toMap = <T extends { id: string }>(rows: T[]) => new Map(rows.map((r) => [r.id, r]));
 const BASIC = 'id, display_name, sort_order, is_active';
 
-export async function loadLookups(): Promise<Lookups> {
-  const [part_numbers, locations, types, levels, departments, calibration_vendors, tags, users] = await Promise.all([
-    selectAll<PartNumber>('part_numbers', `${BASIC}, type_id, usage_needs_parent`),
+export const loadLookups = (): Promise<Lookups> => cachedLookups(readLookups);
+
+async function readLookups(): Promise<Lookups> {
+  const [part_numbers, locations, types, type_groups, levels, departments, calibration_vendors, tags, users] = await Promise.all([
+    selectAll<PartNumber>('part_numbers', `${BASIC}, type_id, level_id`),
     selectAll<Named>('locations', BASIC),
-    selectAll<Named>('types', BASIC),
+    selectAll<TypeRow>('types', `${BASIC}, kind, group_id`),
+    selectAll<TypeGroupRow>('type_groups', `${BASIC}, kind`),
     selectAll<Named>('levels', BASIC),
     selectAll<Named>('departments', BASIC),
     selectAll<Named>('calibration_vendors', BASIC),
@@ -41,7 +49,7 @@ export async function loadLookups(): Promise<Lookups> {
     selectAll<{ id: string; full_name: string }>('user_profiles', 'id, full_name'),
   ]);
   return {
-    part_numbers: toMap(part_numbers), locations: toMap(locations), types: toMap(types), levels: toMap(levels),
+    part_numbers: toMap(part_numbers), locations: toMap(locations), types: toMap(types), type_groups: toMap(type_groups), levels: toMap(levels),
     departments: toMap(departments), calibration_vendors: toMap(calibration_vendors), tags: toMap(tags),
     users: new Map(users.map((u) => [u.id, u.full_name])),
   };
@@ -63,6 +71,11 @@ export function tagItems(lookups: Lookups, ids: readonly string[] | null | undef
 /** Thẻ gửi lên phải có thật (database cũng kiểm tra). */
 export function assertTags(lookups: Lookups, ids: readonly string[] | undefined): void {
   if (ids?.some((id) => !lookups.tags.has(id))) throw new AppError('VALIDATION_ERROR', { fields: { tag_ids: 'not_found' } });
+}
+
+/** Loại (tester / base / fixture / sub_equipment) của một Type. */
+export function kindOf(lookups: Lookups, typeId: string | null | undefined): TypeKind | null {
+  return typeId ? lookups.types.get(typeId)?.kind ?? null : null;
 }
 
 /** Type của part number (Configuration › Part Number) — thiết bị mang part number đó luôn có Type này. */
@@ -87,9 +100,11 @@ export function auditOf(lookups: Lookups, row: {
 export function toOptions(lookups: Lookups): Options {
   const list = (map: Map<string, Named>): OptionItem[] => [...map.values()].sort(byOrder);
   return {
-    part_numbers: [...lookups.part_numbers.values()].sort(byOrder) satisfies PartNumberOption[],
+    part_numbers: [...lookups.part_numbers.values()].sort(byOrder)
+      .map((pn): PartNumberOption => ({ ...pn, kind: kindOf(lookups, pn.type_id) ?? 'sub_equipment' })),
     locations: list(lookups.locations),
-    types: list(lookups.types),
+    types: [...lookups.types.values()].sort(byOrder) satisfies TypeOption[],
+    type_groups: [...lookups.type_groups.values()].sort(byOrder) satisfies TypeGroupOption[],
     levels: list(lookups.levels),
     departments: list(lookups.departments),
     calibration_vendors: list(lookups.calibration_vendors),

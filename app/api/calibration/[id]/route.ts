@@ -1,14 +1,13 @@
 import { withAuth, ok } from '@/lib/auth/withAuth';
 import { EDITORS } from '@/lib/permissions';
-import { getCalibration, updateCalibration } from '@/lib/services/calibration';
+import { getSubEquipment, updateSubEquipment } from '@/lib/services/calibration';
 import { assertUuid, defined, parseBody, readJson } from '@/lib/services/core/validate';
-import { updateSchema } from '../schema';
+import { updateSubSchema } from '../schema';
 
 export const GET = withAuth(async (_req, { requestId, params }) =>
-  ok(await getCalibration(assertUuid(params.id)), requestId));
+  ok(await getSubEquipment(assertUuid(params.id)), requestId));
 
-/** Sửa (UPDATE) hoặc ghi nhận hiệu chuẩn (đổi calibration_date → CALIBRATE). */
-export const PUT = withAuth(async (req, { requestId, profile, params }) => {
-  const body = defined(parseBody(updateSchema, await readJson(req)));
-  return ok(await updateCalibration(assertUuid(params.id), body, profile.id), requestId);
-}, { role: EDITORS });
+/** Sửa sub-equipment (đổi tester → Move / Detach, đổi vị trí → Đổi vị trí). Xóa: DELETE /api/assets/sub_equipment/{id}. */
+export const PUT = withAuth(async (req, { requestId, profile, params }) =>
+  ok(await updateSubEquipment(assertUuid(params.id), defined(parseBody(updateSubSchema, await readJson(req))), profile.id), requestId),
+{ role: EDITORS });

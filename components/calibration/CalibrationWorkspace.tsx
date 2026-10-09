@@ -1,37 +1,48 @@
 'use client';
 
-/** Trang Calibration (Dashboard hiệu chuẩn): Masterlist + Detail Panel. */
+/**
+ * Trang Calibration: Masterlist (mỗi sub-equipment một dòng, kèm lần hiệu chuẩn mới nhất) + modal bản ghi
+ * (docs/DETAIL_MODEL.md 4.2). `?q=` điền sẵn ô tìm (từ nhóm Hiệu chuẩn của một Tester).
+ */
 import { useTranslation } from 'react-i18next';
-import { CalendarClock, MapPin } from 'lucide-react';
+import { CalendarClock, MapPin, Upload } from 'lucide-react';
 import { formatDate } from '@/lib/client/api';
-import { CalibrationStatusTag, DueDate, RemarkCell } from '@/components/ui/tags';
+import { useCan } from '@/components/ViewerContext';
+import { CalibrationStatusTag, DueDate, RemarkCell, UsageTag } from '@/components/ui/tags';
 import { ModuleWorkspace, useList } from '@/components/ui/workspace/ModuleWorkspace';
+import { ImportModal } from '@/components/ui/ImportModal';
 import { RowCard, type Column } from '@/components/ui/masterlist/Masterlist';
-import { CalibrationDetail } from './CalibrationDetail';
-import type { CalibrationRow } from '@/lib/types';
+import { SUB_IMPORT_COLUMNS } from '@/lib/subEquipmentImport';
+import { CalibrationModal } from './CalibrationModal';
+import type { SubEquipmentRow } from '@/lib/types';
 
 export function CalibrationWorkspace() {
   const { t } = useTranslation();
-  const list = useList<CalibrationRow>('/api/calibration');
+  const can = useCan();
+  const list = useList<SubEquipmentRow>('/api/calibration');
 
-  const columns: Column<CalibrationRow>[] = [
-    { key: 'status', label: t('fields.status'), value: (r) => t(`cal.status.${r.status}`), render: (r) => <CalibrationStatusTag status={r.status} />, filter: true },
+  const columns: Column<SubEquipmentRow>[] = [
+    { key: 'status', label: t('cal.calibrationStatus'), value: (r) => t(`cal.status.${r.status}`), render: (r) => <CalibrationStatusTag status={r.status} />, filter: true },
+    { key: 'usage', label: t('fields.usage'), value: (r) => t(`values.${r.usage}`), render: (r) => <UsageTag usage={r.usage} />, filter: true },
     { key: 'serial_number', label: t('fields.serial_number'), value: (r) => r.serial_number, render: (r) => <strong>{r.serial_number}</strong> },
     { key: 'part_number', label: t('fields.part_number'), value: (r) => r.part_number, filter: true },
     { key: 'type', label: t('fields.type'), value: (r) => r.type, filter: true },
+    { key: 'tester', label: t('fields.tester'), value: (r) => r.tester_serial, filter: true },
     { key: 'location', label: t('fields.location'), value: (r) => r.location, filter: true },
+    { key: 'calibrated_at', label: t('fields.calibration_date'), value: (r) => r.calibrated_at, render: (r) => (r.calibrated_at ? formatDate(r.calibrated_at) : null) },
+    { key: 'due_date', label: t('fields.due_date'), value: (r) => r.due_date, render: (r) => <DueDate date={r.due_date} status={r.status} /> },
     { key: 'vendor', label: t('fields.vendor'), value: (r) => r.vendor, filter: true },
-    { key: 'calibration_date', label: t('fields.calibration_date'), value: (r) => r.calibration_date,
-      render: (r) => (r.calibration_date ? formatDate(r.calibration_date) : null) },
-    { key: 'due_date', label: t('fields.due_date'), value: (r) => r.due_date, render: (r) => <DueDate date={r.due_date} state={r.due_state} /> },
-    { key: 'interval_months', label: t('fields.interval_months'), value: (r) => r.interval_months,
-      render: (r) => (r.interval_months ? t('cal.months', { count: r.interval_months }) : null) },
-    { key: 'remark', label: t('fields.remark'), value: (r) => [...r.tags.map((x) => x.display_name), r.remark ?? ''].join(' ').trim() || null,
-      render: (r) => <RemarkCell tags={r.tags} remark={r.remark} />, wrap: true, width: 200 },
+    { key: 'cert_no', label: t('fields.cert_no'), value: (r) => r.cert_no },
+    { key: 'result', label: t('fields.result'), value: (r) => (r.result ? t(`cal.result.${r.result}`) : null), filter: true },
+    { key: 'jabil_id', label: t('fields.jabil_id'), value: (r) => r.jabil_id },
+    { key: 'asset', label: t('fields.asset'), value: (r) => r.asset },
+    { key: 'tags', label: t('fields.tags'), value: (r) => r.tags.map((x) => x.display_name).join(', ') || null, filter: true,
+      render: (r) => <RemarkCell tags={r.tags} remark={null} /> },
+    { key: 'remark', label: t('fields.remark'), value: (r) => r.remark, wrap: true, width: 200 },
   ];
 
   return (
-    <ModuleWorkspace<CalibrationRow>
+    <ModuleWorkspace<SubEquipmentRow>
       title={t('nav.calibration')}
       list={list}
       columns={columns}
@@ -41,22 +52,33 @@ export function CalibrationWorkspace() {
           tag={<CalibrationStatusTag status={r.status} />}
           lines={[
             <><MapPin size={13} aria-hidden="true" /><span className="rc-place">{r.location ?? '—'}</span>{[r.part_number, r.type].filter(Boolean).map((x) => ` · ${x}`)}</>,
-            <><CalendarClock size={13} aria-hidden="true" />{r.due_state === 'none' ? t('cal.due.none') : <DueDate date={r.due_date} state={r.due_state} />}</>,
+            r.due_date ? <><CalendarClock size={13} aria-hidden="true" /><DueDate date={r.due_date} status={r.status} /></> : t('cal.noRecordsYet'),
           ]}
         />
       )}
       storageKey="calibration"
-      defaultColumns={['status', 'serial_number', 'part_number', 'location', 'calibration_date', 'due_date']}
+      defaultColumns={['status', 'serial_number', 'part_number', 'location', 'calibrated_at', 'due_date']}
       exportName="calibration"
-      // Thiết bị lên Dashboard tự động theo Configuration › Hiệu chuẩn › Setup — không thêm bằng tay.
-      canAdd={false}
-      detailPath={(id) => `/calibration/${id}`}
+      canAdd={can.edit}
+      addLabel={t('cal.add')}
       quickFilters={[
-        { key: 'overdue', label: t('cal.due.overdue'), test: (r) => r.due_state === 'overdue' },
-        { key: 'due_soon', label: t('cal.due.due_soon'), test: (r) => r.due_state === 'due_soon' },
+        { key: 'overdue', label: t('cal.status.overdue'), test: (r) => r.status === 'overdue' },
+        { key: 'due_soon', label: t('cal.status.due_soon'), test: (r) => r.status === 'due_soon' },
+        { key: 'attention', label: t('cal.quickAttention'), test: (r) => r.status === 'not_calibrated' || r.status === 'failed' },
       ]}
-      rowTone={(r) => (r.due_state === 'overdue' ? 'alert' : r.due_state === 'due_soon' ? 'warn' : undefined)}
-      renderDetail={(ctx) => <CalibrationDetail ctx={ctx} layout="panel" />}
+      rowTone={(r) => (r.status === 'overdue' || r.status === 'failed' ? 'alert' : r.status === 'due_soon' ? 'warn' : undefined)}
+      tools={can.edit ? [{
+        key: 'import', label: t('imp.button'), icon: <Upload size={14} aria-hidden="true" />,
+        render: ({ onClose, reload }) => (
+          <ImportModal
+            endpoint="/api/calibration/import" columns={SUB_IMPORT_COLUMNS} title={t('simp.title')} templateDesc={t('simp.step1Desc')}
+            importLabel={(count) => t('simp.import', { count })} doneLabel={(count) => t('simp.done', { count })}
+            onClose={onClose} onImported={() => { reload(); onClose(); }}
+          />
+        ),
+      }] : undefined}
+      recordUrl={(id) => `/api/calibration/${id}`}
+      renderDetail={(ctx) => <CalibrationModal ctx={ctx} />}
     />
   );
 }

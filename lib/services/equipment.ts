@@ -1,35 +1,38 @@
 import 'server-only';
 
 /**
- * Module Equipment — bảng equipments, equipment_histories.
- * Không đọc bảng của module khác (Calibration gắn vào chi tiết thiết bị qua
- * extension point phía UI). Lịch sử do database tự ghi.
+ * Module Equipment — bảng equipment (tester / base / fixture). Nhật ký do database tự ghi vào asset_logs.
+ * Không đọc bảng của module khác ngoài cây tài sản dùng chung (core/assets.ts: cờ "có con", cây thiết bị).
+ * Thao tác trên cây (Đổi vị trí, Move, Swap, Detach, Check-out / Check-in, Xóa) dùng chung cho cả ba loại tài sản:
+ * lib/services/core/assets.ts và route /api/assets.
  */
 import { appWrite, rpc, selectAll, selectOne } from './core/db';
-import { readHistory } from './core/history';
 import {
-  assertActive, assertTags, auditOf, loadLookups, nameOf, partNumberType, tagItems, type Lookups,
-} from './core/lookups';
+  assetLog, assetOps, changeAssetLocation, equipmentWithLeafChildren,
+} from './core/assets';
+import { assertActive, assertTags, auditOf, kindOf, loadLookups, nameOf, tagItems, type Lookups } from './core/lookups';
 import { AppError } from '@/lib/errors';
-import type { ChildrenMode, EquipmentRow, EquipmentTreeNode, HistoryEntry, Usage } from '@/lib/types';
+import type { AssetKind, AssetType, CalibrationStatus, EquipmentRow, EquipmentTree, HistoryEntry, TreeNode, Usage } from '@/lib/types';
 
 type DbEquipment = {
-  id: string; jabil_id: string | null; part_number_id: string | null; serial_number: string; asset: string | null;
-  type_id: string | null; usage: Usage; level_id: string | null; location_id: string; remark: string | null; tag_ids: string[];
+  id: string; jabil_id: string | null; part_number_id: string; serial_number: string; asset: string | null;
+  type_id: string; usage: Usage; level_id: string | null; location_id: string; remark: string | null; tag_ids: string[];
   parent_id: string | null; created_at: string; created_by: string | null; updated_at: string; updated_by: string | null;
 };
 
 /**
- * Trường nhập của form thiết bị. `parent_id`: thiết bị cha (null = không có cha) — có cha thì vị trí theo cha.
- * `children_mode`: khi sửa đổi cha / vị trí của thiết bị có con — con đi theo hay ở lại chỗ cũ.
+ * Trường nhập của form thiết bị. Type không nhập: luôn theo part number (database tự đặt).
+ * `parent_id` (null = không có cha): có cha thì vị trí và Level theo cha. Đổi cha / vị trí khi sửa đi qua
+ * các hàm thao tác của database (Move / Detach / Đổi vị trí) — con cháu luôn đi theo.
  */
 export type EquipmentInput = {
-  serial_number?: string; jabil_id?: string | null; part_number_id?: string | null; asset?: string | null;
-  type_id?: string | null; level_id?: string | null; location_id?: string | null; remark?: string | null; tag_ids?: string[];
-  parent_id?: string | null; children_mode?: ChildrenMode;
+  serial_number?: string; jabil_id?: string | null; part_number_id?: string; asset?: string | null;
+  level_id?: string | null; location_id?: string | null; remark?: string | null; tag_ids?: string[];
+  parent_id?: string | null;
 };
 
-function toRow(e: DbEquipment, lookups: Lookups, serials: Map<string, string>, parents: Set<string>): EquipmentRow {
+function toRow(e: DbEquipment, lookups: Lookups, parentSerial: string | null, hasChildren: boolean): EquipmentRow {
+  const kind = kindOf(lookups, e.type_id);
   return {
     id: e.id,
     jabil_id: e.jabil_id,
@@ -37,39 +40,38 @@ function toRow(e: DbEquipment, lookups: Lookups, serials: Map<string, string>, p
     serial_number: e.serial_number,
     asset: e.asset,
     type_id: e.type_id, type: nameOf(lookups.types, e.type_id),
+    kind: kind === 'tester' || kind === 'base' || kind === 'fixture' ? kind : null,
     usage: e.usage,
     level_id: e.level_id, level: nameOf(lookups.levels, e.level_id),
     location_id: e.location_id, location: nameOf(lookups.locations, e.location_id),
     remark: e.remark,
     tag_ids: e.tag_ids ?? [], tags: tagItems(lookups, e.tag_ids),
-    parent_id: e.parent_id, parent_serial: e.parent_id ? serials.get(e.parent_id) ?? null : null,
-    has_children: parents.has(e.id),
+    parent_id: e.parent_id, parent_serial: parentSerial,
+    has_children: hasChildren,
     ...auditOf(lookups, e),
   };
 }
 
-async function loadAll() {
-  const [rows, lookups] = await Promise.all([selectAll<DbEquipment>('equipments'), loadLookups()]);
+export async function listEquipment(): Promise<EquipmentRow[]> {
+  const [rows, lookups, withLeaves] = await Promise.all([selectAll<DbEquipment>('equipment'), loadLookups(), equipmentWithLeafChildren()]);
   const serials = new Map(rows.map((r) => [r.id, r.serial_number]));
-  const parents = new Set(rows.map((r) => r.parent_id).filter((v): v is string => !!v));
-  return { rows, lookups, serials, parents };
+  const parents = new Set(rows.flatMap((r) => (r.parent_id ? [r.parent_id] : [])));
+  return rows.map((r) => toRow(r, lookups, r.parent_id ? serials.get(r.parent_id) ?? null : null, parents.has(r.id) || withLeaves.has(r.id)));
 }
 
-export async function listEquipment(): Promise<EquipmentRow[]> {
-  const { rows, lookups, serials, parents } = await loadAll();
-  return rows.map((r) => toRow(r, lookups, serials, parents));
-}
+/**
+ * Một bản ghi: dòng + serial của cha + số con trực tiếp ở cả ba bảng (equipment, sub-equipment, golden board) trong MỘT truy vấn —
+ * PostgREST nhúng `parent:parent_id(serial_number)` và `quan_hệ(count)`, không cần đọc cha / đếm con riêng.
+ */
+const WITH_RELATIONS = '*, parent:parent_id(serial_number), kids:equipment!parent_id(count), subs:sub_equipment!tester_id(count), golds:golden_boards!parent_id(count)';
+type Count = { count: number }[] | null;
+type WithRelations = DbEquipment & { parent: { serial_number: string } | null; kids: Count; subs: Count; golds: Count };
 
 export async function getEquipment(id: string): Promise<EquipmentRow> {
-  const [row, lookups, related] = await Promise.all([
-    selectOne<DbEquipment>('equipments', id),
-    loadLookups(),
-    selectAll<{ id: string; parent_id: string | null; serial_number: string }>('equipments', 'id, parent_id, serial_number'),
-  ]);
-  if (!row) throw new AppError('EQUIPMENT_NOT_FOUND');
-  const serials = new Map(related.map((r) => [r.id, r.serial_number]));
-  const parents = new Set(related.map((r) => r.parent_id).filter((v): v is string => !!v));
-  return toRow(row, lookups, serials, parents);
+  const [row, lookups] = await Promise.all([selectOne<WithRelations>('equipment', id, WITH_RELATIONS), loadLookups()]);
+  if (!row) throw new AppError('NOT_FOUND');
+  const children = [row.kids, row.subs, row.golds].reduce((sum, c) => sum + (c?.[0]?.count ?? 0), 0);
+  return toRow(row, lookups, row.parent?.serial_number ?? null, children > 0);
 }
 
 function validate(input: EquipmentInput, lookups: Lookups, before?: DbEquipment) {
@@ -80,198 +82,94 @@ function validate(input: EquipmentInput, lookups: Lookups, before?: DbEquipment)
 }
 
 /**
- * Type luôn theo part number (Configuration › Part Number): Type gửi lên bị bỏ qua (form khóa ô này),
- * kể cả khi Admin đã ẩn Type đó. Database cũng tự đặt (04_functions.sql mục 3b) — đây để ghi đúng giá trị.
- * Không đổi part number / Type thì không ghi thêm.
+ * Thêm thiết bị. Có cha thì vị trí và Level lấy theo cha (bỏ qua giá trị gửi lên) và Status theo cha (database); không có cha
+ * thì Location và Level bắt buộc (Type luôn theo part number).
+ * Serial trùng chỉ cảnh báo — màn hình gọi serial-matches trước khi lưu, ở đây không chặn.
  */
-function withPartNumberType(input: EquipmentInput, lookups: Lookups, before?: DbEquipment): EquipmentInput {
-  const partNumber = input.part_number_id !== undefined ? input.part_number_id : before?.part_number_id;
-  const type = partNumberType(lookups, partNumber);
-  if (!type || (input.part_number_id === undefined && input.type_id === undefined)) return input;
-  return { ...input, type_id: type };
-}
-
-async function duplicateSerial(serial: string, exceptId?: string): Promise<boolean> {
-  const rows = await selectAll<{ id: string; serial_number: string }>('equipments', 'id, serial_number');
-  const key = serial.trim().toLowerCase();
-  return rows.some((r) => r.id !== exceptId && r.serial_number.trim().toLowerCase() === key);
-}
-
-/** Thêm thiết bị. Có cha thì vị trí và Level lấy theo cha (bỏ qua giá trị gửi lên). */
-export async function createEquipment(input: EquipmentInput, actor: string) {
+export async function createEquipment(input: EquipmentInput, actor: string): Promise<EquipmentRow> {
   if (!input.serial_number) throw new AppError('VALIDATION_ERROR', { fields: { serial_number: 'required' } });
   if (!input.part_number_id) throw new AppError('VALIDATION_ERROR', { fields: { part_number_id: 'required' } });
-  const { parent_id: parentId, children_mode: _unused, ...sent } = input;
+  const { parent_id: parentId, ...sent } = input;
   const [lookups, parent] = await Promise.all([
     loadLookups(),
-    parentId ? selectOne<DbEquipment>('equipments', parentId, 'id, location_id, level_id') : null,
+    parentId ? selectOne<DbEquipment>('equipment', parentId, 'id, location_id, level_id') : null,
   ]);
-  const fields = withPartNumberType(sent, lookups);
-  let data: EquipmentInput = fields;
+  let data: Record<string, unknown> = { ...sent };
   if (parentId) {
     if (!parent) throw new AppError('PARENT_NOT_FOUND', { fields: { parent_id: 'not_found' } });
-    validate({ ...fields, location_id: undefined, level_id: undefined }, lookups);
-    data = { ...fields, location_id: parent.location_id, level_id: parent.level_id, parent_id: parent.id };
+    validate({ ...sent, location_id: undefined, level_id: undefined }, lookups);
+    data = { ...sent, location_id: parent.location_id, level_id: parent.level_id, parent_id: parent.id };
   } else {
     if (!input.location_id) throw new AppError('VALIDATION_ERROR', { fields: { location_id: 'required' } });
-    validate(fields, lookups);
+    // Level bắt buộc khi không có cha (có cha thì Level theo cha). Database vẫn cho trống để không đụng dữ liệu cũ.
+    if (!input.level_id) throw new AppError('VALIDATION_ERROR', { fields: { level_id: 'required' } });
+    validate(sent, lookups);
   }
-  const duplicate = await duplicateSerial(input.serial_number);
-  const created = await appWrite<DbEquipment>('equipments', 'insert', null, data, actor);
-  return { row: await getEquipment(created.id), duplicate };
-}
-
-/** Thiết bị cha mới phải tồn tại và không nằm trong cây con của thiết bị (tránh vòng lặp). */
-async function assertParent(id: string, parentId: string) {
-  const rows = await selectAll<{ id: string; parent_id: string | null }>('equipments', 'id, parent_id');
-  if (!rows.some((r) => r.id === parentId)) throw new AppError('PARENT_NOT_FOUND', { fields: { parent_id: 'not_found' } });
-  const children = new Map<string, string[]>();
-  rows.forEach((r) => { if (r.parent_id) children.set(r.parent_id, [...(children.get(r.parent_id) ?? []), r.id]); });
-  const stack = [id];
-  while (stack.length) {
-    const current = stack.pop()!;
-    if (current === parentId) throw new AppError('PARENT_CYCLE_DETECTED', { fields: { parent_id: 'invalid' } });
-    stack.push(...(children.get(current) ?? []));
-  }
+  const created = await appWrite<DbEquipment>('equipment', 'insert', null, data, actor);
+  return getEquipment(created.id);
 }
 
 /**
  * Sửa thông tin.
- * - Thiết bị cha: đổi cha → vị trí theo cha mới, cả cây con đi theo (lịch sử MOVE);
- *   bỏ trống → tách khỏi cha, giữ vị trí hiện tại (DETACH) rồi mới áp vị trí mới nếu có.
- * - Vị trí: có cha thì theo cha; không có cha đổi vị trí thì cả cây con đổi theo.
- * - Level: có cha (sau khi sửa) thì theo cha — giá trị gửi lên bị bỏ qua; không có cha thì sửa
- *   được, cả cây con đổi theo (database, 04_functions.sql mục 3c). Tách khỏi cha + đổi Level:
- *   ghi Level sau khi tách (trước đó database còn đặt theo cha cũ).
- * Kiểm tra hết (giá trị chọn, vòng lặp) trước khi ghi.
+ * - Thiết bị cha: đổi cha → Move (vị trí, Level, Status theo cha mới; cả cây con đi theo); bỏ trống → Detach
+ *   (giữ vị trí, về Not in use). Quy tắc cây do database kiểm tra (PARENT_TYPE_INVALID…).
+ * - Vị trí: có cha thì theo cha; không có cha thì Đổi vị trí (không đang In use; cả cây con đổi theo).
+ * - Level: có cha (sau khi sửa) thì theo cha — giá trị gửi lên bị bỏ qua; không có cha thì sửa được, cây con đổi theo.
+ * - Part number: chỉ đổi sang part number cùng Type (database: TYPE_KIND_INVALID).
+ * Các bước chạy thử (dry run) trước khi ghi bất cứ thứ gì, để lỗi của Move / Đổi vị trí không để lại sửa dở.
  */
-export async function updateEquipment(id: string, input: EquipmentInput, actor: string) {
-  const [before, lookups] = await Promise.all([selectOne<DbEquipment>('equipments', id), loadLookups()]);
-  if (!before) throw new AppError('EQUIPMENT_NOT_FOUND');
+export async function updateEquipment(id: string, input: EquipmentInput, actor: string): Promise<EquipmentRow> {
+  const [before, lookups] = await Promise.all([selectOne<DbEquipment>('equipment', id), loadLookups()]);
+  if (!before) throw new AppError('NOT_FOUND');
 
-  const { location_id, level_id: levelInput, parent_id: parentInput, children_mode: children = 'follow', ...sent } = input;
-  const fields = withPartNumberType(sent, lookups, before);
+  const { location_id, level_id: levelInput, parent_id: parentInput, ...fields } = input;
   const parentChanged = parentInput !== undefined && parentInput !== before.parent_id;
   const parentAfter = parentInput !== undefined ? parentInput : before.parent_id;
   const locationChanged = location_id !== undefined && location_id !== before.location_id;
-  // Có cha (và không đổi cha) thì vị trí theo cha; đổi sang cha mới thì vị trí theo cha mới.
   if (locationChanged && parentAfter && !parentChanged) throw new AppError('LOCATION_INHERITED_READ_ONLY');
   const setLocation = locationChanged && !parentAfter;
+  // Không xóa trống Level của thiết bị không có cha (có cha thì giá trị gửi lên bị bỏ qua).
+  if (levelInput === null && !parentAfter) throw new AppError('VALIDATION_ERROR', { fields: { level_id: 'required' } });
   const setLevel = levelInput !== undefined && levelInput !== before.level_id && !parentAfter;
 
   validate({ ...fields, location_id: setLocation ? location_id : undefined, level_id: setLevel ? levelInput : undefined }, lookups, before);
-  if (parentChanged && parentInput) await assertParent(id, parentInput);
-
-  const duplicate = input.serial_number && input.serial_number !== before.serial_number
-    ? await duplicateSerial(input.serial_number, id) : false;
-  const now = setLevel && !parentChanged ? { ...fields, level_id: levelInput } : fields;
-  if (Object.keys(now).length) await appWrite('equipments', 'update', id, now, actor);
   if (parentChanged) {
-    if (parentInput) await rpc('equipment_move', { p_id: id, p_parent_id: parentInput, p_actor: actor, p_children: children });
-    else await rpc('equipment_detach', { p_id: id, p_actor: actor, p_children: children });
+    if (parentInput) await assetOps.move('equipment', id, parentInput, actor, true);
+    else await assetOps.detach('equipment', id, actor, true);
   }
-  if (setLevel && parentChanged) await appWrite('equipments', 'update', id, { level_id: levelInput }, actor);
-  if (setLocation) {
-    await rpc('equipment_change_location', { p_id: id, p_location_id: location_id, p_actor: actor, p_children: children });
+  if (setLocation && !parentChanged) await changeAssetLocation('equipment', id, location_id!, actor, true);
+
+  const now = setLevel && !parentChanged ? { ...fields, level_id: levelInput } : fields;
+  if (Object.keys(now).length) await appWrite('equipment', 'update', id, now, actor);
+  if (parentChanged) {
+    if (parentInput) await assetOps.move('equipment', id, parentInput, actor);
+    else await assetOps.detach('equipment', id, actor);
   }
-  return { row: await getEquipment(id), duplicate };
-}
-
-// Thao tác cây (database/04_functions.sql mục 3). `children`: thiết bị con đi theo
-// (mặc định) hay ở lại chỗ cũ — gắn vào thiết bị đến thay (Swap) hoặc cha cũ.
-
-export async function changeLocation(id: string, locationId: string, actor: string, children: ChildrenMode = 'follow') {
-  assertActive((await loadLookups()).locations, locationId, 'location_id');
-  await rpc('equipment_change_location', { p_id: id, p_location_id: locationId, p_actor: actor, p_children: children });
+  if (setLevel && parentChanged) await appWrite('equipment', 'update', id, { level_id: levelInput }, actor);
+  if (setLocation) await changeAssetLocation('equipment', id, location_id!, actor);
   return getEquipment(id);
 }
 
-export async function moveEquipment(id: string, parentId: string, actor: string, children: ChildrenMode = 'follow') {
-  await rpc('equipment_move', { p_id: id, p_parent_id: parentId, p_actor: actor, p_children: children });
-  return getEquipment(id);
-}
-
-export async function detachEquipment(id: string, actor: string, children: ChildrenMode = 'follow') {
-  await rpc('equipment_detach', { p_id: id, p_actor: actor, p_children: children });
-  return getEquipment(id);
-}
-
-export async function swapEquipment(a: string, b: string, actor: string, children: ChildrenMode = 'follow') {
-  await rpc('equipment_swap', { p_a: a, p_b: b, p_actor: actor, p_children: children });
-  return getEquipment(a);
-}
+type DbTreeRow = {
+  asset_type: AssetType; id: string; kind: AssetKind; type_name: string | null; part_number: string | null; serial_number: string;
+  usage: Usage; cal_status: CalibrationStatus | null; parent_id: string | null; depth: number; pos: number;
+};
 
 /**
- * Check-out (usage = in_use) / Check-in (not_in_use) cho các thiết bị được chọn và toàn bộ con cháu —
- * một giao dịch (equipment_set_usage). Không thiết bị nào đổi → USAGE_NO_CHANGE. Trả về số thiết bị đã đổi.
+ * Cây chứa thiết bị này, từ tài sản gốc (đi ngược theo cha) xuống mọi con cháu — cả sub-equipment và golden board
+ * (docs/DETAIL_MODEL.md 4.1). Base / Fixture không có cha thì cây bắt đầu từ chính nó. MỘT lần gọi hàm asset_tree.
  */
-export async function setEquipmentUsage(ids: string[], usage: Usage, note: string | null, actor: string): Promise<number> {
-  const unique = [...new Set(ids)];
-  const [rows, lookups] = await Promise.all([
-    selectAll<{ id: string; parent_id: string | null; usage: Usage; part_number_id: string | null; serial_number: string }>(
-      'equipments', 'id, parent_id, usage, part_number_id, serial_number'),
-    loadLookups(),
-  ]);
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  if (unique.some((id) => !byId.has(id))) throw new AppError('EQUIPMENT_NOT_FOUND');
-  const children = new Map<string, string[]>();
-  rows.forEach((r) => { if (r.parent_id) children.set(r.parent_id, [...(children.get(r.parent_id) ?? []), r.id]); });
-  const affected = new Set<string>();
-  const stack = [...unique];
-  while (stack.length) {
-    const id = stack.pop()!;
-    if (affected.has(id)) continue;
-    affected.add(id);
-    stack.push(...(children.get(id) ?? []));
-  }
-  if (![...affected].some((id) => byId.get(id)!.usage !== usage)) throw new AppError('USAGE_NO_CHANGE');
-  // Part number "chỉ In use khi có cha": thiết bị được chọn mà chưa có cha thì không Check-out được (database cũng chặn).
-  if (usage === 'in_use') {
-    const blocked = unique.map((id) => byId.get(id)!).filter((e) => e.usage !== 'in_use' && !e.parent_id
-      && e.part_number_id && lookups.part_numbers.get(e.part_number_id)?.usage_needs_parent);
-    if (blocked.length) throw new AppError('USAGE_NEEDS_PARENT', { serials: blocked.map((e) => e.serial_number) });
-  }
-  return rpc<number>('equipment_set_usage', { p_ids: unique, p_usage: usage, p_actor: actor, p_note: note });
-}
-
-/** Xóa thật. follow: cả cây con bị xóa theo; stay: chỉ xóa thiết bị này. Trả về số thiết bị đã xóa. */
-export async function deleteEquipment(id: string, actor: string, children: ChildrenMode = 'follow'): Promise<number> {
-  return rpc<number>('equipment_delete', { p_id: id, p_actor: actor, p_children: children });
-}
-
-/** Cả cây chứa thiết bị này (từ gốc). Mỗi nút chỉ PN + SN — docs/DETAIL_MODEL.md 4.1. */
-export async function equipmentTree(id: string): Promise<{ root_id: string; nodes: EquipmentTreeNode[] }> {
-  const [rows, lookups] = await Promise.all([
-    selectAll<{ id: string; parent_id: string | null; part_number_id: string | null; serial_number: string }>(
-      'equipments', 'id, parent_id, part_number_id, serial_number'),
-    loadLookups(),
-  ]);
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  if (!byId.has(id)) throw new AppError('EQUIPMENT_NOT_FOUND');
-  let rootId = id;
-  for (let guard = 0; byId.get(rootId)?.parent_id && guard < 100; guard++) rootId = byId.get(rootId)!.parent_id!;
-
-  const children = new Map<string, string[]>();
-  rows.forEach((r) => { if (r.parent_id) children.set(r.parent_id, [...(children.get(r.parent_id) ?? []), r.id]); });
-  const nodes: EquipmentTreeNode[] = [];
-  const stack = [rootId];
-  while (stack.length && nodes.length < 5000) {
-    const current = byId.get(stack.pop()!)!;
-    nodes.push({
-      id: current.id, parent_id: current.parent_id, serial_number: current.serial_number,
-      part_number: nameOf(lookups.part_numbers, current.part_number_id),
-    });
-    stack.push(...(children.get(current.id) ?? []));
-  }
-  return { root_id: rootId, nodes };
-}
-
-/** Id các part number đang có thiết bị dùng (Configuration › Hiệu chuẩn › Setup chỉ chọn trong đó). */
-export async function equipmentPartNumberIds(): Promise<string[]> {
-  const rows = await selectAll<{ part_number_id: string | null }>('equipments', 'id, part_number_id');
-  return [...new Set(rows.map((r) => r.part_number_id).filter((id): id is string => !!id))];
+export async function equipmentTree(id: string): Promise<EquipmentTree> {
+  const rows = await rpc<DbTreeRow[]>('asset_tree', { p_type: 'equipment', p_id: id }) ?? [];
+  const root = rows.find((r) => r.depth === 0);
+  if (!root) throw new AppError('NOT_FOUND');
+  const nodes = [...rows].sort((a, b) => a.pos - b.pos).map((r): TreeNode => ({
+    asset_type: r.asset_type, id: r.id, kind: r.kind, parent_id: r.parent_id, part_number: r.part_number,
+    serial_number: r.serial_number, type_name: r.type_name, usage: r.usage, cal_status: r.cal_status,
+  }));
+  return { root_id: root.id, nodes };
 }
 
 export function equipmentHistory(id: string): Promise<HistoryEntry[]> {
-  return readHistory('equipment_histories', [{ column: 'equipment_id', value: id }]);
+  return assetLog('equipment', id);
 }

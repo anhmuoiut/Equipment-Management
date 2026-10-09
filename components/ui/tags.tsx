@@ -7,7 +7,8 @@
  */
 import { useTranslation } from 'react-i18next';
 import { formatDate } from '@/lib/client/api';
-import type { CalibrationStatus, DueState, StatusColor, TagItem } from '@/lib/types';
+import { CALIBRATION_STATUS_COLOR } from '@/lib/status';
+import type { CalibrationStatus, StatusColor, TagItem } from '@/lib/types';
 
 export function StatusTag({ name, color }: { name: string | null; color: StatusColor | null | undefined }) {
   if (!name) return null;
@@ -20,28 +21,10 @@ export function ToneTag({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'a
   return <span className="tag" data-tone={tone}>{text}</span>;
 }
 
-const DUE_TONE: Record<DueState, 'ok' | 'warn' | 'alert' | 'neutral'> = {
-  overdue: 'alert', due_soon: 'warn', ok: 'ok', none: 'neutral', no_interval: 'neutral',
-};
-
-/** Ngày đến hạn có màu: đỏ = quá hạn, vàng = sắp đến hạn. */
-export function DueDate({ date, state }: { date: string | null; state: DueState }) {
+/** Trạng thái tài khoản: Hoạt động / Đã khóa (user_profiles.is_active). */
+export function UserStatusTag({ active }: { active: boolean }) {
   const { t } = useTranslation();
-  if (state === 'no_interval') return <span className="due" data-tone="neutral">{t('cal.noInterval')}</span>;
-  if (!date) return null;
-  return (
-    <span className="due" data-tone={DUE_TONE[state]} title={t(`cal.due.${state}`)}>
-      {formatDate(date)}
-      {(state === 'overdue' || state === 'due_soon') && <span className="due-label">{t(`cal.due.${state}`)}</span>}
-    </span>
-  );
-}
-
-const ACCOUNT_TONE = { pending: 'warn', active: 'ok', rejected: 'neutral', disabled: 'alert' } as const;
-
-export function AccountStatusTag({ status }: { status: keyof typeof ACCOUNT_TONE }) {
-  const { t } = useTranslation();
-  return <ToneTag text={t(`values.${status}`)} tone={ACCOUNT_TONE[status]} />;
+  return <ToneTag text={t(active ? 'values.active' : 'values.locked')} tone={active ? 'ok' : 'alert'} />;
 }
 
 /**
@@ -57,15 +40,23 @@ export function UsageTag({ usage }: { usage: 'in_use' | 'not_in_use' }) {
   );
 }
 
-/** Màu cố định của Calibration Status (hệ thống tự tính). */
-export const CALIBRATION_STATUS_COLOR: Record<CalibrationStatus, StatusColor> = {
-  under_calibration: 'blue', valid: 'green', due_soon: 'yellow', overdue: 'red',
-};
-
-/** Calibration Status: Under calibration / Valid / Due soon / Overdue — do hệ thống tự tính, không ai chọn. */
+/** Calibration Status: Not calibrated / Failed / Overdue / Due soon / Valid — hệ thống tự tính, không ai chọn. */
 export function CalibrationStatusTag({ status }: { status: CalibrationStatus }) {
   const { t } = useTranslation();
   return <StatusTag name={t(`cal.status.${status}`)} color={CALIBRATION_STATUS_COLOR[status]} />;
+}
+
+/** Ngày đến hạn hiệu chuẩn có màu: đỏ = quá hạn, vàng = sắp đến hạn (theo Calibration Status). */
+export function DueDate({ date, status }: { date: string | null; status: CalibrationStatus }) {
+  const { t } = useTranslation();
+  if (!date) return null;
+  const tone = status === 'overdue' ? 'alert' : status === 'due_soon' ? 'warn' : 'neutral';
+  return (
+    <span className="due" data-tone={tone}>
+      {formatDate(date)}
+      {(status === 'overdue' || status === 'due_soon') && <span className="due-label">{t(`cal.status.${status}`)}</span>}
+    </span>
+  );
 }
 
 /** Các thẻ đang gắn trên một bản ghi (tô màu admin chọn ở Configuration › Tag). */

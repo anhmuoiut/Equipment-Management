@@ -1,6 +1,6 @@
 import { AppError } from '@/lib/errors';
 import { configList, STATUS_COLORS, type ConfigListDef } from '@/lib/configuration';
-import { z, optText, reqText, reqId } from '@/lib/services/core/validate';
+import { z, optId, optText, reqText, reqId } from '@/lib/services/core/validate';
 
 export function listFromParams(params: Record<string, string>): ConfigListDef {
   const list = configList(params.list ?? '');
@@ -30,11 +30,12 @@ export function schemaFor(list: ConfigListDef, mode: 'create' | 'update') {
   } else {
     shape = { display_name: reqText(200), sort_order: order, is_active: z.boolean() };
     if (list.hasDescription) shape.description = optText(1000);
-    // Bắt buộc, không xóa trống được (sửa: chỉ gửi khi đổi).
-    if (list.hasType) {
-      shape.type_id = reqId;
-      shape.usage_needs_parent = z.boolean();
-    }
+    // Bắt buộc, không xóa trống được (sửa: chỉ gửi khi đổi; đã có thiết bị dùng thì database từ chối: PART_NUMBER_IN_USE).
+    if (list.hasType) shape.type_id = reqId;
+    // Không bắt buộc: bỏ trống / null = chưa chọn Level cho part number.
+    if (list.hasLevel) shape.level_id = optId;
+    // Types: Group bắt buộc (kind của Type do database đặt theo nhóm, không gửi lên).
+    if (list.hasGroup) shape.group_id = reqId;
   }
   const schema = z.object(shape).strict();
   return mode === 'create' ? schema : schema.partial();

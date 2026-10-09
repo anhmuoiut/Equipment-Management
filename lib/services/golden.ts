@@ -1,38 +1,51 @@
 import 'server-only';
 
-/** Module Golden sample — bảng golden_samples, golden_sample_histories. */
+/**
+ * Module Golden board — bảng golden_boards. docs/DATABASE_MODIFIED.md mục 5.
+ * Gắn vào tester hoặc fixture (parent_id); có cha thì vị trí và Status theo cha (database). Nhật ký ghi vào asset_logs.
+ * Xóa, Swap, Move, Detach, Đổi vị trí, Check-out / Check-in: route dùng chung /api/assets.
+ */
 import { appWrite, selectAll, selectOne } from './core/db';
-import { readHistory } from './core/history';
+import { applyTreeEdit, assetLog, previewTreeEdit } from './core/assets';
 import { assertActive, assertTags, auditOf, loadLookups, nameOf, tagItems, type Lookups } from './core/lookups';
 import { AppError } from '@/lib/errors';
-import type { GoldenRow, HistoryEntry } from '@/lib/types';
+import type { GoldenRow, HistoryEntry, Usage } from '@/lib/types';
 
 type DbGolden = {
-  id: string; part_number: string; serial_number: string; utd_part_number: string | null; location_id: string;
-  origin: string | null; purpose: string | null; remark: string | null; tag_ids: string[];
+  id: string; part_number: string; serial_number: string; utd_part_number: string | null; origin: string | null;
+  purpose: string | null; parent_id: string | null; location_id: string; usage: Usage; remark: string | null; tag_ids: string[];
   created_at: string; created_by: string | null; updated_at: string; updated_by: string | null;
 };
 
-export type GoldenInput = Partial<Pick<DbGolden,
-  'part_number' | 'serial_number' | 'utd_part_number' | 'location_id' | 'origin' | 'purpose' | 'remark' | 'tag_ids'>>;
+/** `parent_id`: tester hoặc fixture chứa nó (null = chưa gắn). Đổi cha / vị trí khi sửa đi qua Move / Detach / Đổi vị trí. */
+export type GoldenInput = {
+  part_number?: string; serial_number?: string; utd_part_number?: string | null; origin?: string | null; purpose?: string | null;
+  parent_id?: string | null; location_id?: string | null; remark?: string | null; tag_ids?: string[];
+};
 
-function toRow(g: DbGolden, lookups: Lookups): GoldenRow {
+/** Cha (tester / fixture) kèm serial — PostgREST gửi cùng một truy vấn, không cần đọc cha riêng. */
+const WITH_PARENT = '*, parent:parent_id(serial_number)';
+type WithParent = DbGolden & { parent: { serial_number: string } | null };
+
+function toRow(g: WithParent, lookups: Lookups): GoldenRow {
   return {
     id: g.id, part_number: g.part_number, serial_number: g.serial_number, utd_part_number: g.utd_part_number,
+    origin: g.origin, purpose: g.purpose,
+    parent_id: g.parent_id, parent_serial: g.parent?.serial_number ?? null,
     location_id: g.location_id, location: nameOf(lookups.locations, g.location_id),
-    origin: g.origin, purpose: g.purpose, remark: g.remark,
+    usage: g.usage, remark: g.remark,
     tag_ids: g.tag_ids ?? [], tags: tagItems(lookups, g.tag_ids),
     ...auditOf(lookups, g),
   };
 }
 
 export async function listGolden(): Promise<GoldenRow[]> {
-  const [rows, lookups] = await Promise.all([selectAll<DbGolden>('golden_samples'), loadLookups()]);
+  const [rows, lookups] = await Promise.all([selectAll<WithParent>('golden_boards', WITH_PARENT), loadLookups()]);
   return rows.map((r) => toRow(r, lookups));
 }
 
 export async function getGolden(id: string): Promise<GoldenRow> {
-  const [row, lookups] = await Promise.all([selectOne<DbGolden>('golden_samples', id), loadLookups()]);
+  const [row, lookups] = await Promise.all([selectOne<WithParent>('golden_boards', id, WITH_PARENT), loadLookups()]);
   if (!row) throw new AppError('NOT_FOUND');
   return toRow(row, lookups);
 }
@@ -42,33 +55,38 @@ function validate(input: GoldenInput, lookups: Lookups, before?: DbGolden) {
   assertTags(lookups, input.tag_ids);
 }
 
-async function duplicateSerial(serial: string, exceptId?: string): Promise<boolean> {
-  const rows = await selectAll<{ id: string; serial_number: string }>('golden_samples', 'id, serial_number');
-  const key = serial.trim().toLowerCase();
-  return rows.some((r) => r.id !== exceptId && r.serial_number.trim().toLowerCase() === key);
+/** Thêm golden board. Có cha thì vị trí và Status theo cha (database). Serial trùng chỉ cảnh báo (serial-matches). */
+export async function createGolden(input: GoldenInput, actor: string): Promise<GoldenRow> {
+  if (!input.part_number) throw new AppError('VALIDATION_ERROR', { fields: { part_number: 'required' } });
+  if (!input.serial_number) throw new AppError('VALIDATION_ERROR', { fields: { serial_number: 'required' } });
+  if (!input.parent_id && !input.location_id) throw new AppError('VALIDATION_ERROR', { fields: { location_id: 'required' } });
+  const lookups = await loadLookups();
+  validate({ ...input, location_id: input.parent_id ? undefined : input.location_id }, lookups);
+  const { location_id, ...rest } = input;
+  const created = await appWrite<DbGolden>('golden_boards', 'insert', null, input.parent_id ? rest : { ...rest, location_id }, actor);
+  return getGolden(created.id);
 }
 
-export async function createGolden(input: GoldenInput, actor: string) {
-  validate(input, await loadLookups());
-  const duplicate = await duplicateSerial(input.serial_number ?? '');
-  const created = await appWrite<DbGolden>('golden_samples', 'insert', null, input, actor);
-  return { row: await getGolden(created.id), duplicate };
-}
-
-export async function updateGolden(id: string, input: GoldenInput, actor: string) {
-  const [before, lookups] = await Promise.all([selectOne<DbGolden>('golden_samples', id), loadLookups()]);
+/** Sửa thông tin; đổi cha → Move / Detach, đổi vị trí (chưa gắn cha) → Đổi vị trí. Chạy thử trước khi ghi. */
+export async function updateGolden(id: string, input: GoldenInput, actor: string): Promise<GoldenRow> {
+  const [before, lookups] = await Promise.all([selectOne<DbGolden>('golden_boards', id), loadLookups()]);
   if (!before) throw new AppError('NOT_FOUND');
-  validate(input, lookups, before);
-  const duplicate = input.serial_number && input.serial_number !== before.serial_number
-    ? await duplicateSerial(input.serial_number, id) : false;
-  if (Object.keys(input).length) await appWrite('golden_samples', 'update', id, input, actor);
-  return { row: await getGolden(id), duplicate };
-}
 
-export async function deleteGolden(id: string, actor: string): Promise<void> {
-  await appWrite('golden_samples', 'delete', id, null, actor);
+  const { location_id, parent_id: parentInput, ...fields } = input;
+  const parentChanged = parentInput !== undefined && parentInput !== before.parent_id;
+  const parentAfter = parentInput !== undefined ? parentInput : before.parent_id;
+  const locationChanged = location_id !== undefined && location_id !== before.location_id;
+  if (locationChanged && parentAfter && !parentChanged) throw new AppError('LOCATION_INHERITED_READ_ONLY');
+  const setLocation = locationChanged && !parentAfter;
+
+  validate({ ...fields, location_id: setLocation ? location_id : undefined }, lookups, before);
+  const edit = { parentTo: parentChanged ? parentInput : undefined, location: setLocation ? location_id! : undefined };
+  await previewTreeEdit('golden_board', id, edit, actor);
+  if (Object.keys(fields).length) await appWrite('golden_boards', 'update', id, fields, actor);
+  await applyTreeEdit('golden_board', id, edit, actor);
+  return getGolden(id);
 }
 
 export function goldenHistory(id: string): Promise<HistoryEntry[]> {
-  return readHistory('golden_sample_histories', [{ column: 'golden_sample_id', value: id }]);
+  return assetLog('golden_board', id);
 }

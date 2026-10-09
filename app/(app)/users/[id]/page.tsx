@@ -1,15 +1,7 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { use } from 'react';
-import { RecordPage } from '@/components/ui/workspace/RecordPage';
-import { UserDetail } from '@/components/users/UserDetail';
-import type { UserRow } from '@/lib/types';
-
-export default function UserDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  return (
-    <RecordPage<UserRow> url={`/api/users/${id}`} listPath="/users">
-      {(ctx) => <UserDetail ctx={ctx} layout="page" />}
-    </RecordPage>
-  );
+/** Link cũ: chuyển sang trang với ?id= — modal tài khoản mở theo id (docs/DETAIL_MODEL.md mục 3.9). */
+export default async function LegacyUserPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  redirect(`/users?id=${encodeURIComponent(id)}`);
 }

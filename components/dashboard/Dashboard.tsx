@@ -1,16 +1,15 @@
 'use client';
 
 /**
- * Dashboard (docs/DATABASE_MODIFIED.md mục 1): số liệu tổng, tổng quan trạng
- * thái của Equipment (In use / Not in use) và Calibration (Calibration Status tự tính),
- * thiết bị quá hạn / sắp đến hạn hiệu chuẩn, phân bố theo vị trí / loại, và
- * "Thay đổi gần đây" (view recent_activities) có bộ lọc.
+ * Dashboard (docs/DATABASE_MODIFIED.md mục 1): số liệu tổng, Status (In use / Not in use) của Equipment, Sub-equipment và
+ * Golden board, Calibration Status (tự tính), sub-equipment quá hạn / sắp đến hạn hiệu chuẩn, phân bố theo thẻ / vị trí /
+ * loại, và "Thay đổi gần đây" (view recent_activities) có bộ lọc.
  */
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { CalendarClock, CalendarDays, Cpu, Gauge, CircuitBoard, Search, TriangleAlert, Users } from 'lucide-react';
+import { CalendarClock, CalendarDays, Cpu, Gauge, CircuitBoard, Search, TriangleAlert } from 'lucide-react';
 import { formatTime } from '@/lib/client/api';
 import { useFetch } from '@/lib/client/useFetch';
 import { usePhone } from '@/lib/client/usePhone';
@@ -19,23 +18,26 @@ import { Button, ErrorState, Notice, Skeleton, Spinner } from '@/components/ui';
 import { PageHeading } from '@/components/layout/PageHeading';
 import { DueDate } from '@/components/ui/tags';
 import { HistoryChanges, useFormatNote } from '@/components/ui/detail/DetailHistory';
-import type { CountItem, DashboardData, HistoryModule, RecentActivity, StatusCountItem, StatusPage } from '@/lib/types';
+import type { CountItem, DashboardData, HistoryModule, RecentActivity, StatusCountItem } from '@/lib/types';
 
 const MODULE_PATH: Record<HistoryModule, string | null> = {
-  // Lịch sử hiệu chuẩn trỏ về equipment_id → mở thiết bị (nhóm Hiệu chuẩn nằm trong đó).
-  equipment: '/equipment', calibration: '/equipment', golden_sample: '/golden', configuration: null, user: '/users',
+  equipment: '/equipment', sub_equipment: '/calibration', golden_board: '/golden', configuration: null, user: '/users',
 };
 
-const STATUS_PAGES: { page: StatusPage; href: string }[] = [
-  { page: 'equipment', href: '/equipment' },
-  { page: 'calibration', href: '/calibration' },
+/** Các khối Status: ba loại tài sản (In use / Not in use) và Calibration Status. */
+type StatusBlock = 'equipment' | 'sub_equipment' | 'golden_board' | 'calibration';
+const STATUS_BLOCKS: { block: StatusBlock; href: string }[] = [
+  { block: 'equipment', href: '/equipment' },
+  { block: 'sub_equipment', href: '/calibration' },
+  { block: 'golden_board', href: '/golden' },
+  { block: 'calibration', href: '/calibration' },
 ];
 
 export function Dashboard() {
   const { t } = useTranslation();
-  const can = useCan();
   const denied = useSearchParams().get('denied') === '1';
   const { data, error, reload } = useFetch<DashboardData>('/api/dashboard');
+  const assetTotal = data ? data.equipment_total + data.sub_equipment_total + data.golden_total : undefined;
 
   return (
     <div className="dash">
@@ -45,14 +47,13 @@ export function Dashboard() {
         <>
           <div className="dash-kpis">
             <Kpi icon={<Cpu size={16} />} label={t('dash.equipment')} value={data?.equipment_total} href="/equipment" />
-            <Kpi icon={<Gauge size={16} />} label={t('dash.calibration')} value={data?.calibration_total} href="/calibration" />
-            <Kpi icon={<TriangleAlert size={16} />} label={t('cal.due.overdue')} value={data?.overdue.length} tone="alert" href="/calibration" />
-            <Kpi icon={<CalendarClock size={16} />} label={t('cal.due.due_soon')} value={data?.due_soon.length} tone="warn" href="/calibration" />
+            <Kpi icon={<Gauge size={16} />} label={t('dash.subEquipment')} value={data?.sub_equipment_total} href="/calibration" />
+            <Kpi icon={<TriangleAlert size={16} />} label={t('cal.status.overdue')} value={data?.overdue.length} tone="alert" href="/calibration" />
+            <Kpi icon={<CalendarClock size={16} />} label={t('cal.status.due_soon')} value={data?.due_soon.length} tone="warn" href="/calibration" />
             <Kpi icon={<CircuitBoard size={16} />} label={t('dash.golden')} value={data?.golden_total} href="/golden" />
-            {can.admin && <Kpi icon={<Users size={16} />} label={t('dash.pendingUsers')} value={data?.pending_users ?? 0} href="/users" />}
           </div>
 
-          <StatusOverview data={data?.by_status} />
+          <StatusOverview data={data ?? undefined} />
 
           <div className="dash-grid">
             <DueList title={t('dash.overdueTitle')} rows={data?.overdue} empty={t('dash.noneOverdue')} />
@@ -60,8 +61,11 @@ export function Dashboard() {
           </div>
 
           <div className="dash-grid">
-            <Bars title={t('dash.byLocation')} items={data?.by_location} total={data?.equipment_total} />
-            <Bars title={t('dash.byType')} items={data?.by_type} total={data?.equipment_total} />
+            <Bars title={t('dash.byLocation')} items={data?.by_location} total={assetTotal} />
+            <Bars title={t('dash.byType')} items={data?.by_type} total={data ? data.equipment_total + data.sub_equipment_total : undefined} />
+          </div>
+          <div className="dash-grid">
+            <Bars title={t('dash.byTag')} items={data?.by_tag} total={assetTotal} />
           </div>
 
           <RecentActivities />
@@ -94,8 +98,8 @@ function DueList({ title, rows, empty }: { title: string; rows: DashboardData['o
             <li key={r.id}>
               <Link href={`/calibration?id=${r.id}`}>
                 <strong>{r.serial_number}</strong>
-                <span className="dash-due-meta">{[r.part_number, r.location].filter(Boolean).join(' · ')}</span>
-                <DueDate date={r.due_date} state={r.due_state} />
+                <span className="dash-due-meta">{[r.part_number, r.tester_serial, r.location].filter(Boolean).join(' · ')}</span>
+                <DueDate date={r.due_date} status={r.status} />
               </Link>
             </li>
           ))}
@@ -106,27 +110,29 @@ function DueList({ title, rows, empty }: { title: string; rows: DashboardData['o
   );
 }
 
-/** Mỗi trang dùng trạng thái: thanh xếp chồng tô màu trạng thái + chú thích có số (đọc được không cần màu). */
-function StatusOverview({ data }: { data: DashboardData['by_status'] | undefined }) {
+/** Mỗi khối Status: thanh xếp chồng tô màu + chú thích có số (đọc được không cần màu). */
+function StatusOverview({ data }: { data: DashboardData | undefined }) {
   const { t } = useTranslation();
+  const itemsOf = (block: StatusBlock): StatusCountItem[] | undefined => !data ? undefined
+    : block === 'calibration' ? data.by_calibration_status : data.by_usage[block];
   return (
     <section className="dash-card">
       <h2>{t('dash.byStatus')}</h2>
       {!data ? <Spinner label={t('common.loadingEllipsis')} size="sm" /> : (
         <div className="dash-status">
-          {STATUS_PAGES.map(({ page, href }) => <StatusBreakdown key={page} page={page} href={href} items={data[page]} />)}
+          {STATUS_BLOCKS.map(({ block, href }) => <StatusBreakdown key={block} block={block} href={href} items={itemsOf(block)!} />)}
         </div>
       )}
     </section>
   );
 }
 
-function StatusBreakdown({ page, href, items }: { page: StatusPage; href: string; items: StatusCountItem[] }) {
+function StatusBreakdown({ block, href, items }: { block: StatusBlock; href: string; items: StatusCountItem[] }) {
   const { t } = useTranslation();
-  const moduleName = t(`dash.moduleName.${page}`);
+  const moduleName = t(`dash.moduleName.${block}`);
   const total = items.reduce((sum, item) => sum + item.count, 0);
   // Status do hệ thống quản: server gửi khóa (id), màn hình dịch ra chữ.
-  const label = (item: StatusCountItem) => (page === 'equipment' ? t(`values.${item.id}`) : t(`cal.status.${item.id}`));
+  const label = (item: StatusCountItem) => (block === 'calibration' ? t(`cal.status.${item.id}`) : t(`values.${item.id}`));
   const percent = (count: number) => (total ? Math.round((count / total) * 100) : 0);
   return (
     <div className="dash-status-module">
@@ -206,8 +212,8 @@ function RecentActivities() {
   const { data: rows, loading, error, reload } = useFetch<RecentActivity[]>(`/api/dashboard/activities?${params}`);
 
   const modules: HistoryModule[] = can.admin
-    ? ['equipment', 'calibration', 'golden_sample', 'configuration', 'user']
-    : ['equipment', 'calibration', 'golden_sample'];
+    ? ['equipment', 'sub_equipment', 'golden_board', 'configuration', 'user']
+    : ['equipment', 'sub_equipment', 'golden_board'];
   const fieldLabel = (key: string) => t(`fields.${key}`, { defaultValue: key });
 
   return (

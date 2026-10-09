@@ -1,132 +1,201 @@
 import 'server-only';
 
 /**
- * Module Calibration — bảng calibration_equipments, calibration_histories.
- * Phụ thuộc một chiều vào Equipment (đọc thông tin thiết bị); Equipment không
- * đọc bảng này. Dòng hiệu chuẩn do database tự thêm / bỏ theo Configuration ›
- * Hiệu chuẩn › Setup; due_date do database tự tính (04_functions.sql mục 4).
+ * Module Calibration — bảng sub_equipment (thiết bị cần hiệu chuẩn, nằm trong tester) và calibrations (mỗi lần hiệu
+ * chuẩn một dòng). docs/DATABASE_MODIFIED.md mục 4.
+ *
+ * Phụ thuộc một chiều vào Equipment (tên tester). Calibration Status KHÔNG lưu và không tính ở đây: đọc từ view
+ * sub_equipment_calibration (lần hiệu chuẩn mới nhất + Setup của part number). due_date của một lần hiệu chuẩn do
+ * database tự tính (calibrated_at + interval_months của Setup). Nhật ký ghi vào asset_logs (CALIBRATE…).
  */
 import { appWrite, db, selectAll, selectOne } from './core/db';
-import { readHistory } from './core/history';
+import { applyTreeEdit, assetLog, previewTreeEdit } from './core/assets';
 import { assertActive, assertTags, auditOf, loadLookups, nameOf, tagItems, type Lookups } from './core/lookups';
 import { AppError, mapRpcError } from '@/lib/errors';
-import type { CalibrationRow, CalibrationStatus, DueState, HistoryEntry } from '@/lib/types';
+import type { CalibrationRecord, CalibrationResult, CalibrationStatus, HistoryEntry, SubEquipmentRow, Usage } from '@/lib/types';
 
-type DbCalibration = {
-  id: string; equipment_id: string; vendor_id: string | null;
-  calibration_date: string | null; due_date: string | null; remark: string | null; tag_ids: string[];
+type DbSub = {
+  id: string; jabil_id: string | null; part_number_id: string; serial_number: string; asset: string | null; type_id: string;
+  tester_id: string | null; location_id: string; usage: Usage; remark: string | null; tag_ids: string[];
   created_at: string; created_by: string | null; updated_at: string; updated_by: string | null;
 };
-type DbEquipmentRef = {
-  id: string; serial_number: string; part_number_id: string | null; type_id: string | null; location_id: string;
+/** Một dòng của view sub_equipment_calibration. */
+type DbStatus = {
+  sub_equipment_id: string; calibration_id: string | null; calibrated_at: string | null; due_date: string | null;
+  vendor_id: string | null; cert_no: string | null; cert_file_url: string | null; result: CalibrationResult | null;
+  interval_months: number | null; warning_days: number | null; status: CalibrationStatus;
 };
-type DbInterval = { part_number_id: string; interval_months: number; warning_days: number };
-
-export type CalibrationInput = {
-  vendor_id?: string | null; calibration_date?: string | null; remark?: string | null; tag_ids?: string[];
+type DbCalibration = {
+  id: string; sub_equipment_id: string; calibrated_at: string; due_date: string; vendor_id: string | null;
+  cert_no: string | null; cert_file_url: string | null; result: CalibrationResult; remark: string | null;
+  created_at: string; created_by: string | null; updated_at: string; updated_by: string | null;
 };
-
-/** Hôm nay theo giờ Việt Nam (yyyy-mm-dd). */
-function today(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
-}
-
-export function dueState(dueDate: string | null, warningDays: number | null, hasInterval: boolean): DueState {
-  if (!hasInterval) return 'no_interval';
-  if (!dueDate) return 'none';
-  const now = today();
-  if (dueDate < now) return 'overdue';
-  const days = (Date.parse(dueDate) - Date.parse(now)) / 86_400_000;
-  return days <= (warningDays ?? 30) ? 'due_soon' : 'ok';
-}
 
 /**
- * Calibration Status — hệ thống tự tính, không ai chọn, không lưu: chưa có ngày hiệu chuẩn = Under calibration;
- * có ngày thì theo hạn (Valid / Due soon / Overdue).
+ * Trường nhập của form sub-equipment. Type không nhập (theo part number). `tester_id`: gắn vào tester (vị trí và Status
+ * theo tester); null = chưa gắn. Đổi tester / vị trí khi sửa đi qua Move / Detach / Đổi vị trí của database.
  */
-export function calibrationStatus(calibrationDate: string | null, state: DueState): CalibrationStatus {
-  if (!calibrationDate) return 'under_calibration';
-  if (state === 'overdue') return 'overdue';
-  if (state === 'due_soon') return 'due_soon';
-  return 'valid';
+export type SubEquipmentInput = {
+  serial_number?: string; jabil_id?: string | null; part_number_id?: string; asset?: string | null;
+  tester_id?: string | null; location_id?: string | null; remark?: string | null; tag_ids?: string[];
+};
+
+export type CalibrationInput = {
+  calibrated_at?: string; due_date?: string | null; vendor_id?: string | null; cert_no?: string | null;
+  cert_file_url?: string | null; result?: CalibrationResult; remark?: string | null;
+};
+
+const NO_CALIBRATION: Omit<DbStatus, 'sub_equipment_id'> = {
+  calibration_id: null, calibrated_at: null, due_date: null, vendor_id: null, cert_no: null, cert_file_url: null,
+  result: null, interval_months: null, warning_days: null, status: 'not_calibrated',
+};
+
+/** Tester kèm serial — PostgREST gửi cùng một truy vấn, không cần đọc tester riêng. */
+const WITH_TESTER = '*, tester:tester_id(serial_number)';
+type WithTester = DbSub & { tester: { serial_number: string } | null };
+
+function toRow(s: WithTester, c: DbStatus | undefined, lookups: Lookups): SubEquipmentRow {
+  const cal = c ?? { sub_equipment_id: s.id, ...NO_CALIBRATION };
+  return {
+    id: s.id,
+    jabil_id: s.jabil_id,
+    part_number_id: s.part_number_id, part_number: nameOf(lookups.part_numbers, s.part_number_id),
+    serial_number: s.serial_number,
+    asset: s.asset,
+    type_id: s.type_id, type: nameOf(lookups.types, s.type_id),
+    tester_id: s.tester_id, tester_serial: s.tester?.serial_number ?? null,
+    location_id: s.location_id, location: nameOf(lookups.locations, s.location_id),
+    usage: s.usage,
+    remark: s.remark,
+    tag_ids: s.tag_ids ?? [], tags: tagItems(lookups, s.tag_ids),
+    status: cal.status,
+    calibration_id: cal.calibration_id, calibrated_at: cal.calibrated_at, due_date: cal.due_date, result: cal.result,
+    vendor_id: cal.vendor_id, vendor: nameOf(lookups.calibration_vendors, cal.vendor_id),
+    cert_no: cal.cert_no, cert_file_url: cal.cert_file_url,
+    interval_months: cal.interval_months, warning_days: cal.warning_days,
+    ...auditOf(lookups, s),
+  };
 }
 
-function toRow(c: DbCalibration, e: DbEquipmentRef | undefined, intervals: Map<string, DbInterval>, lookups: Lookups): CalibrationRow {
-  const interval = e?.part_number_id ? intervals.get(e.part_number_id) : undefined;
-  const due_state = dueState(c.due_date, interval?.warning_days ?? null, !!interval);
+/** Danh sách Calibration: mọi sub-equipment kèm lần hiệu chuẩn mới nhất và Calibration Status. */
+export async function listSubEquipment(): Promise<SubEquipmentRow[]> {
+  const [rows, statuses, lookups] = await Promise.all([
+    selectAll<WithTester>('sub_equipment', WITH_TESTER),
+    selectAll<DbStatus>('sub_equipment_calibration', '*', 'sub_equipment_id'),
+    loadLookups(),
+  ]);
+  const byStatus = new Map(statuses.map((s) => [s.sub_equipment_id, s]));
+  return rows.map((r) => toRow(r, byStatus.get(r.id), lookups));
+}
+
+export async function getSubEquipment(id: string): Promise<SubEquipmentRow> {
+  const [row, status, lookups] = await Promise.all([
+    selectOne<WithTester>('sub_equipment', id, WITH_TESTER),
+    db().from('sub_equipment_calibration').select('*').eq('sub_equipment_id', id).maybeSingle(),
+    loadLookups(),
+  ]);
+  if (!row) throw new AppError('NOT_FOUND');
+  if (status.error) throw mapRpcError(status.error);
+  return toRow(row, (status.data as DbStatus | null) ?? undefined, lookups);
+}
+
+function validate(input: SubEquipmentInput, lookups: Lookups, before?: DbSub) {
+  assertActive(lookups.part_numbers, input.part_number_id, 'part_number_id', before?.part_number_id);
+  assertActive(lookups.locations, input.location_id, 'location_id', before?.location_id);
+  assertTags(lookups, input.tag_ids);
+}
+
+/** Thêm sub-equipment. Có tester thì vị trí và Status theo tester (database). Part number phải thuộc loại sub_equipment. */
+export async function createSubEquipment(input: SubEquipmentInput, actor: string): Promise<SubEquipmentRow> {
+  if (!input.serial_number) throw new AppError('VALIDATION_ERROR', { fields: { serial_number: 'required' } });
+  if (!input.part_number_id) throw new AppError('VALIDATION_ERROR', { fields: { part_number_id: 'required' } });
+  if (!input.tester_id && !input.location_id) throw new AppError('VALIDATION_ERROR', { fields: { location_id: 'required' } });
+  const lookups = await loadLookups();
+  const { location_id, ...rest } = input;
+  validate({ ...rest, location_id: input.tester_id ? undefined : location_id }, lookups);
+  // Có tester: database đặt vị trí theo tester (PARENT_NOT_FOUND / PARENT_TYPE_INVALID nếu tester không hợp lệ).
+  const data = input.tester_id ? rest : input;
+  const created = await appWrite<DbSub>('sub_equipment', 'insert', null, data, actor);
+  return getSubEquipment(created.id);
+}
+
+/** Sửa thông tin; đổi tester → Move / Detach, đổi vị trí (chưa gắn tester) → Đổi vị trí. Chạy thử trước khi ghi. */
+export async function updateSubEquipment(id: string, input: SubEquipmentInput, actor: string): Promise<SubEquipmentRow> {
+  const [before, lookups] = await Promise.all([selectOne<DbSub>('sub_equipment', id), loadLookups()]);
+  if (!before) throw new AppError('NOT_FOUND');
+
+  const { location_id, tester_id: testerInput, ...fields } = input;
+  const parentChanged = testerInput !== undefined && testerInput !== before.tester_id;
+  const parentAfter = testerInput !== undefined ? testerInput : before.tester_id;
+  const locationChanged = location_id !== undefined && location_id !== before.location_id;
+  if (locationChanged && parentAfter && !parentChanged) throw new AppError('LOCATION_INHERITED_READ_ONLY');
+  const setLocation = locationChanged && !parentAfter;
+
+  validate({ ...fields, location_id: setLocation ? location_id : undefined }, lookups, before);
+  const edit = { parentTo: parentChanged ? testerInput : undefined, location: setLocation ? location_id! : undefined };
+  await previewTreeEdit('sub_equipment', id, edit, actor);
+  if (Object.keys(fields).length) await appWrite('sub_equipment', 'update', id, fields, actor);
+  await applyTreeEdit('sub_equipment', id, edit, actor);
+  return getSubEquipment(id);
+}
+
+// ------------------------------------------------------- Lịch sử hiệu chuẩn
+function toRecord(c: DbCalibration, lookups: Lookups): CalibrationRecord {
   return {
-    id: c.id,
-    equipment_id: c.equipment_id,
-    serial_number: e?.serial_number ?? '—',
-    part_number: nameOf(lookups.part_numbers, e?.part_number_id),
-    type: nameOf(lookups.types, e?.type_id),
-    location: nameOf(lookups.locations, e?.location_id),
+    id: c.id, sub_equipment_id: c.sub_equipment_id, calibrated_at: c.calibrated_at, due_date: c.due_date,
     vendor_id: c.vendor_id, vendor: nameOf(lookups.calibration_vendors, c.vendor_id),
-    calibration_date: c.calibration_date,
-    due_date: c.due_date,
-    interval_months: interval?.interval_months ?? null,
-    warning_days: interval?.warning_days ?? null,
-    due_state,
-    status: calibrationStatus(c.calibration_date, due_state),
-    remark: c.remark,
-    tag_ids: c.tag_ids ?? [], tags: tagItems(lookups, c.tag_ids),
+    cert_no: c.cert_no, cert_file_url: c.cert_file_url, result: c.result, remark: c.remark,
     ...auditOf(lookups, c),
   };
 }
 
-/** `lookups`: dữ liệu gốc đã (đang) tải ở chỗ gọi — dùng chung thay vì đọc lại. */
-async function context(lookups: Lookups | Promise<Lookups> = loadLookups()) {
-  const [equipment, intervals, resolved] = await Promise.all([
-    selectAll<DbEquipmentRef>('equipments', 'id, serial_number, part_number_id, type_id, location_id'),
-    selectAll<DbInterval>('calibration_configurations', 'id, part_number_id, interval_months, warning_days'),
-    lookups,
+/** Các lần hiệu chuẩn của một sub-equipment, mới nhất lên đầu. */
+export async function listCalibrations(subEquipmentId: string): Promise<CalibrationRecord[]> {
+  const [exists, { data, error }, lookups] = await Promise.all([
+    selectOne<{ id: string }>('sub_equipment', subEquipmentId, 'id'),
+    db().from('calibrations').select('*').eq('sub_equipment_id', subEquipmentId)
+      .order('calibrated_at', { ascending: false }).order('created_at', { ascending: false }),
+    loadLookups(),
   ]);
-  return {
-    equipment: new Map(equipment.map((e) => [e.id, e])),
-    intervals: new Map(intervals.map((i) => [i.part_number_id, i])),
-    lookups: resolved,
-  };
-}
-
-export async function listCalibration(lookups?: Promise<Lookups>): Promise<CalibrationRow[]> {
-  const [rows, ctx] = await Promise.all([selectAll<DbCalibration>('calibration_equipments'), context(lookups)]);
-  return rows.map((r) => toRow(r, ctx.equipment.get(r.equipment_id), ctx.intervals, ctx.lookups));
-}
-
-export async function getCalibration(id: string): Promise<CalibrationRow> {
-  const [row, ctx] = await Promise.all([selectOne<DbCalibration>('calibration_equipments', id), context()]);
-  if (!row) throw new AppError('NOT_FOUND');
-  return toRow(row, ctx.equipment.get(row.equipment_id), ctx.intervals, ctx.lookups);
-}
-
-/** Extension point cho chi tiết thiết bị: dòng hiệu chuẩn của thiết bị, null = PN không có trong Setup hiệu chuẩn. */
-export async function getCalibrationByEquipment(equipmentId: string): Promise<CalibrationRow | null> {
-  const [{ data, error }, ctx] = await Promise.all([
-    db().from('calibration_equipments').select('*').eq('equipment_id', equipmentId).maybeSingle(),
-    context(),
-  ]);
+  if (!exists) throw new AppError('NOT_FOUND');
   if (error) throw mapRpcError(error);
-  return data ? toRow(data as DbCalibration, ctx.equipment.get(equipmentId), ctx.intervals, ctx.lookups) : null;
+  return ((data ?? []) as DbCalibration[]).map((c) => toRecord(c, lookups));
 }
 
-function validate(input: CalibrationInput, lookups: Lookups, before: DbCalibration) {
-  assertActive(lookups.calibration_vendors, input.vendor_id, 'vendor_id', before.vendor_id);
-  assertTags(lookups, input.tag_ids);
+/**
+ * Ghi nhận một lần hiệu chuẩn (thêm một dòng calibrations; các lần trước giữ nguyên làm lịch sử).
+ * due_date: part number có Setup thì database tự tính (bỏ qua giá trị gửi lên); chưa có Setup thì bắt buộc nhập
+ * (CALIBRATION_INTERVAL_MISSING). Trả về lần hiệu chuẩn mới và sub-equipment đã cập nhật Calibration Status.
+ */
+export async function addCalibration(subEquipmentId: string, input: CalibrationInput, actor: string) {
+  if (!input.calibrated_at) throw new AppError('VALIDATION_ERROR', { fields: { calibrated_at: 'required' } });
+  const [exists, lookups] = await Promise.all([selectOne<{ id: string }>('sub_equipment', subEquipmentId, 'id'), loadLookups()]);
+  if (!exists) throw new AppError('NOT_FOUND');
+  assertActive(lookups.calibration_vendors, input.vendor_id, 'vendor_id');
+  const created = await appWrite<DbCalibration>('calibrations', 'insert', null, { ...input, sub_equipment_id: subEquipmentId }, actor);
+  return { record: toRecord(created, lookups), sub_equipment: await getSubEquipment(subEquipmentId) };
 }
 
-/** Sửa thông tin nhập sai (UPDATE) hoặc ghi nhận lần hiệu chuẩn mới (đổi ngày → CALIBRATE). */
-export async function updateCalibration(id: string, input: CalibrationInput, actor: string): Promise<CalibrationRow> {
-  const [before, lookups] = await Promise.all([selectOne<DbCalibration>('calibration_equipments', id), loadLookups()]);
+/** Sửa một lần hiệu chuẩn nhập sai (CALIBRATION_UPDATE). Đổi calibrated_at thì due_date của lần đó tính lại theo Setup hiện tại. */
+export async function updateCalibration(id: string, input: CalibrationInput, actor: string) {
+  const [before, lookups] = await Promise.all([selectOne<DbCalibration>('calibrations', id), loadLookups()]);
   if (!before) throw new AppError('NOT_FOUND');
-  validate(input, lookups, before);
-  if (Object.keys(input).length) await appWrite('calibration_equipments', 'update', id, input, actor);
-  return getCalibration(id);
+  assertActive(lookups.calibration_vendors, input.vendor_id, 'vendor_id', before.vendor_id);
+  const updated = Object.keys(input).length ? await appWrite<DbCalibration>('calibrations', 'update', id, input, actor) : before;
+  return { record: toRecord(updated, lookups), sub_equipment: await getSubEquipment(before.sub_equipment_id) };
 }
 
-export async function calibrationHistory(id: string, onlyCalibrations: boolean): Promise<HistoryEntry[]> {
-  const row = await selectOne<{ equipment_id: string }>('calibration_equipments', id, 'equipment_id');
-  if (!row) throw new AppError('NOT_FOUND');
-  const filters = [{ column: 'equipment_id', value: row.equipment_id }];
-  if (onlyCalibrations) filters.push({ column: 'action', value: 'CALIBRATE' });
-  return readHistory('calibration_histories', filters);
+/** Xóa một lần hiệu chuẩn (Admin; CALIBRATION_REMOVE). */
+export async function deleteCalibration(id: string, actor: string) {
+  const before = await selectOne<DbCalibration>('calibrations', id, 'id, sub_equipment_id');
+  if (!before) throw new AppError('NOT_FOUND');
+  await appWrite('calibrations', 'delete', id, null, actor);
+  return { sub_equipment: await getSubEquipment(before.sub_equipment_id) };
+}
+
+const CALIBRATION_ACTIONS = ['CALIBRATE', 'CALIBRATION_UPDATE', 'CALIBRATION_REMOVE'] as const;
+
+/** Tab Lịch sử của sub-equipment; `onlyCalibrations`: chỉ các lần hiệu chuẩn. */
+export async function subEquipmentHistory(id: string, onlyCalibrations = false): Promise<HistoryEntry[]> {
+  return assetLog('sub_equipment', id, onlyCalibrations ? CALIBRATION_ACTIONS : undefined);
 }

@@ -2,8 +2,8 @@
 
 import { useSyncExternalStore } from 'react';
 
-/** Phone layout — keep equal to the `max-width: 800px` media queries in app/*.css. */
-export const PHONE_QUERY = '(max-width: 800px)';
+/** Phone layout — keep equal to the `max-width: 767px` media queries in app/*.css. */
+export const PHONE_QUERY = '(max-width: 767px)';
 
 function subscribe(onChange: () => void) {
   const media = window.matchMedia(PHONE_QUERY);

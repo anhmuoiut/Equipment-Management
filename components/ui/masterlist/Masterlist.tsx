@@ -8,11 +8,11 @@
  * Dữ liệu đã tải đủ ở client nên lọc / sắp xếp tức thì, và thứ tự đang hiện
  * được báo lên (onViewChange) để Detail Panel chuyển ‹ › đúng thứ tự đó.
  *
- * Điện thoại (≤ 800px): không ép bảng vào màn hình hẹp — mỗi dòng là một thẻ
+ * Điện thoại (< 768px): không ép bảng vào màn hình hẹp — mỗi dòng là một thẻ
  * (`mobileCard` của module, hoặc thẻ chung dựng từ các cột); thanh công cụ chỉ
  * còn tìm kiếm + Lọc & sắp xếp (tấm trượt từ đáy) + menu ⋮ (Xuất Excel, công cụ).
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, Filter, Plus, Search, X } from 'lucide-react';
 import { errorMessage } from '@/lib/client/api';
@@ -90,9 +90,56 @@ function GenericCard<R>({ row, columns }: { row: R; columns: Column<R>[] }) {
   );
 }
 
+type Tone = 'alert' | 'warn' | undefined;
+
+/**
+ * Một dòng của bảng. memo: mở modal, đổi dòng đang chọn hay gõ vào ô tìm không vẽ lại cả trăm dòng — chỉ dòng nào đổi dữ liệu / cột /
+ * trạng thái chọn. Mọi thứ truyền vào đều là giá trị cố định (onSelect đi qua ref), nên so sánh nông là đủ.
+ */
+function TableRowView<R extends { id: string }>({ row, index, columns, leading, selected, tone, onSelect }: {
+  row: R; index: number; columns: Column<R>[]; leading: { render: (row: R) => ReactNode } | undefined;
+  selected: boolean; tone: Tone; onSelect: (id: string) => void;
+}) {
+  return (
+    <tr data-row-id={row.id} data-selected={selected || undefined} data-tone={tone}
+      tabIndex={0} onClick={() => onSelect(row.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(row.id); } }}>
+      {leading && <td className="ml-col-leading">{leading.render(row)}</td>}
+      <td className="ml-col-no">{index + 1}</td>
+      {columns.map((c) => {
+        const value = c.value(row);
+        const content = c.render ? c.render(row) : value;
+        return (
+          <td key={c.key} title={String(value ?? '')} data-wrap={c.wrap || undefined}>
+            {content === null || content === '' || content === undefined ? <span className="ml-empty">—</span>
+              : c.wrap ? <div className="ml-clamp">{content}</div> : content}
+          </td>
+        );
+      })}
+    </tr>
+  );
+}
+const TableRow = memo(TableRowView) as typeof TableRowView;
+
+/** Một thẻ dòng trên điện thoại — memo như TableRow. */
+function CardView<R extends { id: string }>({ row, columns, mobileCard, selected, tone, onSelect }: {
+  row: R; columns: Column<R>[]; mobileCard: ((row: R) => ReactNode) | undefined;
+  selected: boolean; tone: Tone; onSelect: (id: string) => void;
+}) {
+  return (
+    <li>
+      <button type="button" className="ml-card" data-row-id={row.id} data-selected={selected || undefined}
+        data-tone={tone} onClick={() => onSelect(row.id)}>
+        {mobileCard ? mobileCard(row) : <GenericCard row={row} columns={columns} />}
+      </button>
+    </li>
+  );
+}
+const Card = memo(CardView) as typeof CardView;
+
 export function Masterlist<R extends { id: string }>({
   title, rows, loading, error, onRetry, columns, storageKey, defaultColumns, selectedId, onSelect,
-  onAdd, addLabel, tools, exportName, quickFilters, leading, onViewChange, rowTone, mobileCard,
+  onAdd, addLabel, tools, exportName, quickFilters, leading, onViewChange, rowTone, mobileCard, initialSearch,
 }: {
   title: string;
   rows: R[];
@@ -119,10 +166,14 @@ export function Masterlist<R extends { id: string }>({
   rowTone?: (row: R) => 'alert' | 'warn' | undefined;
   /** Thẻ dòng trên điện thoại (xem RowCard); mặc định dựng từ các cột. */
   mobileCard?: (row: R) => ReactNode;
+  /** Chữ tìm kiếm điền sẵn (`?q=` trên URL: "Xem trong Calibration" từ một tester). */
+  initialSearch?: string;
 }) {
   const { t } = useTranslation();
   const phone = usePhone();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch ?? '');
+  // Ô tìm kiếm cập nhật ngay; lọc + vẽ lại danh sách chạy sau (ngắt được) nên gõ phím không bị khựng khi danh sách dài.
+  const deferredSearch = useDeferredValue(search);
   const [sort, setSort] = useState<SortState>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [quick, setQuick] = useState<string | null>(null);
@@ -132,6 +183,12 @@ export function Masterlist<R extends { id: string }>({
   const columnKeys = columns.map((c) => c.key);
   const prefs = useColumnPrefs(storageKey, columnKeys, defaultColumns);
   const sentinelRef = useRef<HTMLElement | null>(null);
+  // onSelect đổi mỗi lần modal mở / đóng; dòng (memo) chỉ cần một hàm cố định gọi bản mới nhất.
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const select = useCallback((id: string) => onSelectRef.current(id), []);
+  // Chữ để tìm của từng dòng (mọi cột, viết thường) — tính MỘT lần cho mỗi lần dữ liệu / cột đổi, không phải mỗi lần gõ phím.
+  const searchTexts = useRef<{ rows: R[]; columns: Column<R>[]; texts: string[] } | null>(null);
 
   const visibleColumns = useMemo(
     () => prefs.order.map((k) => columns.find((c) => c.key === k)).filter((c): c is Column<R> => !!c && !prefs.hidden.includes(c.key)),
@@ -151,37 +208,46 @@ export function Masterlist<R extends { id: string }>({
   }, [rows, columns]);
 
   const view = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     const quickTest = quickFilters?.find((f) => f.key === quick)?.test;
-    let out = rows.filter((r) => {
+    const checks = Object.entries(filters).flatMap(([key, wanted]) => {
+      const col = columns.find((c) => c.key === key);
+      return col ? [{ col, wanted }] : [];
+    });
+    let texts: string[] | null = null;
+    if (q) {
+      const cached = searchTexts.current;
+      if (cached && cached.rows === rows && cached.columns === columns) texts = cached.texts;
+      else {
+        texts = rows.map((r) => columns.map((c) => { const v = c.value(r); return v === null ? '' : String(v); }).join('\u0001').toLowerCase());
+        searchTexts.current = { rows, columns, texts };
+      }
+    }
+    let out = rows.filter((r, i) => {
       if (quickTest && !quickTest(r)) return false;
-      for (const [key, wanted] of Object.entries(filters)) {
-        const col = columns.find((c) => c.key === key);
-        if (!col) continue;
+      for (const { col, wanted } of checks) {
         const v = col.value(r);
         if ((v === null || v === '' ? '' : String(v)) !== wanted) return false;
       }
-      if (!q) return true;
-      return columns.some((c) => {
-        const v = c.value(r);
-        return v !== null && String(v).toLowerCase().includes(q);
-      });
+      return !texts || texts[i]!.includes(q);
     });
     if (sort) {
       const col = columns.find((c) => c.key === sort.key);
       if (col) {
+        // Giá trị cột tính một lần cho mỗi dòng, không phải mỗi lần so sánh (so sánh chạy n·log n lần).
+        const keys = new Map(out.map((r) => [r, col.value(r)] as const));
         out = [...out].sort((a, b) => {
-          const res = compare(col.value(a), col.value(b));
+          const res = compare(keys.get(a) ?? null, keys.get(b) ?? null);
           return sort.dir === 'asc' ? res : -res;
         });
       }
     }
     return out;
-  }, [rows, search, filters, sort, quick, quickFilters, columns]);
+  }, [rows, deferredSearch, filters, sort, quick, quickFilters, columns]);
 
   const ids = useMemo(() => view.map((r) => r.id), [view]);
   useEffect(() => { onViewChange?.(ids); }, [ids, onViewChange]);
-  useEffect(() => { setLimit(PAGE); }, [search, filters, sort, quick]);
+  useEffect(() => { setLimit(PAGE); }, [deferredSearch, filters, sort, quick]);
   // Quay về desktop thì bỏ tấm lọc đang mở (desktop dùng khung lọc nằm trong trang).
   useEffect(() => { if (!phone) setFiltersOpen(false); }, [phone]);
 
@@ -346,12 +412,8 @@ export function Masterlist<R extends { id: string }>({
               ))
             ) : (
               view.slice(0, limit).map((r) => (
-                <li key={r.id}>
-                  <button type="button" className="ml-card" data-row-id={r.id} data-selected={r.id === selectedId || undefined}
-                    data-tone={rowTone?.(r)} onClick={() => onSelect(r.id)}>
-                    {mobileCard ? mobileCard(r) : <GenericCard row={r} columns={columns} />}
-                  </button>
-                </li>
+                <Card key={r.id} row={r} columns={columns} mobileCard={mobileCard} selected={r.id === selectedId}
+                  tone={rowTone?.(r)} onSelect={select} />
               ))
             )}
             {view.length > limit && <li ref={(el) => { sentinelRef.current = el; }} className="ml-more">{t('common.loadingEllipsis')}</li>}
@@ -380,21 +442,8 @@ export function Masterlist<R extends { id: string }>({
                 <TableSkeleton columns={colCount} />
               ) : (
                 view.slice(0, limit).map((r, i) => (
-                  <tr key={r.id} data-row-id={r.id} data-selected={r.id === selectedId || undefined} data-tone={rowTone?.(r)}
-                    tabIndex={0} onClick={() => onSelect(r.id)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(r.id); } }}>
-                    {leading && <td className="ml-col-leading">{leading.render(r)}</td>}
-                    <td className="ml-col-no">{i + 1}</td>
-                    {visibleColumns.map((c) => {
-                      const content = c.render ? c.render(r) : c.value(r);
-                      return (
-                        <td key={c.key} title={String(c.value(r) ?? '')} data-wrap={c.wrap || undefined}>
-                          {content === null || content === '' || content === undefined ? <span className="ml-empty">—</span>
-                            : c.wrap ? <div className="ml-clamp">{content}</div> : content}
-                        </td>
-                      );
-                    })}
-                  </tr>
+                  <TableRow key={r.id} row={r} index={i} columns={visibleColumns} leading={leading}
+                    selected={r.id === selectedId} tone={rowTone?.(r)} onSelect={select} />
                 ))
               )}
               {view.length > limit && <tr ref={(el) => { sentinelRef.current = el; }}><td colSpan={colCount} className="ml-more">{t('common.loadingEllipsis')}</td></tr>}

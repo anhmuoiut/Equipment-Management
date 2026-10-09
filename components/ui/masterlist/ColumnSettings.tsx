@@ -30,11 +30,17 @@ function defaultPrefs(keys: string[], defaults?: string[]): { order: string[]; h
   return { order: [...shown, ...rest], hidden: rest };
 }
 
+/** Cùng nội dung thì giữ nguyên mảng cũ: đặt lại một mảng mới y hệt sẽ vẽ lại cả bảng chỉ vì đổi identity. */
+const keepIfSame = (previous: string[], next: string[]) =>
+  previous.length === next.length && previous.every((k, i) => k === next[i]) ? previous : next;
+
 export function useColumnPrefs(storageKey: string, keys: string[], defaults?: string[]): ColumnPrefs {
   const storage = `masterlist-columns:${storageKey}`;
   const initial = defaultPrefs(keys, defaults);
-  const [order, setOrder] = useState<string[]>(initial.order);
-  const [hidden, setHidden] = useState<string[]>(initial.hidden);
+  const [order, setOrderState] = useState<string[]>(initial.order);
+  const [hidden, setHiddenState] = useState<string[]>(initial.hidden);
+  const setOrder = useCallback((next: string[]) => setOrderState((previous) => keepIfSame(previous, next)), []);
+  const setHidden = useCallback((next: string[]) => setHiddenState((previous) => keepIfSame(previous, next)), []);
   const keySig = keys.join('|');
   const defaultSig = (defaults ?? []).join('|');
 

@@ -28,8 +28,7 @@ function useFormatHistoryValue() {
 }
 
 /**
- * Ghi chú do database đặt: via_parent:SN, swap_with:SN, stayed:SN, stayed_swap:SN, parent_deleted:SN,
- * via_part_number:PN (Admin đổi Type của part number), via_calibration (Status đổi sau khi nhập ngày hiệu chuẩn).
+ * Ghi chú do database đặt: via_parent:SN (đổi theo thiết bị cha), swap_with:SN, parent_deleted:SN (cha bị xóa, con thành chưa gắn).
  */
 export function useFormatNote() {
   const { t } = useTranslation();
@@ -39,11 +38,7 @@ export function useFormatNote() {
     const value = rest.join(':');
     if (kind === 'via_parent') return t('hist.viaParent', { serial: value });
     if (kind === 'swap_with') return t('hist.swapWith', { serial: value });
-    if (kind === 'stayed') return t('hist.stayed', { serial: value });
-    if (kind === 'stayed_swap') return t('hist.stayedSwap', { serial: value });
     if (kind === 'parent_deleted') return t('hist.parentDeleted', { serial: value });
-    if (kind === 'via_part_number') return t('hist.viaPartNumber', { pn: value });
-    if (kind === 'via_calibration') return t('hist.viaCalibration');
     return note;
   };
 }
@@ -97,6 +92,9 @@ export function DetailHistory({ url, fieldLabel, filter }: {
               {row.source !== 'ui' && <> · {t(`hist.source.${row.source}`, { defaultValue: row.source })}</>}
             </div>
             {formatNote(row.note) && <div className="hist-note">{formatNote(row.note)}</div>}
+            {(row.from_location || row.to_location) && (
+              <div className="hist-note">{t('hist.location')}: {row.from_location ?? '—'} → {row.to_location ?? '—'}</div>
+            )}
             <HistoryChanges changes={row.changes} fieldLabel={fieldLabel} />
           </li>
         ))}
