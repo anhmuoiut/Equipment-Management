@@ -75,20 +75,23 @@ export async function fetchSerialMatches(serial: string, exclude?: { type: Asset
  */
 export function useDryRun(run: (() => Promise<AssetOpResult>) | null, key: string) {
   const { t } = useTranslation();
-  const [state, setState] = useState<{ result: AssetOpResult | null; loading: boolean; error: string | null }>({
-    result: null, loading: run !== null, error: null,
+  const enabled = run !== null;
+  const [state, setState] = useState<{ key: string; enabled: boolean; result: AssetOpResult | null; loading: boolean; error: string | null }>({
+    key, enabled, result: null, loading: enabled, error: null,
   });
   useEffect(() => {
-    if (!run) { setState({ result: null, loading: false, error: null }); return; }
+    if (!run) { setState({ key, enabled, result: null, loading: false, error: null }); return; }
     let current = true;
-    setState({ result: null, loading: true, error: null });
+    setState({ key, enabled, result: null, loading: true, error: null });
     run().then(
-      (result) => { if (current) setState({ result, loading: false, error: null }); },
-      (e: unknown) => { if (current) setState({ result: null, loading: false, error: errorMessage(e, t) }); },
+      (result) => { if (current) setState({ key, enabled, result, loading: false, error: null }); },
+      (e: unknown) => { if (current) setState({ key, enabled, result: null, loading: false, error: errorMessage(e, t) }); },
     );
     return () => { current = false; };
     // key đại diện cho các lựa chọn; run đổi identity mỗi lần render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  return state;
+  }, [key, enabled]);
+  // A new selection must never render or enable confirmation using the previous selection's preview.
+  const { key: resultKey, enabled: resultEnabled, ...result } = state;
+  return resultKey === key && resultEnabled === enabled ? result : { result: null, loading: enabled, error: null };
 }

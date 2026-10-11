@@ -65,7 +65,7 @@ Mặc định Node đóng kết nối rảnh sau ~4 s, nên người dùng dừn
 - **Masterlist** (`components/ui/masterlist/Masterlist.tsx`): ô tìm kiếm cập nhật ngay còn lọc + vẽ lại chạy sau (`useDeferredValue`); chữ để tìm của mỗi dòng tính **một** lần cho mỗi lần dữ liệu đổi (không phải mỗi lần gõ phím); mỗi dòng là component `memo` nên mở modal / đổi dòng chọn chỉ vẽ lại dòng thật sự đổi; khóa sắp xếp tính một lần cho mỗi dòng; tùy chọn cột không tạo mảng mới khi nội dung giống hệt.
 - `formatTime` / `formatDate` dùng chung một `Intl.DateTimeFormat` (dựng có múi giờ rất tốn).
 - `app/(app)/loading.tsx`: chuyển trang trong ứng dụng hiện khung chờ ngay (thanh trên + menu giữ nguyên) thay vì đứng yên tới khi server trả lời.
-- Font IBM Plex nạp bằng script trong `<head>` (`app/layout.tsx`) thay vì `<link rel="stylesheet">`: stylesheet trong HTML **chặn vẽ trang** tới khi `fonts.googleapis.com` trả lời (0,3–0,8 s mỗi lần mở trang đo được, lâu hơn nhiều nếu mạng công ty chậm hoặc chặn).
+- Font Inter nạp bằng script trong `<head>` (`app/layout.tsx`) thay vì `<link rel="stylesheet">`: stylesheet trong HTML **chặn vẽ trang** tới khi `fonts.googleapis.com` trả lời (0,3–0,8 s mỗi lần mở trang đo được, lâu hơn nhiều nếu mạng công ty chậm hoặc chặn).
 - Đã bỏ CSS không còn dùng (thông báo, đăng ký, bộ chọn Usage cũ, `.eyebrow`, `.dp-preview`, `.grid-cols-2`) và 54 khóa i18n mồ côi. Khóa số nhiều (`_one` / `_other`) do i18next tự chọn theo `count` — **đừng** xóa dù tìm không thấy tên khóa đầy đủ trong code.
 
 ## 4. Số đo

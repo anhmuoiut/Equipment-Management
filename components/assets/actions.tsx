@@ -26,7 +26,9 @@ export function assetActions<R extends AssetRecord>({ type, t, isAdmin, extra = 
   const icon = (node: typeof Link2) => { const Icon = node; return <Icon size={14} aria-hidden="true" />; };
   return [
     ...extra,
-    { key: 'swap', label: t('eq.swap'), icon: icon(ArrowLeftRight), screen: (c) => <SwapScreen type={type} ctx={asCtx(c)} /> },
+    { key: 'swap', label: t('eq.swap'), icon: icon(ArrowLeftRight),
+      presentation: { modalClassName: 'record-swap-dialog', heading: (record) => ({ title: t('swap.title'), subtitle: record.serial_number }) },
+      screen: (c) => <SwapScreen type={type} ctx={asCtx(c)} /> },
     { key: 'attach', label: t(`asset.attach.${type}`), icon: icon(Link2), visible: (r) => !hasParent(r),
       screen: (c) => <MoveScreen type={type} ctx={asCtx(c)} /> },
     { key: 'move', label: t(`asset.changeParent.${type}`), icon: icon(Link2), visible: hasParent,

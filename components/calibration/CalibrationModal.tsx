@@ -20,7 +20,7 @@ import type { DetailCtx } from '@/components/ui/workspace/ModuleWorkspace';
 import { assetActions } from '@/components/assets/actions';
 import { fetchSerialMatches } from '@/components/assets/api';
 import { ParentPicker } from '@/components/assets/pickers';
-import { ActionLink, RelationChip, RelationList, useOpenAsset } from '@/components/assets/Relations';
+import { ActionLink, ParentRelation, RelationList, useOpenAsset } from '@/components/assets/Relations';
 import { SerialWarning } from '@/components/assets/SerialWarning';
 import { CalibrationRecordsTab, EditCalibrationScreen, RecordCalibrationScreen, RemoveCalibrationScreen } from './CalibrationScreens';
 import type { CalibrationRecord, ParentCandidate, SubEquipmentRow } from '@/lib/types';
@@ -52,25 +52,26 @@ export function CalibrationModal({ ctx }: { ctx: DetailCtx<SubEquipmentRow> }) {
     },
     {
       key: 'classification', title: t('eq.groupClassification'), fields: [
-        { key: 'type_id', label: t('fields.type'), readOnly: true, hint: t('eq.typeFromPartNumber'), view: (r) => r.type,
+        { key: 'type_id', label: t('fields.type'), readOnly: true, view: (r) => r.type,
           draftView: (d) => {
             const typeId = options?.part_numbers.find((p) => p.id === d.part_number_id)?.type_id;
             return typeId ? options?.types.find((x) => x.id === typeId)?.display_name ?? '—' : '—';
           } },
-        { key: 'usage', label: t('fields.usage'), readOnly: true, hideInCreate: true, hint: t('eq.usageHint'), view: (r) => <UsageTag usage={r.usage} /> },
+        { key: 'usage', label: t('fields.usage'), readOnly: true, hideInCreate: true, view: (r) => <UsageTag usage={r.usage} /> },
       ],
     },
     {
       key: 'location', title: t('eq.groupLocationRelation'), fields: [
         { key: 'location_id', label: t('fields.location'), kind: 'select', required: (d) => !d.tester_id,
-          view: (r) => (r.tester_id ? <>{r.location}<span className="eq-note">{t('asset.fromTester')}</span></> : r.location),
+          view: (r) => r.location,
           options: (_d, r) => toSelect(options?.locations, r?.location_id, hidden),
           lock: (_r, d) => (d.tester_id ? t('asset.locationFromTester') : null),
           draftView: (d) => testerLocation(d.tester_id) },
         { key: 'tester_id', label: t('fields.tester'), wide: true,
           view: (r) => (r.tester_id ? (
-            <RelationList empty="">
-              {[<RelationChip key="t" serial={r.tester_serial ?? '—'} onClick={() => openAsset('equipment', r.tester_id!)} />]}
+            <RelationList key={r.id} empty="">
+              {[<ParentRelation key={r.tester_id} id={r.tester_id} serial={r.tester_serial ?? '—'} version={ctx.version}
+                onClick={() => openAsset('equipment', r.tester_id!)} />]}
             </RelationList>
           ) : (
             <>
@@ -79,7 +80,6 @@ export function CalibrationModal({ ctx }: { ctx: DetailCtx<SubEquipmentRow> }) {
             </>
           )),
           draftView: (d) => (d.tester_id ? (picked?.id === d.tester_id ? picked.serial_number : record?.tester_serial ?? '—') : <span className="dp-empty">{t('asset.noTester')}</span>),
-          editHint: t('asset.testerHint'),
           editor: ({ value, onChange, label, record: r }) => (
             <ParentPicker type="sub_equipment" assetId={r?.id} value={(value as string | null) ?? null} valueLabel={r?.tester_serial ?? undefined}
               onChange={onChange} onPick={setPicked} clearable ariaLabel={label} placeholder={t('asset.noTester')} />
@@ -90,9 +90,9 @@ export function CalibrationModal({ ctx }: { ctx: DetailCtx<SubEquipmentRow> }) {
       key: 'current', title: t('cal.groupCurrent'), hideInCreate: true,
       render: (r) => (r.calibration_id ? (
         <>
-          <DetailValue label={t('cal.calibrationStatus')} hint={t('cal.autoComputed')}><CalibrationStatusTag status={r.status} /></DetailValue>
+          <DetailValue label={t('cal.calibrationStatus')}><CalibrationStatusTag status={r.status} /></DetailValue>
           <DetailValue label={t('fields.calibration_date')}>{r.calibrated_at ? formatDate(r.calibrated_at) : null}</DetailValue>
-          <DetailValue label={t('fields.due_date')} hint={t('cal.autoComputed')}><DueDate date={r.due_date} status={r.status} /></DetailValue>
+          <DetailValue label={t('fields.due_date')}><DueDate date={r.due_date} status={r.status} /></DetailValue>
           <DetailValue label={t('fields.vendor')}>{r.vendor}</DetailValue>
           <DetailValue label={t('fields.cert_no')}>{r.cert_no}</DetailValue>
           <DetailValue label={t('fields.cert_file_url')}>
@@ -114,11 +114,11 @@ export function CalibrationModal({ ctx }: { ctx: DetailCtx<SubEquipmentRow> }) {
           <DetailValue label={t('fields.interval_months')}>{t('cal.months', { count: r.interval_months })}</DetailValue>
           <DetailValue label={t('fields.warning_days')}>{r.warning_days ? t('cal.days', { count: r.warning_days }) : null}</DetailValue>
         </>
-      ) : <DetailValue label={t('fields.interval_months')} wide><span className="dp-empty">{t('cal.noIntervalHint')}</span></DetailValue>),
+      ) : <DetailValue label={t('fields.interval_months')} wide>{null}</DetailValue>),
     },
     {
       key: 'notes', title: t('eq.groupNotes'), fields: [
-        { key: 'tag_ids', label: t('fields.tags'), wide: true, hint: t('tag.hint'),
+        { key: 'tag_ids', label: t('fields.tags'), wide: true,
           view: (r) => (r.tags.length ? <TagChips items={r.tags} /> : <span className="dp-empty">{t('tag.none')}</span>),
           editor: ({ id, value, onChange, label }) => <TagPicker id={id} value={value} onChange={onChange} tags={options?.tags} label={label} /> },
         { key: 'remark', label: t('fields.remark'), kind: 'textarea', wide: true, maxLength: 1000 },

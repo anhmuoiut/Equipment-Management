@@ -81,13 +81,16 @@ export type WorkspaceTool = {
 
 export function ModuleWorkspace<R extends { id: string }>({
   title, list, columns, storageKey, defaultColumns, exportName, quickFilters, leading, rowTone, canAdd, addLabel,
-  tools, recordUrl, renderDetail, beforeList, mobileCard,
+  tools, recordUrl, renderDetail, beforeList, mobileCard, mobileFilterKeys, searchPlaceholder, mobileEmptyState,
 }: {
   title: string;
   list: ListState<R>;
   columns: Column<R>[];
   /** Thẻ dòng trên điện thoại (RowCard); mặc định dựng từ các cột. */
   mobileCard?: (row: R) => ReactNode;
+  mobileFilterKeys?: string[];
+  searchPlaceholder?: string;
+  mobileEmptyState?: { title: string; subtitle: string };
   storageKey: string;
   /** Cột hiện sẵn, theo thứ tự này; cột khác ẩn (mở ở Tùy chọn hiển thị). */
   defaultColumns?: string[];
@@ -222,6 +225,7 @@ export function ModuleWorkspace<R extends { id: string }>({
             leading={leading} rowTone={rowTone} selectedId={id} onSelect={select}
             onAdd={canAdd ? () => create() : undefined}
             addLabel={addLabel} onViewChange={setViewIds} initialSearch={searchParams.get('q') ?? undefined}
+            mobileFilterKeys={mobileFilterKeys} searchPlaceholder={searchPlaceholder} mobileEmptyState={mobileEmptyState}
             tools={tools?.map((x) => ({
               key: x.key, label: x.label, icon: x.icon, active: toolKey === x.key,
               onClick: () => go({ tool: x.key }),

@@ -14,11 +14,12 @@
  */
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, Filter, Plus, Search, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Download, Filter, Inbox, Plus, Search, X } from 'lucide-react';
 import { errorMessage } from '@/lib/client/api';
 import { usePhone } from '@/lib/client/usePhone';
 import { Button, EmptyState, ErrorState, Modal, Skeleton, TableSkeleton, toast } from '@/components/ui';
 import { ActionMenu, type MoreItem } from '@/components/ui/ActionMenu';
+import { SearchableSelect, type SelectOption } from '@/components/ui/SearchableSelect';
 import { ColumnSettings, useColumnPrefs } from './ColumnSettings';
 import { ToolbarButton } from './ToolbarButton';
 import { exportToExcel } from './exportExcel';
@@ -44,6 +45,23 @@ export type QuickFilter<R> = { key: string; label: string; test: (row: R) => boo
 export type ListTool = { key: string; label: string; icon?: ReactNode; active?: boolean; onClick: () => void };
 
 type SortState = { key: string; dir: 'asc' | 'desc' } | null;
+
+/** Sheet trên điện thoại: mọi lựa chọn đều là dropdown mở ngay dưới ô. */
+function SheetSelect({ label, value, onChange, options, disabled }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectOption[];
+  disabled?: boolean;
+}) {
+  return (
+    <div className="ml-filter">
+      <span>{label}</span>
+      <SearchableSelect inline value={value} onChange={onChange} options={options} disabled={disabled}
+        ariaLabel={label} className="ml-sheet-select" />
+    </div>
+  );
+}
 
 const PAGE = 200;
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -126,10 +144,11 @@ function CardView<R extends { id: string }>({ row, columns, mobileCard, selected
   row: R; columns: Column<R>[]; mobileCard: ((row: R) => ReactNode) | undefined;
   selected: boolean; tone: Tone; onSelect: (id: string) => void;
 }) {
+  const usage = 'usage' in row && (row.usage === 'in_use' || row.usage === 'not_in_use') ? row.usage : undefined;
   return (
     <li>
       <button type="button" className="ml-card" data-row-id={row.id} data-selected={selected || undefined}
-        data-tone={tone} onClick={() => onSelect(row.id)}>
+        data-tone={tone} data-usage={usage} onClick={() => onSelect(row.id)}>
         {mobileCard ? mobileCard(row) : <GenericCard row={row} columns={columns} />}
       </button>
     </li>
@@ -140,6 +159,7 @@ const Card = memo(CardView) as typeof CardView;
 export function Masterlist<R extends { id: string }>({
   title, rows, loading, error, onRetry, columns, storageKey, defaultColumns, selectedId, onSelect,
   onAdd, addLabel, tools, exportName, quickFilters, leading, onViewChange, rowTone, mobileCard, initialSearch,
+  mobileFilterKeys, searchPlaceholder, mobileEmptyState,
 }: {
   title: string;
   rows: R[];
@@ -168,6 +188,10 @@ export function Masterlist<R extends { id: string }>({
   mobileCard?: (row: R) => ReactNode;
   /** Chữ tìm kiếm điền sẵn (`?q=` trên URL: "Xem trong Calibration" từ một tester). */
   initialSearch?: string;
+  /** Filters shown first in the phone sheet; other filters remain under More filters & sort. */
+  mobileFilterKeys?: string[];
+  searchPlaceholder?: string;
+  mobileEmptyState?: { title: string; subtitle: string };
 }) {
   const { t } = useTranslation();
   const phone = usePhone();
@@ -178,6 +202,8 @@ export function Masterlist<R extends { id: string }>({
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [quick, setQuick] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<Record<string, string>>({});
+  const [draftSort, setDraftSort] = useState<SortState>(null);
   const [limit, setLimit] = useState(PAGE);
   const [exporting, setExporting] = useState(false);
   const columnKeys = columns.map((c) => c.key);
@@ -196,10 +222,14 @@ export function Masterlist<R extends { id: string }>({
   );
 
   const filterable = columns.filter((c) => c.filter);
+  const phoneFilters = mobileFilterKeys
+    ? mobileFilterKeys.flatMap((key) => filterable.filter((c) => c.key === key))
+    : filterable;
+  const extraPhoneFilters = mobileFilterKeys ? filterable.filter((c) => !mobileFilterKeys.includes(c.key)) : [];
   const filterValues = useMemo(() => {
     const out: Record<string, string[]> = {};
     filterable.forEach((c) => {
-      const set = new Set<string>();
+      const set = new Set<string>(c.key === 'parent' ? [''] : []);
       rows.forEach((r) => { const v = c.value(r); set.add(v === null || v === '' ? '' : String(v)); });
       out[c.key] = [...set].sort((a, b) => compare(a || null, b || null));
     });
@@ -292,6 +322,8 @@ export function Masterlist<R extends { id: string }>({
   }
 
   const activeFilters = Object.entries(filters);
+  const activeCount = activeFilters.length + (sort ? 1 : 0) + (quick ? 1 : 0);
+  const draftCount = Object.keys(draftFilters).length + (draftSort ? 1 : 0);
   const sortLabel = sort ? columns.find((c) => c.key === sort.key)?.label : undefined;
   const colCount = visibleColumns.length + 1 + (leading ? 1 : 0);
   const setFilter = (key: string, value: string) => setFilters((f) => {
@@ -300,9 +332,29 @@ export function Masterlist<R extends { id: string }>({
     return next;
   });
 
+  function openPhoneFilters() {
+    setDraftFilters({ ...filters });
+    setDraftSort(sort);
+    setFiltersOpen(true);
+  }
+
+  const clearFilters = () => { setFilters({}); setSort(null); setQuick(null); };
+  const sheetFilter = (c: Column<R>) => (
+    <SheetSelect key={c.key} label={c.label} value={draftFilters[c.key] ?? '__all'}
+      onChange={(value) => setDraftFilters((current) => {
+        const next = { ...current };
+        if (value === '__all') delete next[c.key]; else next[c.key] = value;
+        return next;
+      })}
+      options={[
+        { value: '__all', label: t('ml.all') },
+        ...(filterValues[c.key] ?? []).map((value) => ({ value, label: value || t('ml.emptyValue') })),
+      ]} />
+  );
+
   // Menu ⋮ trên điện thoại: Xuất Excel + công cụ của module (Import…).
   const menu: MoreItem[] = [
-    ...(view.length > 0 ? [{ key: 'export', label: t('ml.export'), icon: <Download size={16} aria-hidden="true" />, onClick: () => void doExport() }] : []),
+    { key: 'export', label: t('ml.export'), icon: <Download size={16} aria-hidden="true" />, disabled: view.length === 0, onClick: () => void doExport() },
     ...(tools ?? []).map((x) => ({ key: x.key, label: x.label, icon: x.icon, onClick: x.onClick })),
   ];
 
@@ -317,14 +369,14 @@ export function Masterlist<R extends { id: string }>({
           <Search size={15} aria-hidden="true" />
           <input
             type="search" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('ml.searchPlaceholder')} aria-label={t('common.search')}
+            placeholder={phone && searchPlaceholder ? searchPlaceholder : t('ml.searchPlaceholder')} aria-label={t('common.search')}
           />
         </label>
         {phone ? (
           <>
-            <Button className="ml-icon-btn" aria-label={t('ml.filtersAndSort')} aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>
+            <Button className="ml-icon-btn" aria-label={t('ml.filters')} aria-expanded={filtersOpen} onClick={openPhoneFilters}>
               <Filter size={18} aria-hidden="true" />
-              {activeFilters.length + (sort ? 1 : 0) > 0 && <span className="ml-badge">{activeFilters.length + (sort ? 1 : 0)}</span>}
+              {activeCount > 0 && <span className="ml-badge">{activeCount}</span>}
             </Button>
             {menu.length > 0 && <ActionMenu items={menu} busy={exporting} iconOnly ariaLabel={t('ml.moreActions')} />}
           </>
@@ -371,24 +423,31 @@ export function Masterlist<R extends { id: string }>({
       {!phone && filtersOpen && filterable.length > 0 && (
         <div className="ml-filters">
           {filterable.map((c) => (
-            <label key={c.key} className="ml-filter">
+            <div key={c.key} className="ml-filter">
               <span>{c.label}</span>
-              <select value={filters[c.key] ?? '__all'} onChange={(e) => setFilter(c.key, e.target.value)}>
-                <option value="__all">{t('ml.all')}</option>
-                {filterValues[c.key]?.map((v) => <option key={v} value={v}>{v || t('ml.empty')}</option>)}
-              </select>
-            </label>
+              <SearchableSelect value={filters[c.key] ?? '__all'} onChange={(value) => setFilter(c.key, value)}
+                ariaLabel={c.label} className="ml-filter-select"
+                options={[
+                  { value: '__all', label: t('ml.all') },
+                  ...(filterValues[c.key] ?? []).map((value) => ({
+                    value, label: value || t(c.key === 'parent' ? 'ml.emptyValue' : 'ml.empty'),
+                  })),
+                ]} />
+            </div>
           ))}
           {activeFilters.length > 0 && <Button size="sm" onClick={() => setFilters({})}>{t('ml.clearFilters')}</Button>}
         </div>
       )}
 
-      {(activeFilters.length > 0 || (phone && sort)) && !filtersOpen && (
+      {(activeFilters.length > 0 || (phone && (sort || quick))) && !filtersOpen && (
         <div className="ml-chips">
           {activeFilters.map(([key, value]) => (
             <button key={key} type="button" className="ml-chip"
+              data-usage={key === 'usage' ? (value === t('values.in_use') ? 'in_use' : 'not_in_use') : undefined}
+              aria-label={t('ml.removeFilter', { name: `${columns.find((c) => c.key === key)?.label ?? key}: ${value || t('ml.emptyValue')}` })}
               onClick={() => setFilters((f) => { const n = { ...f }; delete n[key]; return n; })}>
-              {columns.find((c) => c.key === key)?.label}: {value || t('ml.empty')} <X size={12} aria-hidden="true" />
+              {phone ? <span className="ml-chip-dot" aria-hidden="true" /> : <>{columns.find((c) => c.key === key)?.label}: </>}
+              {value || t(phone || key === 'parent' ? 'ml.emptyValue' : 'ml.empty')} <X size={12} aria-hidden="true" />
             </button>
           ))}
           {phone && sort && (
@@ -397,10 +456,16 @@ export function Masterlist<R extends { id: string }>({
               {sortLabel} <X size={12} aria-hidden="true" />
             </button>
           )}
+          {phone && quick && (
+            <button type="button" className="ml-chip" onClick={() => setQuick(null)}>
+              {quickFilters?.find((f) => f.key === quick)?.label}<X size={12} aria-hidden="true" />
+            </button>
+          )}
+          {phone && <button type="button" className="ml-clear-all" onClick={clearFilters}>{t('ml.clearAll')}</button>}
         </div>
       )}
 
-      <div className="ml-scroll">
+      <div className="ml-scroll" data-empty={phone && !loading && !error && view.length === 0 || undefined}>
         {phone ? (
           <ul className="ml-cards">
             {loading && rows.length === 0 ? (
@@ -452,7 +517,14 @@ export function Masterlist<R extends { id: string }>({
         )}
         {error && <ErrorState message={error} onRetry={onRetry} />}
         {!error && !loading && view.length === 0 && (
-          <EmptyState
+          phone ? (
+            <div className="ml-empty-state">
+              <div className="ml-empty-art" aria-hidden="true"><Inbox size={104} strokeWidth={1.1} /></div>
+              <h2>{mobileEmptyState?.title ?? (rows.length === 0 ? t('ml.emptyTitle') : t('ml.noMatch'))}</h2>
+              <p>{mobileEmptyState?.subtitle ?? t('ml.adjustFilters')}</p>
+              <Button onClick={() => { setSearch(''); clearFilters(); }}>{t('ml.clearFilters')}</Button>
+            </div>
+          ) : <EmptyState
             title={rows.length === 0 ? t('ml.emptyTitle') : t('ml.noMatch')}
             action={rows.length > 0 ? (
               <Button size="sm" onClick={() => { setSearch(''); setFilters({}); setQuick(null); }}>{t('ml.clearFilters')}</Button>
@@ -464,38 +536,38 @@ export function Masterlist<R extends { id: string }>({
       </div>
 
       {phone && filtersOpen && (
-        <Modal sheet title={t('ml.filtersAndSort')} onClose={() => setFiltersOpen(false)}
+        <Modal sheet className="ml-filter-sheet" title={t('ml.filters')} onClose={() => setFiltersOpen(false)}
+          headerAction={<button type="button" className="ml-sheet-reset" onClick={() => { setDraftFilters({}); setDraftSort(null); }}>{t('ml.reset')}</button>}
           footer={(
             <>
-              <Button onClick={() => { setFilters({}); setSort(null); }} disabled={activeFilters.length === 0 && !sort}>{t('ml.clearFilters')}</Button>
-              <Button variant="primary" onClick={() => setFiltersOpen(false)}>{t('ml.showResults', { count: view.length })}</Button>
+              <Button className="ml-sheet-action" onClick={() => setFiltersOpen(false)}>{t('common.cancel')}</Button>
+              <Button className="ml-sheet-action" variant="primary" onClick={() => {
+                setFilters(draftFilters); setSort(draftSort); setFiltersOpen(false);
+              }}>{t('ml.applyFilters', { count: draftCount })}</Button>
             </>
           )}>
           <div className="ml-sheet-form">
-            {filterable.map((c) => (
-              <label key={c.key} className="ml-filter">
-                <span>{c.label}</span>
-                <select value={filters[c.key] ?? '__all'} onChange={(e) => setFilter(c.key, e.target.value)}>
-                  <option value="__all">{t('ml.all')}</option>
-                  {filterValues[c.key]?.map((v) => <option key={v} value={v}>{v || t('ml.empty')}</option>)}
-                </select>
-              </label>
-            ))}
-            <div className="ml-filter">
-              <label htmlFor="ml-sort-by">{t('ml.sortBy')}</label>
-              <select id="ml-sort-by" value={sort?.key ?? ''} onChange={(e) => setSort(e.target.value ? { key: e.target.value, dir: sort?.dir ?? 'asc' } : null)}>
-                <option value="">{t('ml.sortNone')}</option>
-                {columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-              </select>
-              <div className="ml-seg" role="group" aria-label={t('ml.sortBy')}>
-                <button type="button" aria-pressed={sort?.dir === 'asc'} disabled={!sort} onClick={() => sort && setSort({ ...sort, dir: 'asc' })}>
-                  <ArrowUp size={14} aria-hidden="true" />{t('ml.sortAsc')}
-                </button>
-                <button type="button" aria-pressed={sort?.dir === 'desc'} disabled={!sort} onClick={() => sort && setSort({ ...sort, dir: 'desc' })}>
-                  <ArrowDown size={14} aria-hidden="true" />{t('ml.sortDesc')}
-                </button>
+            {phoneFilters.map(sheetFilter)}
+            <details className="ml-sheet-more">
+              <summary>{t('ml.moreFiltersAndSort')}<ChevronDown size={16} aria-hidden="true" /></summary>
+              <div className="ml-sheet-form">
+                {extraPhoneFilters.map(sheetFilter)}
+                <SheetSelect label={t('ml.sortBy')} value={draftSort?.key ?? ''}
+                  onChange={(value) => setDraftSort(value ? { key: value, dir: draftSort?.dir ?? 'asc' } : null)}
+                  options={[
+                    { value: '', label: t('ml.sortNone') },
+                    ...columns.map((c) => ({ value: c.key, label: c.label })),
+                  ]} />
+                <SheetSelect label={t('ml.sortDirection')} value={draftSort?.dir ?? 'asc'} disabled={!draftSort}
+                  onChange={(value) => {
+                    if (draftSort && (value === 'asc' || value === 'desc')) setDraftSort({ ...draftSort, dir: value });
+                  }}
+                  options={[
+                    { value: 'asc', label: t('ml.sortAsc') },
+                    { value: 'desc', label: t('ml.sortDesc') },
+                  ]} />
               </div>
-            </div>
+            </details>
           </div>
         </Modal>
       )}

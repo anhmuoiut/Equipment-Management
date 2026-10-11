@@ -14,10 +14,8 @@ import type { AssetOpResult } from '@/lib/types';
 /** CHECK_OUT / CHECK_IN đã được nói bởi dòng Status. */
 const HIDDEN_ACTIONS = new Set(['CHECK_OUT', 'CHECK_IN']);
 
-export function OpResult({ state, hint }: {
+export function OpResult({ state }: {
   state: { result: AssetOpResult | null; loading: boolean; error: string | null };
-  /** Chữ khi chưa chọn gì (chưa có gì để xem trước). */
-  hint?: string;
 }) {
   const { t } = useTranslation();
   const formatNote = useFormatNote();
@@ -32,12 +30,13 @@ export function OpResult({ state, hint }: {
     return true;
   });
 
+  if (!result && !loading && !error) return null;
+
   return (
     <section className="op-result" aria-live="polite" aria-busy={loading || undefined}>
       <h3 className="dp-section-title">{t('asset.result')}</h3>
       {loading && <Spinner size="sm" label={t('asset.resultLoading')} />}
       {error && <Notice tone="alert">{error}</Notice>}
-      {!loading && !error && !result && hint && <p className="dp-hint">{hint}</p>}
       {result && (
         <>
           {result.usage_changes.length === 0 && rows.length === 0 && <p className="dp-hint">{t('asset.nothingChanges')}</p>}

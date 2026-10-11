@@ -1,25 +1,41 @@
 'use client';
 
 /**
- * Quan hệ cha – con trong chi tiết tài sản (docs/DETAIL_MODEL.md 4.1): chip `SN · PN` bấm để mở; thao tác
+ * Quan hệ cha – con trong chi tiết tài sản (docs/DETAIL_MODEL.md 4.1): dòng chữ `SN · Type` bấm để mở; thao tác
  * (Thêm thiết bị con, Gắn vào…) là liên kết chữ dẫn tới đúng màn hình thao tác của modal.
  */
+import { useId, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
+import { useFetch } from '@/lib/client/useFetch';
 import { useRecordContext } from '@/components/ui/record/context';
 import { CalibrationStatusTag } from '@/components/ui/tags';
 import { assetHref } from './api';
-import type { AssetType, CalibrationStatus } from '@/lib/types';
+import type { AssetType, CalibrationStatus, EquipmentRow } from '@/lib/types';
 
-export function RelationChip({ serial, part, status, onClick }: {
-  serial: string; part?: string | null; status?: CalibrationStatus | null; onClick: () => void;
+export function RelationChip({ serial, typeName, status, onClick }: {
+  serial: string; typeName?: string | null; status?: CalibrationStatus | null; onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <button type="button" className="eq-chip" onClick={onClick}>
-      <span className="eq-chip-serial">{serial}</span>
-      {part && <span className="eq-chip-part">{part}</span>}
+    <button type="button" className="eq-relation-link" onClick={onClick}>
+      <span className="eq-relation-label">
+        <span className="eq-relation-serial">{serial}</span>
+        <span aria-hidden="true"> · </span>
+        <span className="eq-relation-type">{typeName || t('ml.emptyValue')}</span>
+      </span>
       {status && <CalibrationStatusTag status={status} />}
     </button>
   );
+}
+
+/** Read the parent's Type from the existing detail API when it is not already in the equipment tree. */
+export function ParentRelation({ id, serial, typeName, version, onClick }: {
+  id: string; serial: string; typeName?: string | null; version: number; onClick: () => void;
+}) {
+  const { data } = useFetch<EquipmentRow>(typeName ? null : `/api/equipment/${id}?_v=${version}`);
+  const parentType = typeName ?? (data?.id === id ? data.type : null);
+  return <RelationChip serial={serial} typeName={parentType} onClick={onClick} />;
 }
 
 /** Liên kết chữ trong chi tiết dẫn tới một thao tác (chỉ hiện với người sửa được). */
@@ -40,7 +56,20 @@ export function useOpenAsset(sameType: AssetType, openSame?: (id: string) => voi
   };
 }
 
-export function RelationList({ children, empty }: { children: React.ReactNode[]; empty: string }) {
+export function RelationList({ children, empty }: { children: ReactNode[]; empty: string }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const id = useId();
   if (children.length === 0) return <span className="dp-empty">{empty}</span>;
-  return <div className="eq-rel">{children}</div>;
+  return (
+    <div className="eq-rel">
+      <div className="eq-rel-rows" id={id}>{expanded ? children : children.slice(0, 1)}</div>
+      {children.length > 1 && (
+        <button type="button" className="eq-rel-more" aria-expanded={expanded} aria-controls={id}
+          onClick={() => setExpanded((value) => !value)}>
+          {expanded ? t('asset.showLessRelations') : t('asset.showMoreRelations', { count: children.length - 1 })}
+        </button>
+      )}
+    </div>
+  );
 }

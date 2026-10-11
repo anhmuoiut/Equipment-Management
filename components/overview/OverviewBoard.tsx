@@ -47,10 +47,9 @@ function useCardTexts() {
   return { t, typeText };
 }
 
-const BoardCard = memo(function BoardCard({ card, root, unattached, highlight, parentSerial, tab, onOpen }: {
+const BoardCard = memo(function BoardCard({ card, root, highlight, parentSerial, tab, onOpen }: {
   card: OverviewCard;
   root: boolean;
-  unattached: boolean;
   highlight: boolean;
   parentSerial: string | null;
   /** Tab mở sẵn khi bấm thẻ này. */
@@ -63,7 +62,7 @@ const BoardCard = memo(function BoardCard({ card, root, unattached, highlight, p
   const alertText = card.cal_alert ? t(`cal.status.${card.cal_alert}`) : null;
   const name = [
     `${type} ${card.serial_number}`, `${t('ov.pn')} ${pn}`, t(`values.${card.usage}`),
-    alertText && `${t('ov.alert')}: ${alertText}`, unattached && t('ov.unattached'),
+    alertText && `${t('ov.alert')}: ${alertText}`,
     parentSerial && t('ov.childOf', { serial: parentSerial }), highlight && card.matched && t('ov.matched'),
   ].filter(Boolean).join(', ');
   return (
@@ -79,7 +78,6 @@ const BoardCard = memo(function BoardCard({ card, root, unattached, highlight, p
       </span>
       <span className="ob-line"><span className="ob-label" aria-hidden="true">{t('ov.pn')}</span><span className="ob-val" title={pn}>{pn}</span></span>
       <span className="ob-line"><span className="ob-label" aria-hidden="true">{t('ov.sn')}</span><span className="ob-val" title={card.serial_number}>{card.serial_number}</span></span>
-      {unattached && <span className="ob-unattached">{t('ov.unattached')}</span>}
     </button>
   );
 });
@@ -96,12 +94,12 @@ const BoardColumn = memo(function BoardColumn({ column, highlight, onOpen }: {
   const treeTab = root.asset_type === 'equipment' && (column.cards.length > 1 || column.more > 0) ? 'tree' : undefined;
   return (
     <div className="ob-col" role="group" aria-label={root.serial_number}>
-      <BoardCard card={root} root unattached={root.kind !== 'tester'} highlight={highlight} parentSerial={null} tab={treeTab} onOpen={onOpen} />
+      <BoardCard card={root} root highlight={highlight} parentSerial={null} tab={treeTab} onOpen={onOpen} />
       {columnEntries(column).map(({ key, card, guides }) => (
         <div className="ob-row" key={key}>
           {guides.map((kind, i) => <span key={i} className="ob-guide" data-kind={kind === 'blank' ? undefined : kind} aria-hidden="true" />)}
           {card ? (
-            <BoardCard card={card} root={false} unattached={false} highlight={highlight} parentSerial={card.parent_id ? serials.get(card.parent_id) ?? null : null}
+            <BoardCard card={card} root={false} highlight={highlight} parentSerial={card.parent_id ? serials.get(card.parent_id) ?? null : null}
               onOpen={onOpen} />
           ) : (
             <button type="button" className="ob-more" aria-label={t('ov.moreLabel', { count: column.more, serial: root.serial_number })}
@@ -126,15 +124,24 @@ export function BoardSection({ section, open, onToggle, highlight, onOpen }: {
   const { t } = useTranslation();
   const id = `ob-${section.location_id}`;
   const tone = section.alerts > 0 ? toneOf(section.worst) : undefined;
+  // Match the existing In use count: root columns, including assets whose children are behind +N.
+  const notInUse = section.columns.filter((column) => column.cards[0]?.usage === 'not_in_use').length;
   return (
     <section className="ob-section" aria-labelledby={`${id}-h`}>
       <h2 className="ob-head" id={`${id}-h`}>
         <button type="button" aria-expanded={open} aria-controls={`${id}-grid`} onClick={onToggle}>
           {open ? <ChevronDown size={15} aria-hidden="true" /> : <ChevronRight size={15} aria-hidden="true" />}
-          <span className="ob-head-name">{section.location}</span>
+          <span className="ob-head-location">
+            <span className="ob-head-name">{section.location}</span>
+            <span className="ob-head-total">{t('ov.testers', { count: section.testers })}</span>
+          </span>
           <span className="ob-head-counts">
-            <span>{t('ov.testers', { count: section.testers })}</span>
-            <span>{t('ov.inUse', { count: section.in_use })}</span>
+            <span className="ob-head-usage" data-status-color="green">
+              <span className="ob-head-dot" aria-hidden="true" />{t('ov.inUse', { count: section.in_use })}
+            </span>
+            <span className="ob-head-usage" data-status-color="gray">
+              <span className="ob-head-dot" aria-hidden="true" />{t('ov.notInUse', { count: notInUse })}
+            </span>
             <span className="ob-head-alerts" data-tone={tone} title={t('ov.alerts', { count: section.alerts })} aria-label={t('ov.alerts', { count: section.alerts })}>
               <TriangleAlert size={12} aria-hidden="true" />{section.alerts}
             </span>

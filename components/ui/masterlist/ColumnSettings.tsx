@@ -6,9 +6,11 @@
  * dùng thẻ (Masterlist) nên không có tùy chọn này.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, Columns3 } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { useAnchoredPopover } from '@/lib/client/useAnchoredPopover';
 import { ToolbarButton } from './ToolbarButton';
 
 export type ColumnPrefs = {
@@ -100,22 +102,34 @@ export function ColumnSettings({ columns, prefs }: { columns: { key: string; lab
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const place = useAnchoredPopover({
+    open, triggerRef: ref, align: 'end', minWidth: 260, preferredHeight: 360, onAnchorHidden: () => setOpen(false),
+  });
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!ref.current?.contains(target) && !popoverRef.current?.contains(target)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation(); setOpen(false);
+        ref.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+      }
+    };
     document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+    document.addEventListener('keydown', onKey, true);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey, true); };
   }, [open]);
 
   return (
     <div className="ml-colsettings" ref={ref}>
       <ToolbarButton label={t('ml.columns')} icon={<Columns3 size={14} aria-hidden="true" />}
-        onClick={() => setOpen((o) => !o)} aria-expanded={open} />
-      {open && (
-        <div className="ml-popover" role="dialog" aria-label={t('ml.columns')}>
+        onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="dialog" />
+      {place && createPortal(
+        <div ref={popoverRef} className="ml-popover" role="dialog" aria-label={t('ml.columns')} style={place}>
           <ul>
             {prefs.order.map((key, i) => {
               const col = columns.find((c) => c.key === key);
@@ -137,7 +151,7 @@ export function ColumnSettings({ columns, prefs }: { columns: { key: string; lab
             })}
           </ul>
           <Button size="sm" onClick={prefs.reset}>{t('ml.resetColumns')}</Button>
-        </div>
+        </div>, document.body,
       )}
     </div>
   );

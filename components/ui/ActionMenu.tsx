@@ -12,11 +12,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, MoreVertical } from 'lucide-react';
+import { useAnchoredPopover } from '@/lib/client/useAnchoredPopover';
 import { Button } from '@/components/ui';
 
-export type MoreItem = { key: string; label: string; onClick: () => void; danger?: boolean; icon?: ReactNode };
-
-type Place = { top?: number; bottom?: number; left?: number; right?: number; maxHeight: number };
+export type MoreItem = { key: string; label: string; onClick: () => void; danger?: boolean; disabled?: boolean; icon?: ReactNode };
 
 export function ActionMenu({ items, busy, iconOnly, ariaLabel }: {
   items: MoreItem[];
@@ -27,46 +26,34 @@ export function ActionMenu({ items, busy, iconOnly, ariaLabel }: {
   ariaLabel?: string;
 }) {
   const { t } = useTranslation();
-  const [place, setPlace] = useState<Place | null>(null);
+  const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const open = place !== null;
-
-  function openMenu() {
-    const el = triggerRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const margin = 8;
-    const wanted = items.length * 40 + 12;
-    const below = window.innerHeight - r.bottom - margin - 4;
-    const above = r.top - margin - 4;
-    const upward = below < wanted && above > below;
-    const alignLeft = r.left + r.width / 2 < window.innerWidth / 2;
-    setPlace({
-      ...(upward ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }),
-      ...(alignLeft ? { left: Math.max(margin, r.left) } : { right: Math.max(margin, window.innerWidth - r.right) }),
-      maxHeight: Math.max(120, upward ? above : below),
-    });
-  }
+  const place = useAnchoredPopover({
+    open, triggerRef, align: 'auto', minWidth: 210,
+    preferredHeight: Math.min(400, items.length * 48 + 8),
+    onAnchorHidden: () => setOpen(false),
+  });
 
   useEffect(() => {
     if (!open) return;
-    const close = () => setPlace(null);
+    const close = () => setOpen(false);
     const onDown = (e: MouseEvent) => {
       const target = e.target as Node;
       if (triggerRef.current?.contains(target) || listRef.current?.contains(target)) return;
       close();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation(); e.preventDefault(); close();
+        triggerRef.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+      }
+    };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey, true);
-    window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('resize', close);
-      window.removeEventListener('scroll', close, true);
     };
   }, [open]);
 
@@ -74,15 +61,15 @@ export function ActionMenu({ items, busy, iconOnly, ariaLabel }: {
   return (
     <div className="am" ref={triggerRef}>
       <Button size="sm" className={`am-trigger${iconOnly ? ' am-trigger--icon' : ''}`} loading={busy}
-        onClick={() => (open ? setPlace(null) : openMenu())} aria-expanded={open} aria-haspopup="menu" aria-label={iconOnly ? ariaLabel : undefined}>
+        onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-haspopup="menu" aria-label={iconOnly ? ariaLabel : undefined}>
         {iconOnly ? <MoreVertical size={18} aria-hidden="true" /> : <>{t('dp.actionsMenu')}<ChevronDown size={14} aria-hidden="true" /></>}
       </Button>
       {place && createPortal(
         <ul ref={listRef} className="am-list" role="menu" style={place}>
           {sorted.map((item) => (
             <li key={item.key} role="none">
-              <button type="button" role="menuitem" data-danger={item.danger || undefined}
-                onClick={() => { setPlace(null); item.onClick(); }}>
+              <button type="button" role="menuitem" disabled={item.disabled} data-danger={item.danger || undefined}
+                onClick={() => { setOpen(false); item.onClick(); }}>
                 {item.icon}{item.label}
               </button>
             </li>

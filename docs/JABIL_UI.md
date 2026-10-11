@@ -1,6 +1,6 @@
 # UI requirements: SolarEdge Equipment Management
 
-Updated: 8 October 2026 (side panel replaced by one modal system for every detail, form and action — see "Modal system": fixed size per modal, unsaved-changes rule, one 768px phone breakpoint; earlier: phone cards and bottom bars, scan-friendly Masterlist, adaptive toolbar). Status: accepted design baseline.
+Updated: 8 October 2026 (side panel replaced by one modal system for every detail, form and action — see "Modal system": default fixed size per modal with the requested compact Swap presentation exception, unsaved-changes rule, one 768px phone breakpoint; earlier: phone cards and bottom bars, scan-friendly Masterlist, adaptive toolbar). Status: accepted design baseline.
 
 ## Read this before changing UI
 
@@ -22,7 +22,7 @@ Explicit new user instructions take precedence. Otherwise, follow this document 
 
 These are the three **primary brand colors**, not a ban on semantic colors. Errors and destructive actions stay red, warnings stay amber, and success stays green. Photographs keep their original colors. Decorative surfaces, borders, shadows and overlays use the existing brand tokens and mixtures.
 
-Use **IBM Plex Sans throughout the project**, including forms, buttons, tables, dialogs, identifiers and printed labels. Inherit `var(--font-ui)` and retain its system sans-serif fallback. Do not introduce another font for a new feature. Use tabular numerals for aligned numbers and identifiers.
+Use **Inter throughout the project**, including forms, buttons, tables, dialogs, identifiers and printed labels. Inherit `var(--font-ui)` and retain its system sans-serif fallback. Do not introduce another font for a new feature. Use tabular numerals for aligned numbers and identifiers.
 
 Use Prussian text on Picton backgrounds and white text on Prussian backgrounds. Use theme tokens for text/surface combinations; do not assume light-mode colors work in dark mode.
 
@@ -81,7 +81,7 @@ These are the baseline for shared workspace UI. Reuse the existing classes; do n
 | Shared buttons | 34px standard / 30px small minimum height | 44px minimum height on mobile (48px for the modal footer) |
 | Form controls | 14px / 13px type | **16px and 44px high on phones** — below 16px iOS zooms the page when a field is focused |
 | Toolbar | 10px vertical / 12px horizontal padding | Wrap controls into usable rows |
-| Modal | S 440 / M 640 / L 960px wide, 85vh high at most; 16px body padding | Full screen below 768px. Header and footer stay put; only the body scrolls, without clipping required fields/actions |
+| Modal | S 440 / M 640 / L 960px wide, 85vh high at most; 16px body padding; Swap uses the explicit compact presentation below | Full screen below 768px except compact centered Swap. Header and footer stay put; only the body scrolls, without clipping required fields/actions |
 
 Compact means removing duplication, excess margins and unnecessary containers. It does not mean hiding important labels, making touch targets difficult, or removing helpful error messages. Do not add oversized hero headings, large empty banners, decorative heading rows, or cards nested inside cards without a functional reason.
 
@@ -94,7 +94,7 @@ Login is intentionally different from the authenticated shell; do not add the wo
 - At 1100px and below everything stacks: a 440px photo band at the top, then the centred title, then the form card. The page scrolls on short screens.
 - The card holds sign-in only: accounts are created by an Admin, so there is no sign-up or account-request form. `/change-password` reuses these form styles in a single column.
 - Keep text and inputs clear of busy photographic content.
-- Preserve IBM Plex Sans typography, 49px inputs and sign-in button, the password visibility control, the "Forgot your password?" help (tells the user to ask an Admin to reset the password), the disabled SSO button ("Coming soon") and the language/theme controls under the card.
+- Preserve Inter typography, 49px inputs and sign-in button, the password visibility control, the "Forgot your password?" help (tells the user to ask an Admin to reset the password), the disabled SSO button ("Coming soon") and the language/theme controls under the card.
 - Autofill must use the normal input surface and readable text. Keep visible focus and semantic red errors in both themes.
 - Preserve actual authentication and redirect behavior. A visual change must not modify access checks, credentials, session handling or API contracts.
 
@@ -108,7 +108,7 @@ Every module page uses the same list and detail components ([DETAIL_MODEL.md](DE
 - `RecordModal` (built on the shared `Modal`, `size="s" | "m" | "l"`) shows a record and keeps a stack of views: detail → edit / add / workflow action / confirmation, all inside **one** modal. `FieldView` / `FieldEditor` draw the field groups and `ActionScreen` the action forms (its buttons go into the modal footer through `ModalFooter`).
 - There is no full-page detail and no side panel: `/equipment/{id}`-style paths (QR labels) redirect to `/equipment?id={id}`.
 
-Do not build a per-feature modal, drawer or table for a record type. Every dialog — record, form, action, confirmation, import, account settings — is the one `Modal` with a size prop ([Modal system](#modal-system-details-forms-and-actions)).
+Do not build a per-feature modal, drawer or table for a record type. Every dialog — record, form, action, confirmation, import, account settings — is the one `Modal` with a size prop ([Modal system](#modal-system-details-forms-and-actions)). The explicitly requested Swap presentation uses `ActionDef.presentation` on that same modal and view stack.
 
 Use the existing `lucide-react` icon style and established sizing. Decorative icons must not be announced as content; icon-only actions need an accessible name. Keep primary, quiet and destructive button variants consistent. Red destructive actions retain the existing confirmation behavior and warning treatment.
 
@@ -124,7 +124,8 @@ Use the existing `lucide-react` icon style and established sizing. Decorative ic
 - Let the equipment table use the available workspace height. Do not add arbitrary minimum heights that push content beyond the viewport.
 - Dashboard cards use compact spacing, small corner icons, tabular values, restrained Picton charts and semantic highlights. Do not invent metrics or status data to decorate a screen.
 - The Dashboard **Status overview** shows Equipment (In use / Not in use) and Calibration (Calibration Status) side by side (one column each, stacked on phones). Each has a stacked bar in fixed status colors (2px gaps, always the same order, not by count) and a legend with dot, name, count and percent, which works as the table view. Overdue and Due soon KPIs tint their icon red / amber only when the count is above zero.
-- Recent activity must not grow the page with every log. Cap its list at `min(360px, 50svh)` and scroll within it, keeping the card heading outside the scroll area. Keep every returned log accessible, allow long notes to wrap, and support keyboard scrolling with a named focusable list. Short/empty lists should stay compact.
+- History tabs and Dashboard Recent changes share `HistoryTable`: **one event per row**, with fixed metadata columns **Time, By, Record, Action** and a single **Changes** column; Dashboard adds **Module** and keeps record links. The Changes cell shows only fields changed in that event as `field: old → new`, including location changes; do not create a column for every field found in other rows. Ordinary events show the first two changes, with **Show more / Show less** expanding the rest inside the same cell. **CREATE** starts with a creation summary and expands to the initial field values; **DELETE** starts with a deletion summary and expands to the deleted snapshot. Source and notes appear in the row's expanded Changes cell. Keep history as a table on phones, with horizontal scrolling inside its frame and a sticky header.
+- Recent activity must not grow the page with every log. Cap its table frame at `min(420px, 55svh)` and scroll within it, keeping the card heading outside the scroll area. Keep every returned log accessible; long values use Show more / Show less. Support keyboard scrolling with a named focusable region. Short/empty tables should stay compact. A batch import remains one row with a count summary; do not expose its representative object's record link, initial values or other field details as values for the whole batch.
 - Include appropriate loading, empty, error and success states for new data flows using shared patterns.
 
 ### Overview board (cards grouped by Location)
@@ -185,8 +186,8 @@ Keep visible status text on desktop and mobile. Supplement color with text, icon
 
 Every record detail, form, workflow action, confirmation and import is a **modal**. There is no side panel and no full-page detail. The rules apply to Equipment, Calibration, Golden, Overview, Configuration and User Management, and to global dialogs such as account settings. Behavior is specified in [DETAIL_MODEL.md](DETAIL_MODEL.md) §3.
 
-1. **One modal at a time. Never stack.** Anything opened from inside a modal — Check-out / Check-in, Edit, Swap, Move, Detach, Delete, a related record, "Discard changes?" — **replaces the content of the same modal** with a new view. The header then shows a breadcrumb `← <SN> › <action>` and the ← button goes back one view. When the action finishes the modal returns to the record's detail view and shows a toast. Only transient popovers (dropdown, action menu, `SearchableSelect` list, date picker, tooltip) and the toast may sit above a modal. A bottom sheet is used on phones only from the list (Filter & sort), never over a modal.
-2. **Three fixed sizes**, one shared `Modal` component, size is a prop. Never invent another width or a per-feature dialog.
+1. **One modal at a time. Never stack.** Anything opened from inside a modal — Check-out / Check-in, Edit, Swap, Move, Detach, Delete, a related record, "Discard changes?" — **replaces the content of the same modal** with a new view. The header normally shows a breadcrumb `← <SN> › <action>`; Swap instead shows its action title with the serial on a secondary line. The ← button goes back one view. When the action finishes the modal returns to the record's detail view and shows a toast. Only transient popovers (dropdown, action menu, `SearchableSelect` list, date picker, tooltip) and the toast may sit above a modal. A bottom sheet is used on phones only from the list (Filter & sort), never over a modal.
+2. **Three shared sizes**, one shared `Modal` component, size is a prop. Other than the explicit Swap presentation below, do not invent another width or a per-feature dialog.
 
    | Size | Width | Opens directly as |
    | --- | --- | --- |
@@ -194,14 +195,22 @@ Every record detail, form, workflow action, confirmation and import is a **modal
    | `m` | ~640px | The Add form (`+ Add`), account settings and other global dialogs |
    | `l` | ~960px | A record's detail (row click, ‹ ›, `?id=` link) and Import |
 
-   Width is `min(size, 100vw − 32px)`. **The size is set by the screen that opens the modal and never changes until the modal closes** — going detail → edit / action / confirmation → back does not resize it, so the frame never jumps. Inside an `l` modal those later screens limit their content to ~640px, centered (the header and footer keep the full width and the main button stays in the footer's right corner); inside an `m` modal they use the full width. The one exception is **Add**: after it saves, the `m` modal closes and the new record's detail opens in a new `l` modal, with a toast.
+   Width is normally `min(size, 100vw − 32px)`. **The size prop is set by the screen that opens the modal and stays unchanged** — going detail → edit / other actions / confirmation → back retains the default frame. Inside an `l` modal those later screens normally limit their content to ~640px, centered (the header and footer keep the full width and the main button stays in the footer's right corner); inside an `m` modal they use the full width. **Swap is an explicit presentation exception**: the same modal instance uses the compact width and content height below while Swap is active, including its discard confirmation. **Add** remains a lifecycle exception: after it saves, the `m` modal closes and the new record's detail opens in a new `l` modal, with a toast.
 3. **Fixed header and footer; only the body scrolls**, at most 85vh (`85dvh`). Header: title or breadcrumb, ✕; the detail view also has ‹ ›, the status tag and the quick facts, and its tab bar stays fixed too. Footer: the **main button in the right corner**, secondary actions to its left (`Cancel`, `Actions ▾`). Record modals of the three asset modules share one footer: `Actions ▾` on the left (Swap, Move / Detach, Change location, Delete); `Edit` and `Check-out` / `Check-in` on the right, plus `Record calibration` before Check-out for sub-equipment — Check-out / Check-in, the rightmost, is the main button. Overview opens the owning module's modal, with no footer of its own. The main button is named for its verb (**Save**, **Swap**, **Delete**…); a destructive one is red. Actions never sit inside the scrolling body.
 4. **Closing**: Esc, ✕ and a click outside all close the modal. A click outside counts only when the press also began on the backdrop (selecting text and releasing outside must not throw the form away). **If anything is unsaved** — a form field, a note, or a choice made in an action screen (swap partner, new parent, follow / stay…) — closing (or the ← in the breadcrumb) first shows "Discard changes?" (`Stay` / `Discard`) as a screen inside the same modal, never a second dialog; Esc on that screen means Stay. **If a popover is open** (dropdown, action menu, `SearchableSelect` list, date picker), **Esc closes only the popover**. A modal that is saving cannot be closed. After closing, focus returns to the element that opened it and the list keeps its scroll position.
-5. **Phones (below 768px): full screen.** All sizes become full-screen views (no radius, no backdrop) with fixed header and footer, 44px touch targets, 48px footer buttons, 16px inputs and safe-area padding. 768px is the one phone breakpoint for the whole UI: full-screen modal, card Masterlist and drawer sidebar all switch at the same width.
+5. **Phones (below 768px): full screen by default.** Shared sizes become full-screen views (no radius, no backdrop) with fixed header and footer, 44px touch targets, 48px footer buttons, 16px inputs and safe-area padding. Swap is the explicit compact centered exception below. 768px is the one phone breakpoint for the whole UI: default full-screen modal, card Masterlist and drawer sidebar all switch at the same width.
 6. **Detail modal**: ‹ › in the header and the ← → keys step through the records in the list's current filter and sort order. They are hidden in form / action views, and the keys are ignored inside inputs or with a modifier key. `?id=<id>` is kept in sync (pushed when opened from the list, replaced when stepping, removed on close) so a link or QR code opens the record directly and the browser Back button closes the modal. An unknown or forbidden id shows an error view with Close.
 7. **Masterlists use the full content width.** Nothing sits beside the list.
 
 Accessibility: `role="dialog"`, `aria-modal="true"`, `aria-labelledby` pointing at the title, a focus trap, focus moved to the title (or first field) on open and on every view change, the page behind inert and not scrollable, reduced motion respected. Use the established layering tokens: modal above content and sidebar, popovers and toasts above the modal.
+
+### Swap presentation
+
+Swap keeps the same `Modal`, `RecordModal` view stack and `ActionScreen` behavior. Its scoped `record-swap-dialog` presentation has width `min(820px, 100vw − 32px)` and content height, with no inherited 600px L-modal minimum or 640px content limit. The header is the action title plus the current serial on a secondary line, with Back and Close; the footer retains Cancel and the primary Swap button. Busy locking, translated errors, focus, Escape and the unsaved-changes screen remain shared; the Swap frame and selected target stay in place during discard confirmation.
+
+Two comparison cards show current equipment A and the selected target B: **SN, Part number, Location, Usage**, plus **Level for Equipment**. The searchable target picker stays in B's card. Above 900px the cards sit side by side; at 900px and below they stack. On phones the dialog stays compact and centered, with maximum height `100dvh − 32px`; the body scrolls while header and footer stay reachable.
+
+`SwapPreview` presents the actual dry-run response as changed fields **old → new**, grouping results by asset. A and B appear first; affected descendants expand with Show more / Show less. Location, parent/tester, Level and Usage appear when the response changes them. Status may follow the destination under the existing business rules; do not claim it always stays unchanged or hardcode preview values. Enable Swap only after a compatible target and successful current dry run; same-place targets remain blocked.
 
 ### Forms, dialogs and menus
 
@@ -238,10 +247,10 @@ Keep visible keyboard focus, semantic labels and readable contrast. Respect redu
 | [`lib/permissions/index.ts`](../lib/permissions/index.ts), [`components/ViewerContext.tsx`](../components/ViewerContext.tsx) | Role groups (Admin / User / Readonly) and which buttons a viewer sees |
 | [`app/workspace.css`](../app/workspace.css) | Masterlist, modal views, history, equipment tree tab, Overview board (`.ob-*`), Configuration sub-list, Dashboard |
 | [`components/ui/masterlist/`](../components/ui/masterlist) | `Masterlist`, `ColumnSettings`, `ToolbarButton`, Excel export |
-| [`components/ui/record/`](../components/ui/record) | `RecordModal` (view stack, breadcrumb header, common footer, "Discard changes?" view), `ActionScreen`, field components (`fields.tsx`) |
-| [`components/ui/detail/DetailHistory.tsx`](../components/ui/detail/DetailHistory.tsx) | History tab timeline |
+| [`components/ui/record/`](../components/ui/record) | `RecordModal` (view stack, breadcrumb/default header, action presentation, common footer, "Discard changes?" view), `ActionScreen`, field components (`fields.tsx`) |
+| [`components/ui/detail/DetailHistory.tsx`](../components/ui/detail/DetailHistory.tsx) | Shared `HistoryTable` for history tabs and Dashboard Recent changes: one event per row, fixed metadata columns and one Changes cell with row-specific changes and Show more / Show less |
 | [`components/overview/`](../components/overview) | Overview board: Location sections, columns, cards — specified in [Overview board](#overview-board-cards-grouped-by-location); the code is still the old tree until the board is built |
-| [`components/assets/`](../components/assets) | Shared UI of Equipment / Calibration / Golden: action screens, result preview, pickers, tree tab, relations |
+| [`components/assets/`](../components/assets) | Shared UI of Equipment / Calibration / Golden: action screens, `SwapPreview` dry-run changes, other result previews, pickers, tree tab, relations |
 | [`components/ui/workspace/`](../components/ui/workspace) | `ModuleWorkspace` (full-width list + record modal, URL state through `lib/client/useUrlParams.ts`) |
 | [`components/ui/tags.tsx`](../components/ui/tags.tsx) | `StatusTag`, `DueDate`, `AccountStatusTag` |
 | [`components/configuration/ConfigNav.tsx`](../components/configuration/ConfigNav.tsx) | Grouped Configuration sub-list; becomes a select on phones |
@@ -266,11 +275,11 @@ Before delivering:
 - Confirm the font, three primary brand colors and semantic feedback match this document.
 - Check light/dark themes, EN/VI, long content, loading, empty, error and disabled states affected by the change.
 - Inspect desktop (for example 1440x900), laptop (1366x768) and phone (390x844, and 320x568 for the smallest), plus affected breakpoints. Ensure no page overflow, clipped actions or photo/form overlap, and touch targets of at least 44px on phones.
-- Check keyboard focus, dialog/menu navigation and touch usability for changed controls. For modal changes also check: only one modal ever open (actions replace the content), Esc / ✕ / outside click, the unsaved-changes view, focus trap and focus return, fixed header/footer with a scrolling body up to 85vh, full screen below 768px, and the `?id=` deep link.
+- Check keyboard focus, dialog/menu navigation and touch usability for changed controls. For modal changes also check: only one modal ever open (actions replace the content), Esc / ✕ / outside click, the unsaved-changes view, focus trap and focus return, fixed header/footer with a scrolling body up to 85vh, default full screen below 768px and compact centered Swap, and the `?id=` deep link.
 - For code changes, run `npm run typecheck`, `npm run lint` and relevant existing tests; add behavior tests when the new functionality warrants them. Documentation-only edits need link/content checks, not a full application test run.
 - Perform browser visual verification when available. Report any unavailable checks honestly; passing lint/tests is not proof of visual correctness. Historical screenshots are not current verification evidence.
 - Update this document if the requested feature intentionally changes the shared UI standard. Keep unrelated data, authentication and authorization behavior intact.
 
 Suggested instruction for future feature requests:
 
-> Implement the requested feature using the existing UI system. Read and follow `docs/JABIL_UI.md` first; reuse shared components and tokens, preserve the left-aligned Jabil/app-name header, compact workspace, IBM Plex Sans, semantic status colors, light/dark themes and EN/VI support. Do not redesign unrelated screens.
+> Implement the requested feature using the existing UI system. Read and follow `docs/JABIL_UI.md` first; reuse shared components and tokens, preserve the left-aligned Jabil/app-name header, compact workspace, Inter, semantic status colors, light/dark themes and EN/VI support. Do not redesign unrelated screens.

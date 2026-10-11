@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { CONFIG_GROUPS, CONFIG_LISTS, ERROR_LOG_PATH, configPath, type ConfigGroup } from '@/lib/configuration';
 
 const STORAGE_KEY = 'configuration-nav-closed';
@@ -42,13 +43,11 @@ export function ConfigNav() {
 
   return (
     <nav className="cfg-nav" aria-label={t('nav.configuration')}>
-      <select className="cfg-nav-select" value={pathname} onChange={(e) => router.push(e.target.value)} aria-label={t('nav.configuration')}>
-        {groups.map((g) => (
-          <optgroup key={g.key} label={t(`cfg.group.${g.key}`)}>
-            {g.items.map((i) => <option key={i.path} value={i.path}>{i.label}</option>)}
-          </optgroup>
-        ))}
-      </select>
+      <SearchableSelect className="cfg-nav-select" value={pathname} onChange={(value) => router.push(value)}
+        ariaLabel={t('nav.configuration')}
+        options={groups.flatMap((g) => g.items.map((item) => ({
+          value: item.path, label: item.label, group: t(`cfg.group.${g.key}`),
+        })))} />
       <div className="cfg-nav-groups">
         {groups.map((g) => {
           const open = g.key === currentGroup || !closed.includes(g.key);

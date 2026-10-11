@@ -118,14 +118,24 @@
     "moreActions": "Thêm thao tác",
     "filtersAndSort": "Lọc & sắp xếp",
     "sortBy": "Sắp xếp theo",
+    "sortDirection": "Chiều sắp xếp",
     "sortNone": "Thứ tự mặc định",
     "sortAsc": "A → Z",
     "sortDesc": "Z → A",
     "showResults": "Xem {{count}} kết quả",
     "searchPlaceholder": "Tìm kiếm…",
     "filters": "Bộ lọc",
+    "assetSearchPlaceholder": "Tìm SN, PN, vị trí...",
+    "reset": "Đặt lại",
+    "applyFilters": "Áp dụng bộ lọc ({{count}})",
+    "clearAll": "Xóa tất cả",
+    "removeFilter": "Bỏ bộ lọc: {{name}}",
+    "moreFiltersAndSort": "Bộ lọc khác & sắp xếp",
+    "noEquipment": "Không tìm thấy thiết bị",
+    "adjustFilters": "Thử thay đổi tìm kiếm hoặc bộ lọc.",
     "all": "Tất cả",
     "empty": "(trống)",
+    "emptyValue": "—",
     "clearFilters": "Xóa bộ lọc",
     "columns": "Tùy chọn hiển thị",
     "moveUp": "Đưa {{name}} lên",
@@ -139,6 +149,10 @@
     "noMatch": "Không có bản ghi khớp tìm kiếm / bộ lọc."
   },
   "dp": {
+    "showMore": "Xem thêm",
+    "showLess": "Thu gọn",
+    "showMoreField": "Xem thêm: {{name}}",
+    "showLessField": "Thu gọn: {{name}}",
     "back": "Quay lại danh sách",
     "prev": "Bản ghi trước",
     "next": "Bản ghi sau",
@@ -173,15 +187,34 @@
     "saveAnyway": "Vẫn lưu"
   },
   "hist": {
+    "columns": {
+      "time": "Thời gian",
+      "module": "Module",
+      "record": "Bản ghi",
+      "action": "Thao tác",
+      "actor": "Người thực hiện",
+      "changes": "Nội dung thay đổi",
+      "source": "Nguồn",
+      "note": "Ghi chú"
+    },
     "empty": "Chưa có lịch sử.",
     "system": "Hệ thống",
+    "summary": {
+      "created": "Đã tạo bản ghi",
+      "deleted": "Đã xóa bản ghi",
+      "imported": "Đã import {{count}} bản ghi"
+    },
+    "showMore": "Xem chi tiết thao tác {{action}}",
+    "showLess": "Ẩn chi tiết thao tác {{action}}",
     "viaParent": "Theo thiết bị cha {{serial}}",
     "swapWith": "Đổi chỗ với {{serial}}",
     "source": {
+      "ui": "Ứng dụng",
       "import": "Import",
       "script": "Script"
     },
     "action": {
+      "IMPORT": "Import",
       "CREATE": "Tạo mới",
       "UPDATE": "Cập nhật",
       "DELETE": "Xóa",
@@ -266,6 +299,17 @@
     "not_in_use": "Not in use",
     "locked": "Đã khóa"
   },
+  "swap": {
+    "title": "Đổi chỗ thiết bị",
+    "current": "Thiết bị hiện tại",
+    "selectEquipment": "Chọn thiết bị",
+    "noTarget": "Chưa chọn thiết bị",
+    "exchange": "Hai thiết bị đổi chỗ cho nhau",
+    "after": "Sau khi đổi chỗ",
+    "affectedOthers": "Xem {{count}} thiết bị khác bị ảnh hưởng",
+    "noteEquipment": "Cha, vị trí và Status theo chỗ mới. Level theo cha mới; thiết bị con đi theo cha.",
+    "note": "Cha, vị trí và Status theo chỗ mới."
+  },
   "eq": {
     "add": "Thêm thiết bị",
     "addTitle": "Thêm thiết bị",
@@ -290,7 +334,6 @@
     "moveConfirm": "Đổi cha",
     "attachConfirm": "Gắn vào cha",
     "swap": "Swap",
-    "swapDesc": "Hai thiết bị đổi chỗ (thiết bị cha + vị trí) cho nhau. Status giữ nguyên.",
     "swapWith": "Đổi chỗ với",
     "swapped": "Đã đổi chỗ.",
     "checkOut": "Check-out",
@@ -683,6 +726,8 @@
     }
   },
   "asset": {
+    "showMoreRelations": "Xem thêm ({{count}})",
+    "showLessRelations": "Thu gọn",
     "result": "Kết quả",
     "resultLoading": "Đang tính…",
     "nothingChanges": "Không có gì thay đổi.",
@@ -727,7 +772,6 @@
     },
     "serialExists": "Serial này đã có:",
     "serialExistsHint": "Vẫn lưu được — bấm \"Vẫn lưu\".",
-    "quickUnattached": "Chưa gắn",
     "attachedTo": "Gắn vào",
     "notAttached": "Chưa gắn",
     "goldenParentHint": "Tester hoặc fixture; vị trí theo thiết bị cha.",
@@ -764,13 +808,13 @@
     "testers_one": "{{count}} tester",
     "testers_other": "{{count}} tester",
     "inUse": "{{count}} In use",
+    "notInUse": "{{count}} Not in use",
     "alerts_one": "{{count}} cảnh báo hiệu chuẩn",
     "alerts_other": "{{count}} cảnh báo hiệu chuẩn",
     "pn": "PN",
     "sn": "SN",
     "golden": "Golden",
     "subType": "Sub ({{type}})",
-    "unattached": "Chưa gắn",
     "alert": "Hiệu chuẩn",
     "more": "+{{count}} thiết bị",
     "moreLabel": "Còn {{count}} thiết bị — mở cây thiết bị của {{serial}}",

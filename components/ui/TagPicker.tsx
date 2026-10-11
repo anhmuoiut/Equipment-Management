@@ -14,7 +14,7 @@ export function TagPicker({ id, value, onChange, tags, label }: {
   const { t } = useTranslation();
   const selected = Array.isArray(value) ? (value as string[]) : [];
   if (!tags) return <span className="dp-hint">{t('common.loadingEllipsis')}</span>;
-  if (tags.length === 0) return <span className="dp-hint">{t('tag.noneConfigured')}</span>;
+  if (tags.length === 0) return <span className="dp-empty">{t('tag.none')}</span>;
   const toggle = (tagId: string) => onChange(selected.includes(tagId) ? selected.filter((x) => x !== tagId) : [...selected, tagId]);
   return (
     <div id={id} className="tag-picker" role="group" aria-label={label}>

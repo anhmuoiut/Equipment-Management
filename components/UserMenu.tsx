@@ -11,11 +11,14 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Loader2, LogOut, UserRound } from 'lucide-react';
 import { api, errorMessage } from '@/lib/client/api';
 import { useFetch } from '@/lib/client/useFetch';
+import { usePhone } from '@/lib/client/usePhone';
+import { useAnchoredPopover } from '@/lib/client/useAnchoredPopover';
 import { toSelect, useOptions } from '@/lib/client/options';
 import { Button, ErrorState, Modal, Notice, Spinner, toast } from '@/components/ui';
 import { ActionField } from '@/components/ui/record/fields';
@@ -36,14 +39,31 @@ export function UserMenu({ username, fullName }: { username: string; fullName: s
   const [showSettings, setShowSettings] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const phone = usePhone();
+  const place = useAnchoredPopover({
+    open, triggerRef: ref, align: 'end', minWidth: phone ? 240 : 190, preferredHeight: phone ? 360 : 120,
+    onAnchorHidden: () => setOpen(false),
+  });
 
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!ref.current?.contains(target) && !listRef.current?.contains(target)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation(); setOpen(false);
+        ref.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+      }
     };
     document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey, true);
+    };
   }, [open]);
 
   async function signOut() {
@@ -67,14 +87,14 @@ export function UserMenu({ username, fullName }: { username: string; fullName: s
     <div className="user-menu" ref={ref}>
       <button
         type="button" className="user-menu-trigger" onClick={() => setOpen((o) => !o)}
-        aria-haspopup="true" aria-expanded={open}
+        aria-haspopup="menu" aria-expanded={open}
       >
         <span className="user-avatar" aria-hidden="true">{initials}</span>
         <span className="user-menu-name">{displayName}</span>
         <ChevronDown size={14} aria-hidden="true" />
       </button>
-      {open && (
-        <ul className="user-menu-list" role="menu">
+      {place && createPortal(
+        <ul ref={listRef} className="user-menu-list" role="menu" style={place}>
           <li role="none">
             <button type="button" role="menuitem" onClick={() => { setOpen(false); setShowSettings(true); }}>
               <UserRound size={15} aria-hidden="true" />{t('userMenu.accountSettings')}
@@ -88,7 +108,7 @@ export function UserMenu({ username, fullName }: { username: string; fullName: s
               {t('nav.signOut')}
             </button>
           </li>
-        </ul>
+        </ul>, document.body,
       )}
       {showSettings && <AccountSettingsModal onClose={() => setShowSettings(false)} />}
     </div>

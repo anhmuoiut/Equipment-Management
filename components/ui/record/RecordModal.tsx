@@ -5,8 +5,8 @@
  * (chi tiết · sửa · thêm mới · thao tác · xóa), ngăn xếp quay lại bằng breadcrumb `← SN-001 › Sửa`,
  * footer chung, ‹ › và phím ← →, và "Hủy bỏ thay đổi?" ngay trong modal khi có thay đổi chưa lưu.
  *
- * Module chỉ khai báo nhóm trường, tab, thao tác; khung lo phần còn lại. Cỡ modal là prop, đặt lúc mở
- * và không đổi; thêm mới luôn cỡ M (xong thì nơi gọi mở lại modal L của bản ghi vừa tạo).
+ * Module chỉ khai báo nhóm trường, tab, thao tác; khung lo phần còn lại. Cỡ mặc định là prop, đặt lúc mở;
+ * thao tác có thể khai báo presentation riêng trong cùng modal. Thêm mới luôn cỡ M.
  */
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,6 +48,11 @@ export type ActionDef<R> = {
   visible?: (record: R) => boolean;
   /** Màn hình thao tác thay thân modal. */
   screen?: (ctx: ActionCtx<R>) => ReactNode;
+  /** Optional action-specific frame and heading, within the same modal. */
+  presentation?: {
+    modalClassName?: string;
+    heading: (record: R) => Pick<Heading, 'title' | 'subtitle'>;
+  };
   /** Thao tác chạy ngay (ví dụ Ẩn / Hiện lại). */
   run?: (record: R) => Promise<R | void>;
   /** Thao tác mở chỗ khác (ví dụ form Thêm thiết bị con). */
@@ -184,6 +189,8 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
   }, [view.kind, pending, nav, trail.length]);
 
   const visibleActions = record ? actions.filter((a) => !a.visible || a.visible(record)) : [];
+  const activeAction = view.kind === 'action' ? visibleActions.find((action) => action.key === view.key) : undefined;
+  const actionHeading = record && activeAction?.presentation ? activeAction.presentation.heading(record) : null;
 
   async function runAction(action: ActionDef<R>) {
     if (!record || !action.run || running) return;
@@ -223,13 +230,13 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
     </span>
   ));
   const backButton = (onClick: () => void) => (
-    <button type="button" className="dp-icon-btn rm-back" onClick={onClick} aria-label={t('dp.back')} title={t('dp.back')}>
+    <button type="button" className="dp-icon-btn rm-back" onClick={onClick} disabled={busy || running} aria-label={t('dp.back')} title={t('dp.back')}>
       <ArrowLeft size={18} aria-hidden="true" />
     </button>
   );
   const viewLabel = view.kind === 'edit' ? t('common.edit')
     : view.kind === 'delete' ? (deleteLabel ?? t('common.delete'))
-      : view.kind === 'action' ? (visibleActions.find((a) => a.key === view.key)?.label ?? '') : '';
+      : view.kind === 'action' ? (activeAction?.label ?? '') : '';
 
   let header: ReactNode;
   if (!head) {
@@ -265,6 +272,16 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
               {head.meta && <div className="dp-meta">{head.meta}</div>}
             </div>
           )}
+        </div>
+      </div>
+    );
+  } else if (actionHeading) {
+    header = (
+      <div className="rm-head rm-head--action" ref={headRef}>
+        {backButton(() => leave(backToDetail))}
+        <div className="rm-titles">
+          <div className="rm-line1"><h2 tabIndex={-1}>{actionHeading.title}</h2></div>
+          {actionHeading.subtitle && <div className="rm-sub"><div className="rm-subtitle">{actionHeading.subtitle}</div></div>}
         </div>
       </div>
     );
@@ -335,8 +352,7 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
         onConfirm={async () => { await onDelete(record); toast.success(t('dp.deleted')); onDeleted?.(record); }} />
     );
   } else if (view.kind === 'action') {
-    const action = visibleActions.find((a) => a.key === view.key);
-    body = action?.screen ? action.screen({
+    body = activeAction?.screen ? activeAction.screen({
       record,
       cancel: backToDetail,
       done: (updated, message) => {
@@ -353,7 +369,7 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
       : historyUrl ? <DetailHistory url={historyUrl(record)} fieldLabel={fieldLabel} filter={historyFilter} /> : null;
   } else {
     body = (
-      <div className="rm-info" data-mode="view">
+      <div key={record.id} className="rm-info" data-mode="view">
         {sections.map((section) => {
           if (section.render) {
             const content = section.render(record);
@@ -407,10 +423,13 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
 
   const guardText = pending?.guard === true || !pending ? null : pending.guard;
   const modalSize: ModalSize = creating ? 'm' : size;
+  const mobileDetail = phone && !creating && view.kind === 'detail';
+  const modalClassName = [mobileDetail ? 'record-mobile-detail' : null, activeAction?.presentation?.modalClassName].filter(Boolean).join(' ') || undefined;
   return (
     <RecordContext.Provider value={context}>
       <Modal
         size={modalSize} title={head?.title ?? createTitle ?? t('common.loadingEllipsis')} header={header} tabs={tabsRow}
+        ariaLabel={actionHeading?.title} sheet={mobileDetail} className={modalClassName}
         busy={busy || running} onClose={() => (pending ? setPending(null) : leave(onClose))}
       >
         <ModalSuspend suspended={!!pending}>

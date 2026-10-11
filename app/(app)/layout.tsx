@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { requirePageViewer } from '@/lib/auth/pageSession';
 import { AppShell } from '@/components/AppShell';
 import '../workspace.css';
+import '../mobile-workspace.css';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const viewer = await requirePageViewer();

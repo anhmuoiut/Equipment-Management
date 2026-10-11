@@ -118,14 +118,24 @@
     "moreActions": "More actions",
     "filtersAndSort": "Filter & sort",
     "sortBy": "Sort by",
+    "sortDirection": "Sort direction",
     "sortNone": "Default order",
     "sortAsc": "A → Z",
     "sortDesc": "Z → A",
     "showResults": "Show {{count}} results",
     "searchPlaceholder": "Search…",
     "filters": "Filters",
+    "assetSearchPlaceholder": "Search SN, PN, location...",
+    "reset": "Reset",
+    "applyFilters": "Apply filters ({{count}})",
+    "clearAll": "Clear all",
+    "removeFilter": "Remove filter: {{name}}",
+    "moreFiltersAndSort": "More filters & sort",
+    "noEquipment": "No equipment found",
+    "adjustFilters": "Try adjusting your search or filters.",
     "all": "All",
     "empty": "(empty)",
+    "emptyValue": "—",
     "clearFilters": "Clear filters",
     "columns": "Columns",
     "moveUp": "Move {{name}} up",
@@ -139,6 +149,10 @@
     "noMatch": "No records match the search or filters."
   },
   "dp": {
+    "showMore": "Show more",
+    "showLess": "Show less",
+    "showMoreField": "Show more: {{name}}",
+    "showLessField": "Show less: {{name}}",
     "back": "Back to list",
     "prev": "Previous record",
     "next": "Next record",
@@ -173,15 +187,34 @@
     "saveAnyway": "Save anyway"
   },
   "hist": {
+    "columns": {
+      "time": "Time",
+      "module": "Module",
+      "record": "Record",
+      "action": "Action",
+      "actor": "By",
+      "changes": "Changes",
+      "source": "Source",
+      "note": "Note"
+    },
     "empty": "No history yet.",
     "system": "System",
+    "summary": {
+      "created": "Record created",
+      "deleted": "Record deleted",
+      "imported": "Imported {{count}} records"
+    },
+    "showMore": "Show details for {{action}}",
+    "showLess": "Hide details for {{action}}",
     "viaParent": "Followed parent {{serial}}",
     "swapWith": "Swapped with {{serial}}",
     "source": {
+      "ui": "App",
       "import": "Import",
       "script": "Script"
     },
     "action": {
+      "IMPORT": "Imported",
       "CREATE": "Created",
       "UPDATE": "Updated",
       "DELETE": "Deleted",
@@ -266,6 +299,17 @@
     "not_in_use": "Not in use",
     "locked": "Locked"
   },
+  "swap": {
+    "title": "Swap equipment",
+    "current": "Current equipment",
+    "selectEquipment": "Select equipment",
+    "noTarget": "No equipment selected",
+    "exchange": "The two equipment exchange positions",
+    "after": "After swap",
+    "affectedOthers": "Show {{count}} other affected equipment",
+    "noteEquipment": "Parent, location and Status follow the new position. Level follows the new parent; child equipment follow their parent.",
+    "note": "Parent, location and Status follow the new position."
+  },
   "eq": {
     "add": "Add equipment",
     "addTitle": "New equipment",
@@ -290,7 +334,6 @@
     "moveConfirm": "Move",
     "attachConfirm": "Attach",
     "swap": "Swap",
-    "swapDesc": "The two equipment exchange places (parent + location). Status stays as it is.",
     "swapWith": "Swap with",
     "swapped": "Swapped.",
     "checkOut": "Check-out",
@@ -683,6 +726,8 @@
     }
   },
   "asset": {
+    "showMoreRelations": "Show more ({{count}})",
+    "showLessRelations": "Show less",
     "result": "Result",
     "resultLoading": "Calculating…",
     "nothingChanges": "Nothing changes.",
@@ -727,7 +772,6 @@
     },
     "serialExists": "This serial number already exists:",
     "serialExistsHint": "You can still save — press Save anyway.",
-    "quickUnattached": "Not attached",
     "attachedTo": "Attached to",
     "notAttached": "Not attached",
     "goldenParentHint": "A tester or fixture. The location follows the parent.",
@@ -764,13 +808,13 @@
     "testers_one": "{{count}} tester",
     "testers_other": "{{count}} testers",
     "inUse": "{{count}} In use",
+    "notInUse": "{{count}} Not in use",
     "alerts_one": "{{count}} calibration alert",
     "alerts_other": "{{count}} calibration alerts",
     "pn": "PN",
     "sn": "SN",
     "golden": "Golden",
     "subType": "Sub ({{type}})",
-    "unattached": "Unattached",
     "alert": "Calibration",
     "more": "+{{count}} equipment",
     "moreLabel": "{{count}} more items — open the equipment tree of {{serial}}",

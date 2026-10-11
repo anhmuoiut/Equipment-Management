@@ -1,6 +1,6 @@
 # Masterlist & Detail Modal — bố cục chung toàn project
 
-Cập nhật: 09/10/2026 (**Overview thành bảng thẻ theo Location, mục 4.6**; bỏ side panel: mọi chi tiết / form / thao tác dùng một hệ thống modal, mục 3; footer chung và cỡ modal cố định theo review; mục 4.1–4.3 theo schema equipment / sub_equipment / golden_boards; **giao diện đã làm theo đúng mục 3–4**). Code: [mục 6](#6-triển-khai). Dữ liệu theo [DATABASE_MODIFIED.md](DATABASE_MODIFIED.md); giao diện (màu, font, kích thước, quy tắc modal) theo [JABIL_UI.md](JABIL_UI.md).
+Cập nhật: 09/10/2026 (**Overview thành bảng thẻ theo Location, mục 4.6**; bỏ side panel: mọi chi tiết / form / thao tác dùng một hệ thống modal, mục 3; footer chung và cỡ modal mặc định cố định, Swap có presentation gọn riêng theo yêu cầu; mục 4.1–4.3 theo schema equipment / sub_equipment / golden_boards; **giao diện đã làm theo đúng mục 3–4**). Code: [mục 6](#6-triển-khai). Dữ liệu theo [DATABASE_MODIFIED.md](DATABASE_MODIFIED.md); giao diện (màu, font, kích thước, quy tắc modal) theo [JABIL_UI.md](JABIL_UI.md).
 
 ## 1. Nguyên tắc
 
@@ -78,9 +78,9 @@ Một component `Modal` dùng chung; **cỡ là một prop** (S / M / L). Quy t�
 | **L** | ~960px | **Chi tiết một bản ghi** (bấm dòng, `‹ ›`, link `?id=`), Import |
 
 - Modal căn giữa, lớp mờ phủ cả trang; rộng tối đa `100vw − 32px`, **cao tối đa 85vh**.
-- **Cỡ do màn hình mở đầu quyết định và giữ nguyên đến khi đóng.** Chuyển màn hình trong modal (chi tiết → Sửa / thao tác / xác nhận → quay lại) **không đổi cỡ** nên khung không nhảy. Ngoại lệ duy nhất là **Thêm mới**: lưu xong modal M đóng và chi tiết bản ghi vừa tạo mở trong một modal L mới (mục 3.6).
-- Trong modal **L**, các màn hình form / thao tác / xác nhận giới hạn **nội dung ~640px, căn giữa** (header và footer vẫn rộng hết modal; nút chính vẫn ở góc phải footer). Trong modal **M**, nội dung dùng hết bề rộng.
-- Dưới 768px modal **toàn màn hình** — xem [3.11](#311-trên-điện-thoại).
+- **Prop cỡ do màn hình mở đầu quyết định và giữ nguyên đến khi đóng.** Chuyển màn hình trong modal (chi tiết → Sửa / thao tác thông thường / xác nhận → quay lại) giữ khung mặc định. **Swap là ngoại lệ trình bày được yêu cầu**: cùng instance `Modal` và ngăn xếp màn hình dùng rộng `min(820px, 100vw − 32px)`, cao theo nội dung, bỏ chiều cao tối thiểu 600px của L; không đóng hoặc tạo modal khác. Khung Swap giữ nguyên khi hiện xác nhận bỏ thay đổi. **Thêm mới** là ngoại lệ vòng đời: lưu xong modal M đóng và chi tiết bản ghi vừa tạo mở trong một modal L mới (mục 3.6).
+- Trong modal **L**, các màn hình form / thao tác thông thường / xác nhận giới hạn **nội dung ~640px, căn giữa** (header và footer vẫn rộng hết modal; nút chính vẫn ở góc phải footer). Trong modal **M**, nội dung dùng hết bề rộng. Swap dùng hết bề rộng presentation riêng, không bị giới hạn nội dung 640px.
+- Dưới 768px modal mặc định **toàn màn hình**; riêng Swap gọn, căn giữa, cao tối đa `100dvh − 32px`, thân cuộn và giữ header/footer — xem [3.11](#311-trên-điện-thoại).
 
 ### 3.2 Header và footer (cố định)
 
@@ -110,7 +110,7 @@ Configuration và User Management: `[Thao tác ▾]` bên trái; bên phải `[S
 
 | Vị trí | Nội dung |
 | --- | --- |
-| Header | Breadcrumb **`← SN-001 › Sửa`** (hoặc `› Swap`, `› Check-out`…). `←` = Quay lại màn hình chi tiết (có thay đổi chưa lưu → hỏi xác nhận, mục 3.7). Thêm mới: tiêu đề "Thêm …". Luôn có `[✕]` |
+| Header | Breadcrumb **`← SN-001 › Sửa`** (hoặc `› Check-out`…). Swap dùng tiêu đề thao tác và SN ở dòng phụ. `←` = Quay lại màn hình chi tiết (có thay đổi chưa lưu → hỏi xác nhận, mục 3.7). Thêm mới: tiêu đề "Thêm …". Luôn có `[✕]` |
 | Footer phải | `[Hủy]` `[nút chính]` — nút chính ghi đúng việc nó làm (`Lưu`, `Swap`, `Đổi vị trí`, `Gắn vào cha`, `Check-out`, `Đặt lại mật khẩu`, `Khóa`, `Xóa`…), chỉ dùng `Xác nhận` khi không có tên nào cụ thể hơn. Nút Xóa màu đỏ |
 | Khi đang chạy | Nút chính khóa + **một** chỉ báo tải; cả modal không đóng được |
 
@@ -131,7 +131,9 @@ Chỉ ở **màn hình chi tiết**.
 | --- | --- | --- |
 | Đầu | **Thông tin** | Mọi module |
 | Giữa | Tab riêng của module (0–1 tab) | Equipment: Cây thiết bị |
-| Cuối | **Lịch sử** | Mọi module — dòng thời gian `Trường: cũ → mới` (đọc `asset_logs` với tài sản; `configuration_histories` / `user_histories` với Configuration / User Management) |
+| Cuối | **Lịch sử** | Mọi module — bảng dùng chung, mỗi nhật ký một hàng, cột **Thay đổi** chỉ chứa các trường thay đổi của hàng đó theo dạng `trường: cũ → mới` (đọc `asset_logs` với tài sản; `configuration_histories` / `user_histories` với Configuration / User Management) |
+
+Tab Lịch sử và Dashboard **Thay đổi gần đây** dùng chung `HistoryTable`: mỗi sự kiện một hàng, các cột cố định **Thời gian · Người thao tác · Bản ghi · Hành động · Thay đổi**; Dashboard thêm **Module** và giữ liên kết mở bản ghi. Cột **Thay đổi** chỉ liệt kê các trường thay đổi của sự kiện trong hàng đó theo dạng `trường: cũ → mới`, bao gồm vị trí; giá trị bị xóa vẫn hiện `cũ → —`. Không tạo cột riêng cho mỗi trường xuất hiện ở những sự kiện khác. Sự kiện thông thường mặc định hiện hai thay đổi đầu tiên; **Xem thêm / Thu gọn** mở hoặc ẩn phần còn lại ngay trong ô đó. Sự kiện **CREATE** mặc định là tóm tắt thêm mới, mở rộng để xem các giá trị ban đầu; **DELETE** mặc định là tóm tắt xóa, mở rộng để xem dữ liệu bản ghi đã xóa. Nguồn và ghi chú nằm trong phần mở rộng của hàng, không có cột riêng. Bảng giữ nguyên trên điện thoại, cuộn ngang trong khung và có header cố định. Import nhiều bản ghi trên Dashboard vẫn là một hàng với tóm tắt số lượng; không hiện liên kết hoặc chi tiết các trường của bản ghi đại diện để mô tả cả lần import.
 
 Màn hình form / thao tác không có tab (Thêm mới chỉ có nhóm trường).
 
@@ -148,20 +150,25 @@ Màn hình form / thao tác không có tab (Thêm mới chỉ có nhóm trườn
 
 ### 3.6 Màn hình trong modal
 
-Modal chỉ có **một màn hình hiện tại**. Mở thao tác từ chi tiết thì màn hình mới **thay thế nội dung trong cùng modal** (không mở modal khác, **không đổi cỡ modal**), chồng lên một ngăn xếp màn hình để `←` quay lại đúng chỗ.
+Modal chỉ có **một màn hình hiện tại**. Mở thao tác từ chi tiết thì màn hình mới **thay thế nội dung trong cùng modal** (không mở modal khác, giữ prop cỡ), chồng lên một ngăn xếp màn hình để `←` quay lại đúng chỗ. Swap áp dụng ngoại lệ presentation ở mục 3.1 trên chính instance đó.
 
 | Màn hình | Mở bằng | Khung | Kết thúc |
 | --- | --- | --- | --- |
 | **Chi tiết** (mặc định) | Bấm dòng trong masterlist, `‹ ›`, link `?id=` / QR | Modal L | `✕` / Esc / bấm ngoài → đóng modal |
 | **Sửa** | Nút `[Sửa]` | Cỡ của modal hiện tại; trong L: nội dung ~640px | Lưu → quay về **chi tiết** của bản ghi + toast "Đã lưu" |
 | **Thêm mới** | Nút `+ Thêm` trên masterlist | Modal M | Lưu → **đóng modal M, mở lại modal L** chi tiết bản ghi vừa tạo (URL `?id=` của nó) + toast |
-| **Thao tác** | Mục trong `[Thao tác ▾]` hoặc nút trên footer (Check-out / Check-in, Ghi nhận hiệu chuẩn, Swap, Move, Tách khỏi cha, Đổi vị trí, Đặt lại mật khẩu, Khóa / Mở khóa…) | Cỡ của modal hiện tại; trong L: nội dung ~640px | Xong → quay về **chi tiết** (đã tải lại) + toast |
+| **Thao tác** | Mục trong `[Thao tác ▾]` hoặc nút trên footer (Check-out / Check-in, Ghi nhận hiệu chuẩn, Move, Tách khỏi cha, Đổi vị trí, Đặt lại mật khẩu, Khóa / Mở khóa…) | Cỡ của modal hiện tại; trong L: nội dung ~640px | Xong → quay về **chi tiết** (đã tải lại) + toast |
+| **Swap** | `[Thao tác ▾]` › Swap | Cùng modal/ngăn xếp; presentation rộng `min(820px, 100vw − 32px)`, cao theo nội dung, bỏ min-height 600px và giới hạn nội dung 640px; trên phone gọn, căn giữa | Xong → quay về **chi tiết** (đã tải lại) + toast |
 | **Xóa** | `[Thao tác ▾]` › Xóa (Admin) | Như trên; thiết bị có con thì thêm cảnh báo "con sẽ thành chưa gắn" | Xong → đóng modal + toast (bản ghi không còn) |
-| **Hủy bỏ thay đổi?** | Đóng hoặc `←` khi có thay đổi chưa lưu (mục 3.7) | Như trên | `[Ở lại]` `[Bỏ thay đổi]` — là một màn hình trong chính modal, không phải hộp thoại thứ hai |
+| **Hủy bỏ thay đổi?** | Đóng hoặc `←` khi có thay đổi chưa lưu (mục 3.7) | Khung hiện tại, giữ presentation Swap nếu đang Swap | `[Ở lại]` `[Bỏ thay đổi]` — là một màn hình trong chính modal, không phải hộp thoại thứ hai |
 | **Mở bản ghi liên quan** | Bấm thiết bị cha / con trong cùng module | Modal L | Chi tiết của bản ghi đó thay vào modal; breadcrumb `← SN-001 › SN-002` để quay lại bản ghi trước. Bản ghi của **module khác** (ví dụ từ Equipment bấm một sub-equipment) thì chuyển tới trang module đó với `?id=` — modal cũ đóng, modal mới mở: luôn chỉ một modal |
 | **Import** | Nút Import trên masterlist | Modal L | Xong → đóng modal + toast + tải lại danh sách |
 
 Màn hình thao tác gồm: tiêu đề + vài trường + mục **Kết quả** xem trước (lấy từ `p_dry_run` của hàm database tương ứng — con đi đâu, vị trí / Status mới, "Hạn mới: dd/mm/yyyy"; lỗi như đang In use hiện ngay, trước khi bấm nút chính). Sau khi xong, **tải lại cả masterlist** và dữ liệu của chi tiết.
+
+**Swap** dùng hai thẻ so sánh: thiết bị hiện tại A và thiết bị được chọn B, gồm **SN · Part number · Location · Usage**, thêm **Level khi là Equipment**. Ô chọn tìm kiếm nằm trong thẻ B; chưa chọn thì có trạng thái trống. Hai thẻ nằm cạnh nhau trên 900px, xếp dọc ở 900px trở xuống. Header đơn giản là tên thao tác + SN dòng phụ, giữ Back/Close và footer `[Hủy] [Swap]`.
+
+`SwapPreview` đọc kết quả dry run thật, gom theo tài sản và chỉ hiện các trường thay đổi theo **cũ → mới**. A/B hiện trước; hậu duệ bị ảnh hưởng mở bằng **Xem thêm / Thu gọn**. Cha/tester, Location, Level và Usage chỉ hiện khi kết quả có thay đổi; Status có thể theo đích đến theo quy tắc nghiệp vụ, không đảm bảo giữ nguyên. Chỉ bật nút Swap khi chọn thiết bị tương thích và dry run hiện tại thành công; cùng cha và cùng vị trí vẫn bị khóa. Trạng thái gửi, lỗi, Escape, focus và xác nhận bỏ thay đổi dùng cơ chế chung.
 
 ### 3.7 Đóng modal
 
@@ -200,7 +207,7 @@ Chi tiết của một module có thể hiện một **nhóm chỉ đọc** do m
 
 ### 3.11 Trên điện thoại
 
-Mục tiêu: **quét nhanh → tìm thiết bị → xem trạng thái / vị trí → làm việc cần làm**, bằng **một tay**. Điện thoại không phải bản desktop thu nhỏ: danh sách là các thẻ, nút hay dùng nằm ở **đáy màn hình** (vùng ngón cái), đầu màn hình chỉ giữ tên và điều hướng. **768px là ngưỡng điện thoại duy nhất của cả giao diện**: dưới 768px modal toàn màn hình, danh sách dạng thẻ và sidebar dạng ngăn kéo; từ 768px trở lên giữ nguyên bố cục desktop / tablet.
+Mục tiêu: **quét nhanh → tìm thiết bị → xem trạng thái / vị trí → làm việc cần làm**, bằng **một tay**. Điện thoại không phải bản desktop thu nhỏ: danh sách là các thẻ, nút hay dùng nằm ở **đáy màn hình** (vùng ngón cái), đầu màn hình chỉ giữ tên và điều hướng. **768px là ngưỡng điện thoại duy nhất của cả giao diện**: dưới 768px modal mặc định toàn màn hình, danh sách dạng thẻ và sidebar dạng ngăn kéo; riêng Swap dùng presentation gọn, căn giữa (3.1). Ngưỡng 900px chỉ xếp dọc hai thẻ so sánh Swap, không đổi cách xác định màn hình phone.
 
 **Danh sách (Masterlist)** — không ép bảng vào màn hình hẹp:
 
@@ -249,8 +256,8 @@ Mục tiêu: **quét nhanh → tìm thiết bị → xem trạng thái / vị tr
 
 | Thành phần | Trên điện thoại |
 | --- | --- |
-| Khung | Mọi cỡ S / M / L đều **toàn màn hình** (không bo góc, không lớp mờ), header và footer cố định, chỉ thân cuộn; chừa vùng an toàn của máy ở đáy. Nút ≥ 44px |
-| Header | Chi tiết: `‹ ›` · tên chính + tag · `✕`. Form / thao tác: `← SN-001 › Sửa` · `✕`. Không có phím `← →` (không có bàn phím) |
+| Khung | Cỡ S / M / L mặc định **toàn màn hình** (không bo góc, không lớp mờ), header và footer cố định, chỉ thân cuộn; chừa vùng an toàn của máy ở đáy. Swap là ngoại lệ: gọn, căn giữa, rộng `100vw − 32px`, cao theo nội dung và tối đa `100dvh − 32px`, vẫn giữ footer và thân cuộn. Nút ≥ 44px |
+| Header | Chi tiết: `‹ ›` · tên chính + tag · `✕`. Form / thao tác thông thường: `← SN-001 › Sửa` · `✕`; Swap: tên thao tác + SN dòng phụ, Back và Close. Không có phím `← →` (không có bàn phím) |
 | Dòng phụ | Định danh phụ + **mục đầu của thông tin nhanh** (vị trí; với hiệu chuẩn là hạn). Phần còn lại của thông tin nhanh ở tab Thông tin |
 | Tab | Một hàng, cao 44px, vuốt ngang được |
 | Thân | **Xem**: trường ngắn hai cột (`wide` chiếm cả hàng). **Sửa / thêm mới**: một cột, ô nhập cao ≥ 44px, chữ 16px (không bị iOS tự phóng to) |
@@ -267,12 +274,12 @@ Mục tiêu: **quét nhanh → tìm thiết bị → xem trạng thái / vị tr
 | --- | --- |
 | `Masterlist` | Trang danh sách: tiêu đề + tổng số, thanh công cụ, bảng, sắp xếp, lọc, chọn dòng |
 | `ColumnSettings` | Tùy chọn hiển thị cột |
-| `Modal` | Khung modal duy nhất: cỡ `s` / `m` / `l` (prop, đặt khi mở và không đổi), lớp mờ, header + footer cố định, thân cuộn tối đa 85vh, nội dung màn hình phụ ~640px căn giữa trong `l`, đóng bằng Esc / ✕ / bấm ngoài (Esc đóng popover trước), khóa focus, toàn màn hình dưới 768px |
-| `RecordModal` | Modal của một bản ghi: giữ ngăn xếp màn hình (chi tiết → sửa / thao tác / xác nhận), breadcrumb `← SN › …`, footer chung (3.2), `‹ ›` và phím `← →`, hỏi "Hủy bỏ thay đổi?" khi có bất kỳ thay đổi chưa lưu (`?id=` do `ModuleWorkspace` đồng bộ). Overview dùng lại modal của module theo `type` |
+| `Modal` | Khung modal duy nhất: cỡ `s` / `m` / `l` (prop, đặt khi mở và không đổi), lớp mờ, header + footer cố định, thân cuộn tối đa 85vh, nội dung màn hình phụ ~640px căn giữa trong `l`, đóng bằng Esc / ✕ / bấm ngoài (Esc đóng popover trước), khóa focus, mặc định toàn màn hình dưới 768px; Swap áp dụng ngoại lệ presentation ở 3.1 |
+| `RecordModal` | Modal của một bản ghi: giữ ngăn xếp màn hình (chi tiết → sửa / thao tác / xác nhận), breadcrumb `← SN › …` hoặc header từ `ActionDef.presentation` cho Swap, footer chung (3.2), `‹ ›` và phím `← →`, hỏi "Hủy bỏ thay đổi?" khi có bất kỳ thay đổi chưa lưu (`?id=` do `ModuleWorkspace` đồng bộ). Overview dùng lại modal của module theo `type` |
 | `DetailSection` | Một nhóm trường: tiêu đề + lưới 2 cột |
 | `DetailValue`, `FieldView`, `FieldEditor` | Vẽ nhóm (`SectionDef`) và trường (`FieldDef`) module khai báo: nhãn, giá trị khi xem, ô nhập khi sửa, chú thích, lỗi |
 | `ActionScreen`, `ActionField` | Màn hình thao tác trong modal; tự khóa khi đang gửi và hiện lỗi |
-| `DetailHistory` | Tab Lịch sử: dòng thời gian từ `asset_logs` / `*_histories` |
+| `DetailHistory`, `HistoryTable` | Tab Lịch sử và Dashboard Thay đổi gần đây: mỗi nhật ký một hàng, cột Thay đổi chứa các trường riêng của sự kiện theo dạng `cũ → mới`, Xem thêm / Thu gọn ngay trong hàng; đọc `asset_logs` / `*_histories` |
 
 Nằm ở phần dùng chung (`components/ui`). Mỗi module chỉ truyền vào cột / nhóm / trường / tab / thao tác của mình — không module nào tự viết khung riêng, và không có hộp thoại riêng cho từng loại bản ghi.
 
@@ -536,9 +543,9 @@ Quyền: mọi nhóm xem được; Swap và Check-out / Check-in cho Admin, User
 
 **Đã chốt (08/10/2026):**
 
-- **Cỡ modal không đổi giữa các màn hình**: giữ cỡ của màn hình mở đầu đến khi đóng. Form / thao tác / xác nhận bên trong modal L giới hạn nội dung ~640px, căn giữa (mục 3.1).
+- **Prop cỡ modal không đổi giữa các màn hình**: giữ prop của màn hình mở đầu đến khi đóng. Form / thao tác thông thường / xác nhận bên trong modal L giới hạn nội dung ~640px, căn giữa. Swap là ngoại lệ presentation theo yêu cầu: cùng modal dùng rộng tối đa 820px, cao theo nội dung, header đơn giản và phone gọn, căn giữa (mục 3.1, 3.6).
 - **Đóng modal**: Esc / ✕ / bấm ngoài — nếu có bất kỳ thay đổi chưa lưu (form, Ghi chú, lựa chọn trong màn thao tác) thì hiện "Hủy bỏ thay đổi?" ngay trong modal; popover đang mở thì Esc chỉ đóng popover (mục 3.7).
-- **Một ngưỡng 768px** cho modal toàn màn hình, danh sách dạng thẻ và sidebar dạng ngăn kéo (mục 3.11). Code: `usePhone` = `(max-width: 767px)`, mọi `@media` trong `app/*.css` dùng 767px / 768px.
+- **Một ngưỡng phone 768px** cho modal mặc định toàn màn hình, danh sách dạng thẻ và sidebar dạng ngăn kéo (mục 3.11). Code: `usePhone` = `(max-width: 767px)`; riêng hai thẻ so sánh Swap xếp dọc ở 900px trở xuống và dialog Swap gọn, căn giữa trên phone.
 - **Overview mở đúng `RecordModal` của module theo `type`, không có footer riêng.** Footer chung: trái `[Thao tác ▾]` (Swap, Move / Detach, Đổi vị trí, Xóa); phải `[Sửa]` `[Check-out]` / `[Check-in]`; sub-equipment thêm `[Ghi nhận hiệu chuẩn]` trước Check-out (mục 3.2, 4.6).
 - **Overview là bảng thẻ theo Location (09/10/2026), thay hoàn toàn cây tải từng nhánh**: section theo Location, mỗi cột một tài sản gốc (Tester trước, rồi thiết bị chưa gắn), tối đa 3 thẻ mỗi cột kể cả thẻ gốc, chọn theo ưu tiên (khớp lọc → cảnh báo hiệu chuẩn → Base → Fixture → Golden → Sub), một hàm database `overview_board` trả cả bảng trong một lần, lọc và tìm chạy trong database; bấm thẻ gốc / "+N" mở modal tài sản gốc ở tab Cây thiết bị (mục 4.6).
 - **Thêm mới**: lưu xong thì **đóng modal M và mở lại modal L** chi tiết bản ghi vừa tạo + toast (mục 3.6).
@@ -549,7 +556,7 @@ Quyền: mọi nhóm xem được; Swap và Check-out / Check-in cho Admin, User
 **Còn chờ bạn review (2 điểm):**
 
 1. **Cột Masterlist** của Equipment, Calibration, Golden (mục 4.1–4.3) và Configuration, User Management (4.4–4.5) — đã viết theo schema mới; thứ tự cột và cột mặc định có cần đổi không?
-2. **Bố cục trên điện thoại** (mục 3.11) — danh sách dạng thẻ, modal toàn màn hình dưới 768px, footer có Thao tác + nút chính. Có ổn không?
+2. **Bố cục trên điện thoại** (mục 3.11) — danh sách dạng thẻ, modal mặc định toàn màn hình dưới 768px (Swap gọn, căn giữa theo 3.1), footer có Thao tác + nút chính. Có ổn không?
 
 ## 6. Triển khai
 
@@ -562,11 +569,11 @@ Giao diện làm theo mục 3–4: một component `Modal` (cỡ là prop), `Rec
 | `DetailSection`, `DetailValue`, `FieldView`, `FieldEditor`, `ActionField`, `SystemInfoSection` | [components/ui/record/fields.tsx](../components/ui/record/fields.tsx) | `FieldDef` / `SectionDef` module khai báo; nhóm "Thông tin hệ thống" khung tự thêm; `SectionDef.viewExtra` nối nội dung chỉ đọc sau các trường (thiết bị con, sub-equipment…) |
 | `ActionMenu` | [components/ui/ActionMenu.tsx](../components/ui/ActionMenu.tsx) | `[Thao tác ▾]` / `⋮`: popover vẽ ra body, mở lên trên khi dưới không đủ chỗ (footer ở đáy); Esc đóng popover trước modal |
 | `SearchableSelect` | [components/ui/SearchableSelect.tsx](../components/ui/SearchableSelect.tsx) | Popover neo vào ô (cả trên điện thoại, không có tấm trượt thứ hai); chế độ `onSearch` (tìm trên server: cha hợp lệ, thiết bị Swap) với `loading` / `selectedLabel` |
-| `DetailHistory` | [components/ui/detail/DetailHistory.tsx](../components/ui/detail/DetailHistory.tsx) | Dòng thời gian `Trường: cũ → mới` (+ vị trí cũ → mới) |
+| `DetailHistory`, `HistoryTable` | [components/ui/detail/DetailHistory.tsx](../components/ui/detail/DetailHistory.tsx) | Bảng Lịch sử và Dashboard Thay đổi gần đây: mỗi nhật ký một hàng, metadata cố định và một cột Thay đổi có Xem thêm / Thu gọn; giữ vị trí, nguồn và ghi chú trong hàng |
 | `Masterlist`, `RowCard`, `ColumnSettings` | [components/ui/masterlist/](../components/ui/masterlist) | Tải đủ dữ liệu một lần, tìm / lọc / sắp xếp ngay trên trình duyệt; vẽ dần 200 dòng khi cuộn. Xuất Excel đúng cột và dòng đang hiện. Điện thoại: thẻ thay bảng; `usePhone` ([lib/client/usePhone.ts](../lib/client/usePhone.ts)) là nơi duy nhất quyết định "đang ở điện thoại" cho JS. `initialSearch` điền sẵn ô tìm (`?q=`) |
 | `ModuleWorkspace`, `useList`, `useUrlParams` | [components/ui/workspace/ModuleWorkspace.tsx](../components/ui/workspace/ModuleWorkspace.tsx), [lib/client/useUrlParams.ts](../lib/client/useUrlParams.ts) | URL là nguồn sự thật: `?id=` (chi tiết), `?new=1` (thêm mới), `?tool=` (công cụ như Import), `?q=`. Đổi bằng `history.pushState` / `replaceState` (Next.js nối vào `useSearchParams`, không chờ server): mở từ danh sách = **push** (Back đóng modal; đóng bằng ✕ = `history.back()` để lịch sử không thừa), chuyển bản ghi / thêm mới → chi tiết = **replace**. Bản ghi tải theo id (`recordUrl`), `‹ ›` theo thứ tự đang hiện, `trail` cho breadcrumb, `reload` + `version` để phần tải riêng của modal (cây, thiết bị con) tải lại theo. Test đổi URL bằng [lib/client/testing/urlParamsMock.ts](../lib/client/testing/urlParamsMock.ts) |
 | `ImportModal` | [components/ui/ImportModal.tsx](../components/ui/ImportModal.tsx) | Import Excel ba bước, modal L, dùng cho Equipment / Calibration / Golden; đang ghi thì không đóng được |
-| Nhân tài sản dùng chung | [components/assets/](../components/assets) | `api.ts` (đường dẫn, `parentOf`, lời gọi `/api/assets/*`, `useDryRun`), `OpResult` (mục **Kết quả** từ `dry_run`), `pickers.tsx` (`ParentPicker`, `SwapPicker` tìm trên server), `screens.tsx` (Đổi vị trí, Gắn vào / Đổi cha, Tách khỏi cha, Swap, Xóa, Check-out / Check-in — xem trước bằng `dry_run`, lỗi hiện ngay), `actions.tsx` (`assetActions`: thứ tự và điều kiện hiện của footer chung), `Relations.tsx` (chip cha / con, liên kết chữ, mở bản ghi cùng / khác module), `TreeTab.tsx` (cây thụt lề, bàn phím), `SerialWarning`, `AssetLabel` (nhãn QR của ba module) |
+| Nhân tài sản dùng chung | [components/assets/](../components/assets) | `api.ts` (đường dẫn, `parentOf`, lời gọi `/api/assets/*`, `useDryRun`), `OpResult` (mục **Kết quả** từ `dry_run`), `SwapPreview` (trường thay đổi cũ → mới từ dry run, A/B trước và hậu duệ qua Xem thêm / Thu gọn), `pickers.tsx` (`ParentPicker`, `SwapPicker` tìm trên server), `screens.tsx` (Đổi vị trí, Gắn vào / Đổi cha, Tách khỏi cha, Swap, Xóa, Check-out / Check-in — xem trước bằng `dry_run`, lỗi hiện ngay), `actions.tsx` (`assetActions`: thứ tự, điều kiện hiện và presentation Swap), `Relations.tsx` (chip cha / con, liên kết chữ, mở bản ghi cùng / khác module), `TreeTab.tsx` (cây thụt lề, bàn phím), `SerialWarning`, `AssetLabel` (nhãn QR của ba module) |
 | Equipment | [components/equipment/](../components/equipment) | `EquipmentWorkspace` (cột, lọc nhanh "Chưa gắn", Import), `EquipmentModal` (nhóm trường, quan hệ cha – con, nhóm Hiệu chuẩn của Tester, tab Cây thiết bị, Thêm thiết bị con, cảnh báo serial trùng) |
 | Calibration | [components/calibration/](../components/calibration) | `CalibrationWorkspace`, `CalibrationModal` (nút `[Ghi nhận hiệu chuẩn]` đứng trước Check-out, tab Hiệu chuẩn), `CalibrationScreens` (Ghi nhận kèm "Hạn mới", sửa / xóa một lần hiệu chuẩn) |
 | Golden | [components/golden/](../components/golden) | `GoldenWorkspace`, `GoldenModal` |

@@ -44,10 +44,6 @@ export function GoldenWorkspace() {
     />
   ), []);
 
-  const quickFilters = useMemo(() => [
-    { key: 'unattached', label: t('asset.quickUnattached'), test: (r: GoldenRow) => !r.parent_id },
-  ], [t]);
-
   return (
     <ModuleWorkspace<GoldenRow>
       title={t('nav.golden')}
@@ -59,7 +55,6 @@ export function GoldenWorkspace() {
       exportName="golden-boards"
       canAdd={can.edit}
       addLabel={t('gs.add')}
-      quickFilters={quickFilters}
       tools={can.edit ? [{
         key: 'import', label: t('imp.button'), icon: <Upload size={14} aria-hidden="true" />,
         render: ({ onClose, reload }) => (

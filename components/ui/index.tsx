@@ -114,7 +114,7 @@ function unlockPage() {
  * `busy`: đang gửi — không đóng được.
  */
 export function Modal({
-  title, onClose, children, size = 's', sheet, footer, header, tabs, busy, ariaLabel,
+  title, onClose, children, size = 's', sheet, footer, header, tabs, busy, ariaLabel, className, headerAction,
 }: {
   title: string; onClose: () => void; children: ReactNode;
   size?: ModalSize;
@@ -128,6 +128,9 @@ export function Modal({
   tabs?: ReactNode;
   busy?: boolean;
   ariaLabel?: string;
+  className?: string;
+  /** Optional header action, e.g. Reset in a filter sheet; Cancel/backdrop still close it. */
+  headerAction?: ReactNode;
 }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -203,12 +206,13 @@ export function Modal({
         <div
           ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={ariaLabel ?? title}
           onClick={(e) => e.stopPropagation()}
-          className={`modal-dialog modal-dialog--${sheet ? 'sheet' : size}`} data-size={size}
+          className={`modal-dialog modal-dialog--${sheet ? 'sheet' : size}${className ? ` ${className}` : ''}`} data-size={size}
           style={{ background: 'var(--panel)', borderColor: 'var(--rule)', color: 'var(--ink)' }}
         >
+          {sheet && <div className="modal-sheet-handle" aria-hidden="true" />}
           <div className="modal-header">
             <div className="modal-header-main">{header ?? <h2>{title}</h2>}</div>
-            <button type="button" className="modal-close" onClick={requestClose} disabled={busy} aria-label={t('common.close')}><X size={20} aria-hidden="true" /></button>
+            {headerAction ?? <button type="button" className="modal-close" onClick={requestClose} disabled={busy} aria-label={t('common.close')}><X size={20} aria-hidden="true" /></button>}
           </div>
           {tabs}
           <div className="modal-body">{children}</div>

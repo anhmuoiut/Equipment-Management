@@ -28,14 +28,15 @@ export function UserStatusTag({ active }: { active: boolean }) {
 }
 
 /**
- * Usage của thiết bị: In use (xanh đặc, chấm sáng) / Not in use (xám, chấm rỗng) — khác Status.
- * Chấm tròn chỉ có ở tag Usage; tag Status không có chấm.
+ * Usage của thiết bị: hiện tag có chữ; riêng thẻ danh sách trên phone hiện chấm xanh / xám.
+ * Chữ vẫn có cho trình đọc màn hình; tag Status không có chấm.
  */
 export function UsageTag({ usage }: { usage: 'in_use' | 'not_in_use' }) {
   const { t } = useTranslation();
+  const label = t(`values.${usage}`);
   return (
-    <span className="tag tag-usage" data-usage={usage}>
-      <span className="tag-dot" aria-hidden="true" />{t(`values.${usage}`)}
+    <span className="tag tag-usage" data-usage={usage} title={label}>
+      <span className="tag-dot" aria-hidden="true" /><span className="tag-usage-label">{label}</span>
     </span>
   );
 }

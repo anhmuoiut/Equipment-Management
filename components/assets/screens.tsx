@@ -7,15 +7,18 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ArrowLeftRight, ArrowUpDown, Info } from 'lucide-react';
 import { toSelect, useOptions } from '@/lib/client/options';
-import { Notice } from '@/components/ui';
+import { useFetch } from '@/lib/client/useFetch';
+import { Button, Notice, Skeleton } from '@/components/ui';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { ActionScreen } from '@/components/ui/record/ActionScreen';
 import { ActionField } from '@/components/ui/record/fields';
 import type { ActionCtx } from '@/components/ui/record/RecordModal';
 import { UsageTag } from '@/components/ui/tags';
-import { deleteAsset, parentOf, runOp, setUsage, useDryRun, type AssetRecord } from './api';
+import { ASSET_API, deleteAsset, parentOf, runOp, setUsage, useDryRun, type AssetRecord } from './api';
 import { OpResult } from './OpResult';
+import { SwapPreview } from './SwapPreview';
 import { ParentPicker, SwapPicker } from './pickers';
 import type { AssetType, EquipmentRow, SwapCandidate, Usage } from '@/lib/types';
 
@@ -46,7 +49,7 @@ export function ChangeLocationScreen({ type, ctx }: ScreenProps) {
         <SearchableSelect value={locationId} onChange={setLocationId} placeholder={t('dp.selectPlaceholder')} ariaLabel={t('eq.newLocation')}
           options={toSelect(options?.locations).filter((o) => o.value !== record.location_id)} />
       </ActionField>
-      <OpResult state={preview} hint={t('asset.pickLocationHint')} />
+      <OpResult state={preview} />
     </ActionScreen>
   );
 }
@@ -74,7 +77,7 @@ export function MoveScreen({ type, ctx }: ScreenProps) {
         <ParentPicker type={type} assetId={record.id} value={parentId} onChange={setParentId} showUsageAfter
           ariaLabel={t('eq.newParent')} placeholder={t('dp.selectPlaceholder')} />
       </ActionField>
-      <OpResult state={preview} hint={t('asset.pickParentHint')} />
+      <OpResult state={preview} />
     </ActionScreen>
   );
 }
@@ -105,28 +108,93 @@ export function SwapScreen({ type, ctx }: ScreenProps) {
   const { t } = useTranslation();
   const record = ctx.record;
   const [otherId, setOtherId] = useState<string | null>(null);
+  const [selectionVersion, setSelectionVersion] = useState(0);
   const [candidate, setCandidate] = useState<SwapCandidate | null>(null);
-  const preview = useDryRun(otherId ? () => runOp(type, record.id, 'swap', { other_id: otherId }, true) : null, otherId ?? '');
-  const typeName = 'type' in record ? record.type : null;
+  const validTarget = !!candidate && candidate.id === otherId && !candidate.same_place;
+  const previewKey = `${otherId ?? ''}:${selectionVersion}`;
+  const preview = useDryRun(validTarget ? () => runOp(type, record.id, 'swap', { other_id: otherId }, true) : null, previewKey);
   return (
     <ActionScreen
-      description={<>{t('eq.swapDesc')} {type === 'golden_board' ? t('asset.swapAnyGolden') : t('eq.swapSameType', { type: typeName ?? '' })}</>}
+      className="swap-screen"
       onCancel={ctx.cancel} dirty={otherId !== null}
-      confirmLabel={t('eq.swap')} confirmDisabled={!otherId || !!candidate?.same_place || preview.loading || !!preview.error}
+      confirmLabel={t('swap.title')} confirmIcon={<ArrowLeftRight size={16} aria-hidden="true" />}
+      confirmDisabled={!validTarget || !preview.result || preview.loading || !!preview.error}
       onConfirm={async () => {
         await runOp(type, record.id, 'swap', { other_id: otherId }, false);
         ctx.reload();
         ctx.done(undefined, t('eq.swapped'));
       }}
     >
-      {hasKids(record) && <Notice tone="info">{t('asset.childrenFollow')}</Notice>}
-      <ActionField label={t('eq.swapWith')} required>
-        <SwapPicker type={type} assetId={record.id} value={otherId} onChange={setOtherId} onPick={setCandidate}
-          ariaLabel={t('eq.swapWith')} placeholder={t('dp.selectPlaceholder')} />
-      </ActionField>
+      <div className="swap-comparison">
+        <section className="swap-equipment" aria-label={t('swap.current')}>
+          <h3 className="swap-card-heading">{t('swap.current')}</h3>
+          <div className="swap-card">
+            <SwapEquipmentSummary item={record} showLevel={type === 'equipment'} level={'level' in record ? record.level : null} />
+          </div>
+        </section>
+        <div className="swap-direction" role="img" aria-label={t('swap.exchange')}>
+          <ArrowLeftRight className="swap-direction-horizontal" size={24} aria-hidden="true" />
+          <ArrowUpDown className="swap-direction-vertical" size={24} aria-hidden="true" />
+        </div>
+        <section className="swap-equipment" aria-label={t('eq.swapWith')}>
+          <h3 className="swap-card-heading">{t('eq.swapWith')}</h3>
+          <div className="swap-card">
+            <div className="swap-selector-row">
+              <SwapPicker type={type} assetId={record.id} value={otherId} onChange={(id) => {
+                setOtherId(id);
+                setSelectionVersion((version) => version + 1);
+              }} onPick={setCandidate}
+                ariaLabel={t('eq.swapWith')} placeholder={t('swap.selectEquipment')} className="swap-selector" />
+            </div>
+            {candidate
+              ? <SwapTargetSummary key={previewKey} type={type} candidate={candidate} />
+              : <p className="swap-empty-target">{t('swap.noTarget')}</p>}
+          </div>
+        </section>
+      </div>
       {candidate?.same_place && <Notice tone="warn">{t('eq.swapNoChange')}</Notice>}
-      <OpResult state={preview} hint={t('asset.pickSwapHint')} />
+      <SwapPreview state={preview} selected={[
+        { type, id: record.id, label: record.serial_number },
+        ...(candidate ? [{ type, id: candidate.id, label: candidate.serial_number }] : []),
+      ]} />
+      <p className="swap-info"><Info size={15} aria-hidden="true" /><span>{t(type === 'equipment' ? 'swap.noteEquipment' : 'swap.note')}</span></p>
     </ActionScreen>
+  );
+}
+
+function SwapEquipmentSummary({ item, showLevel, level, levelLoading }: {
+  item: Pick<AssetRecord, 'serial_number' | 'part_number' | 'location' | 'usage'>;
+  showLevel: boolean;
+  level?: string | null;
+  levelLoading?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="swap-card-summary">
+      <div className="swap-card-identity">
+        <strong className="swap-card-serial">{item.serial_number}</strong>
+        <span className="swap-card-part">{item.part_number || '—'}</span>
+      </div>
+      <dl className="swap-card-fields">
+        <div className="swap-card-field"><dt>{t('fields.location')}</dt><dd className="swap-card-location">{item.location || '—'}</dd></div>
+        {showLevel && <div className="swap-card-field"><dt>{t('fields.level')}</dt><dd>
+          {levelLoading ? <span role="status" aria-label={t('common.loadingEllipsis')}><Skeleton className="h-4 w-20" /></span> : level || '—'}
+        </dd></div>}
+        <div className="swap-card-field"><dt>{t('fields.usage')}</dt><dd><UsageTag usage={item.usage} /></dd></div>
+      </dl>
+    </div>
+  );
+}
+
+/** Candidate search supplies the comparison fields; the existing detail API supplies Equipment Level. */
+function SwapTargetSummary({ type, candidate }: { type: AssetType; candidate: SwapCandidate }) {
+  const { t } = useTranslation();
+  const { data, loading, error, reload } = useFetch<EquipmentRow>(type === 'equipment' ? `${ASSET_API[type]}/${candidate.id}` : null);
+  return (
+    <>
+      <SwapEquipmentSummary item={data ?? candidate} showLevel={type === 'equipment'} level={data?.level} levelLoading={loading && !data} />
+      {error && <div className="swap-card-error"><Notice tone="alert">{error}</Notice><Button size="sm" onClick={reload}>{t('common.retry')}</Button></div>}
+    </>
   );
 }
 
@@ -173,7 +241,7 @@ export function UsageScreen({ type, ctx }: ScreenProps) {
       <ActionField label={t('fields.usage')}>
         <span className="dp-value"><UsageTag usage={record.usage} /> <span aria-hidden="true">→</span> <UsageTag usage={target} /></span>
       </ActionField>
-      <ActionField label={t('eq.usageNote')} hint={t('eq.usageNoteHint')} htmlFor="usage-note">
+      <ActionField label={t('eq.usageNote')} htmlFor="usage-note">
         <textarea id="usage-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
       </ActionField>
       <OpResult state={preview} />

@@ -19,7 +19,7 @@ import type { DetailCtx } from '@/components/ui/workspace/ModuleWorkspace';
 import { assetActions } from '@/components/assets/actions';
 import { fetchSerialMatches } from '@/components/assets/api';
 import { ParentPicker } from '@/components/assets/pickers';
-import { ActionLink, RelationChip, RelationList, useOpenAsset } from '@/components/assets/Relations';
+import { ActionLink, ParentRelation, RelationList, useOpenAsset } from '@/components/assets/Relations';
 import { SerialWarning } from '@/components/assets/SerialWarning';
 import type { GoldenRow, ParentCandidate } from '@/lib/types';
 
@@ -46,14 +46,15 @@ export function GoldenModal({ ctx }: { ctx: DetailCtx<GoldenRow> }) {
     {
       key: 'location', title: t('eq.groupLocationRelation'), fields: [
         { key: 'location_id', label: t('fields.location'), kind: 'select', required: (d) => !d.parent_id,
-          view: (r) => (r.parent_id ? <>{r.location}<span className="eq-note">{t('eq.fromParent')}</span></> : r.location),
+          view: (r) => r.location,
           options: (_d, r) => toSelect(options?.locations, r?.location_id, ` (${t('cfg.hidden')})`),
           lock: (_r, d) => (d.parent_id ? t('eq.locationFromParent') : null),
           draftView: (d) => parentLocation(d.parent_id) },
         { key: 'parent_id', label: t('asset.attachedTo'), wide: true,
           view: (r) => (r.parent_id ? (
-            <RelationList empty="">
-              {[<RelationChip key="p" serial={r.parent_serial ?? '—'} onClick={() => openAsset('equipment', r.parent_id!)} />]}
+            <RelationList key={r.id} empty="">
+              {[<ParentRelation key={r.parent_id} id={r.parent_id} serial={r.parent_serial ?? '—'} version={ctx.version}
+                onClick={() => openAsset('equipment', r.parent_id!)} />]}
             </RelationList>
           ) : (
             <>
@@ -62,7 +63,6 @@ export function GoldenModal({ ctx }: { ctx: DetailCtx<GoldenRow> }) {
             </>
           )),
           draftView: (d) => (d.parent_id ? (picked?.id === d.parent_id ? picked.serial_number : record?.parent_serial ?? '—') : <span className="dp-empty">{t('asset.notAttached')}</span>),
-          editHint: t('asset.goldenParentHint'),
           editor: ({ value, onChange, label, record: r }) => (
             <ParentPicker type="golden_board" assetId={r?.id} value={(value as string | null) ?? null} valueLabel={r?.parent_serial ?? undefined}
               onChange={onChange} onPick={setPicked} clearable ariaLabel={label} placeholder={t('asset.notAttached')} />
@@ -71,7 +71,7 @@ export function GoldenModal({ ctx }: { ctx: DetailCtx<GoldenRow> }) {
     },
     {
       key: 'status', title: t('asset.groupStatus'), hideInCreate: true, fields: [
-        { key: 'usage', label: t('fields.usage'), readOnly: true, hint: t('eq.usageHint'), view: (r) => <UsageTag usage={r.usage} /> },
+        { key: 'usage', label: t('fields.usage'), readOnly: true, view: (r) => <UsageTag usage={r.usage} /> },
       ],
     },
     {
@@ -82,7 +82,7 @@ export function GoldenModal({ ctx }: { ctx: DetailCtx<GoldenRow> }) {
     },
     {
       key: 'notes', title: t('eq.groupNotes'), fields: [
-        { key: 'tag_ids', label: t('fields.tags'), wide: true, hint: t('tag.hint'),
+        { key: 'tag_ids', label: t('fields.tags'), wide: true,
           view: (r) => (r.tags.length ? <TagChips items={r.tags} /> : <span className="dp-empty">{t('tag.none')}</span>),
           editor: ({ id, value, onChange, label }) => <TagPicker id={id} value={value} onChange={onChange} tags={options?.tags} label={label} /> },
         { key: 'remark', label: t('fields.remark'), kind: 'textarea', wide: true, maxLength: 1000 },

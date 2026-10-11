@@ -10,14 +10,14 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { CalendarClock, CalendarDays, Cpu, Gauge, CircuitBoard, Search, TriangleAlert } from 'lucide-react';
-import { formatTime } from '@/lib/client/api';
 import { useFetch } from '@/lib/client/useFetch';
 import { usePhone } from '@/lib/client/usePhone';
 import { useCan } from '@/components/ViewerContext';
 import { Button, ErrorState, Notice, Skeleton, Spinner } from '@/components/ui';
 import { PageHeading } from '@/components/layout/PageHeading';
 import { DueDate } from '@/components/ui/tags';
-import { HistoryChanges, useFormatNote } from '@/components/ui/detail/DetailHistory';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { HistoryTable, useFormatNote, type HistoryTableRow } from '@/components/ui/detail/DetailHistory';
 import type { CountItem, DashboardData, HistoryModule, RecentActivity, StatusCountItem } from '@/lib/types';
 
 const MODULE_PATH: Record<HistoryModule, string | null> = {
@@ -215,6 +215,28 @@ function RecentActivities() {
     ? ['equipment', 'sub_equipment', 'golden_board', 'configuration', 'user']
     : ['equipment', 'sub_equipment', 'golden_board'];
   const fieldLabel = (key: string) => t(`fields.${key}`, { defaultValue: key });
+  const historyRows: HistoryTableRow[] = (rows ?? []).map((row) => {
+    const batch = row.item_count > 1;
+    const path = MODULE_PATH[row.module];
+    return {
+      id: row.id,
+      createdAt: row.created_at,
+      actor: row.created_by_name ?? t('hist.system'),
+      module: t(`dash.moduleName.${row.module}`),
+      action: batch ? t('hist.action.IMPORT') : t(`hist.action.${row.action}`, { defaultValue: row.action }),
+      actionCode: batch ? 'IMPORT' : row.action,
+      itemCount: row.item_count,
+      record: batch ? undefined : path
+        ? <Link className="link" href={`${path}?id=${row.object_id}`}>{row.label}</Link>
+        : <strong>{row.label}</strong>,
+      source: t(`hist.source.${row.source}`, { defaultValue: row.source }),
+      note: batch ? undefined : formatNote(row.note),
+      // Một lần Import Excel vẫn là một dòng; chi tiết từng bản ghi có trong tab Lịch sử của nó.
+      changes: batch ? {} : row.changes,
+      fromLocation: batch ? undefined : row.from_location,
+      toLocation: batch ? undefined : row.to_location,
+    };
+  });
 
   return (
     <section className="dash-card dash-activity">
@@ -226,10 +248,11 @@ function RecentActivities() {
             <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder={t('dash.searchPlaceholder')} aria-label={t('common.search')} />
           </label>
-          <select value={module} onChange={(e) => setModule(e.target.value)} aria-label={t('dash.module')}>
-            <option value="">{t('dash.allModules')}</option>
-            {modules.map((m) => <option key={m} value={m}>{t(`dash.moduleName.${m}`)}</option>)}
-          </select>
+          <SearchableSelect value={module} onChange={setModule} ariaLabel={t('dash.module')} className="dash-module-select"
+            options={[
+              { value: '', label: t('dash.allModules') },
+              ...modules.map((m) => ({ value: m, label: t(`dash.moduleName.${m}`) })),
+            ]} />
           {phone && (
             <Button size="sm" aria-expanded={datesOpen} data-active={!!(from || to)} onClick={() => setDatesOpen((o) => !o)}>
               <CalendarDays size={14} aria-hidden="true" />{t('dash.dates')}
@@ -248,39 +271,7 @@ function RecentActivities() {
       {error ? <ErrorState message={error} onRetry={reload} />
         : !rows ? <Spinner label={t('common.loadingEllipsis')} size="sm" />
           : rows.length === 0 ? <p className="dash-empty">{query || module || from || to ? t('dash.noMatch') : t('hist.empty')}</p> : (
-            // Danh sách cuộn bên trong thẻ (JABIL_UI.md mục 4), cuộn được bằng bàn phím.
-            <ol className="hist-list" tabIndex={0} aria-label={t('dash.recent')} aria-busy={loading || undefined}>
-              {rows.map((r) => {
-                const path = MODULE_PATH[r.module];
-                // Một lần Import Excel = một dòng (view gộp); chi tiết từng dòng xem ở lịch sử của từng bản ghi.
-                if (r.item_count > 1) {
-                  return (
-                    <li key={r.id} className="hist-item">
-                      <div className="hist-head">
-                        <span className="tag" data-tone="info">{t(`dash.moduleName.${r.module}`)}</span>
-                        <span className="hist-action">{t('dash.importedBatch', { count: r.item_count })}</span>
-                        <time className="hist-time" dateTime={r.created_at}>{formatTime(r.created_at)}</time>
-                      </div>
-                      <div className="hist-by">{r.created_by_name ?? t('hist.system')}</div>
-                    </li>
-                  );
-                }
-                return (
-                  <li key={r.id} className="hist-item">
-                    <div className="hist-head">
-                      <span className="tag" data-tone="info">{t(`dash.moduleName.${r.module}`)}</span>
-                      <span className="hist-action">{t(`hist.action.${r.action}`, { defaultValue: r.action })}</span>
-                      {path ? <Link className="link" href={`${path}?id=${r.object_id}`}>{r.label}</Link> : <strong>{r.label}</strong>}
-                      {r.source === 'import' && <span className="tag">{t('dash.fromImport')}</span>}
-                      <time className="hist-time" dateTime={r.created_at}>{formatTime(r.created_at)}</time>
-                    </div>
-                    <div className="hist-by">{r.created_by_name ?? t('hist.system')}</div>
-                    {formatNote(r.note) && <div className="hist-note">{formatNote(r.note)}</div>}
-                    <HistoryChanges changes={r.changes} fieldLabel={fieldLabel} />
-                  </li>
-                );
-              })}
-            </ol>
+            <HistoryTable rows={historyRows} fieldLabel={fieldLabel} ariaLabel={t('dash.recent')} loading={loading} />
           )}
       {rows && rows.length >= limit && limit < 500 && (
         <Button size="sm" onClick={() => setLimit((l) => Math.min(l + 100, 500))}>{t('dash.loadMore')}</Button>

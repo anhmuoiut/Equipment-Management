@@ -2,7 +2,7 @@
 
 /**
  * Modal Equipment — Tester, Base, Fixture (docs/DETAIL_MODEL.md 4.1). Dùng khung RecordModal; riêng module này:
- * nhóm trường, quan hệ cha – con (chip bấm để mở), nhóm Hiệu chuẩn chỉ đọc của Tester (từ module Calibration),
+ * nhóm trường, quan hệ cha – con (dòng SN · Type bấm để mở), nhóm Hiệu chuẩn chỉ đọc của Tester (từ module Calibration),
  * tab Cây thiết bị, cảnh báo serial trùng trước khi lưu. Overview dùng lại đúng component này.
  */
 import { useState, type ReactNode } from 'react';
@@ -22,7 +22,7 @@ import type { DetailCtx } from '@/components/ui/workspace/ModuleWorkspace';
 import { assetActions } from '@/components/assets/actions';
 import { fetchSerialMatches } from '@/components/assets/api';
 import { ParentPicker } from '@/components/assets/pickers';
-import { ActionLink, RelationChip, RelationList, useOpenAsset } from '@/components/assets/Relations';
+import { ActionLink, ParentRelation, RelationChip, RelationList, useOpenAsset } from '@/components/assets/Relations';
 import { SerialWarning } from '@/components/assets/SerialWarning';
 import { TreeTab } from '@/components/assets/TreeTab';
 import type { EquipmentKind, EquipmentRow, EquipmentTree, ParentCandidate, TreeNode } from '@/lib/types';
@@ -54,6 +54,7 @@ export function EquipmentModal({ ctx, initialTab }: {
   const loaded = record && tree.data?.nodes.some((n) => n.id === record.id) ? tree.data : null;
   // Con trực tiếp (equipment, sub-equipment, golden board); null = đang tải.
   const family = record && loaded ? loaded.nodes.filter((n) => n.parent_id === record.id) : null;
+  const relationType = (node: TreeNode) => node.type_name ?? t(`ov.kinds.${node.kind}`);
   // Cây chưa về: đang tải, hoặc tải lỗi (kèm Thử lại) — không để "Đang tải…" mãi khi lỗi.
   const treePending = () => (tree.error && family === null ? (
     <span className="dp-empty">{tree.error} <button type="button" className="link" onClick={tree.reload}>{t('common.retry')}</button></span>
@@ -108,18 +109,17 @@ export function EquipmentModal({ ctx, initialTab }: {
     {
       key: 'classification', title: t('eq.groupClassification'), fields: [
         // Type luôn theo part number: ô chỉ hiển thị, không chọn tay.
-        { key: 'type_id', label: t('fields.type'), readOnly: true, hint: t('eq.typeFromPartNumber'),
+        { key: 'type_id', label: t('fields.type'), readOnly: true,
           view: (r) => r.type, draftView: (d) => typeName(d.part_number_id) ?? '—' },
         // Level theo thiết bị cha (database giữ cả cây cùng Level).
         // Level bắt buộc khi không có cha (cùng Location); có cha thì theo cha và ô khóa.
         { key: 'level_id', label: t('fields.level'), kind: 'select', required: (d) => !d.parent_id,
-          view: (r) => (r.parent_id ? <>{r.level ?? '—'}<span className="eq-note">{t('eq.fromParent')}</span></> : r.level),
-          editHint: t('eq.levelHint'),
+          view: (r) => r.level,
           options: (_d, r) => toSelect(options?.levels, r?.level_id, hidden),
           lock: (_r, d) => (d.parent_id ? t(fixedParentId ? 'eq.followsFixedParent' : 'eq.levelFromParent') : null),
           draftView: (d) => parentLevel(d) },
         // Status không sửa trong form: đổi bằng Check-out / Check-in (và đổi theo chỗ khi Swap, Move, Detach).
-        { key: 'usage', label: t('fields.usage'), readOnly: true, hideInCreate: true, hint: t('eq.usageHint'),
+        { key: 'usage', label: t('fields.usage'), readOnly: true, hideInCreate: true,
           view: (r) => <UsageTag usage={r.usage} /> },
       ],
     },
@@ -127,7 +127,7 @@ export function EquipmentModal({ ctx, initialTab }: {
       key: 'location', title: t('eq.groupLocationRelation'),
       fields: [
         { key: 'location_id', label: t('fields.location'), kind: 'select', required: (d) => !d.parent_id,
-          view: (r) => (r.parent_id ? <>{r.location}<span className="eq-note">{t('eq.fromParent')}</span></> : r.location),
+          view: (r) => r.location,
           options: (_d, r) => toSelect(options?.locations, r?.location_id, hidden),
           lock: (_r, d) => (d.parent_id ? t(fixedParentId ? 'eq.followsFixedParent' : 'eq.locationFromParent') : null),
           draftView: (d) => parentLocation(d) },
@@ -144,8 +144,10 @@ export function EquipmentModal({ ctx, initialTab }: {
             return p?.serial_number ?? fixedParent?.serial_number ?? record?.parent_serial ?? '—';
           },
           view: (r) => (r.parent_id ? (
-            <RelationList empty="">
-              {[<RelationChip key="p" serial={r.parent_serial ?? '—'} onClick={() => openAsset('equipment', r.parent_id!)} />]}
+            <RelationList key={r.id} empty="">
+              {[<ParentRelation key={r.parent_id} id={r.parent_id} serial={r.parent_serial ?? '—'} version={ctx.version}
+                typeName={loaded?.nodes.find((node) => node.id === r.parent_id)?.type_name}
+                onClick={() => openAsset('equipment', r.parent_id!)} />]}
             </RelationList>
           ) : (
             <>
@@ -153,7 +155,6 @@ export function EquipmentModal({ ctx, initialTab }: {
               {can.edit && r.kind !== 'tester' && <> <ActionLink action="attach">{t('eq.attachParent')}</ActionLink></>}
             </>
           )),
-          editHint: ctx.creating ? t('eq.parentCreateHint') : t('eq.parentHint'),
           editor: ({ id, value, onChange, label, draft, record: r }) => (
             <ParentPicker type="equipment" assetId={r?.id} kind={kindOf(draft, r)} value={(value as string | null) ?? null}
               valueLabel={r?.parent_serial ?? undefined} onChange={onChange} onPick={setPicked} clearable
@@ -161,44 +162,27 @@ export function EquipmentModal({ ctx, initialTab }: {
           ) },
       ],
       viewExtra: (r) => {
-        const kids = family?.filter((n) => n.asset_type === 'equipment') ?? [];
-        const subs = family?.filter((n) => n.asset_type === 'sub_equipment') ?? [];
-        const golden = family?.filter((n) => n.asset_type === 'golden_board') ?? [];
         const loading = family === null;
         const chip = (n: TreeNode) => (
-          <RelationChip key={n.id} serial={n.serial_number} part={n.part_number} status={n.asset_type === 'sub_equipment' ? n.cal_status : null}
+          <RelationChip key={n.id} serial={n.serial_number} typeName={relationType(n)} status={n.asset_type === 'sub_equipment' ? n.cal_status : null}
             onClick={() => openAsset(n.asset_type, n.id)} />
         );
         return (
-          <>
-            {r.kind !== 'fixture' && (
-              <DetailValue label={t('fields.children')} wide>
-                {loading ? treePending() : (
-                  <>
-                    <RelationList empty={t('eq.noChildren')}>{kids.map(chip)}</RelationList>
-                    {can.edit && <> <ActionLink action="add-child">{t('eq.addChild')}</ActionLink></>}
-                  </>
-                )}
-              </DetailValue>
+          <DetailValue label={t('fields.children')} wide>
+            {loading ? treePending() : (
+              <>
+                <RelationList key={r.id} empty={t('eq.noChildren')}>{(family ?? []).map(chip)}</RelationList>
+                {can.edit && (r.kind === 'tester' || r.kind === 'base') && <> <ActionLink action="add-child">{t('eq.addChild')}</ActionLink></>}
+              </>
             )}
-            {r.kind === 'tester' && (
-              <DetailValue label={t('asset.subEquipment')} wide>
-                {loading ? treePending() : <RelationList empty={t('asset.noSubEquipment')}>{subs.map(chip)}</RelationList>}
-              </DetailValue>
-            )}
-            {(r.kind === 'tester' || r.kind === 'fixture') && (
-              <DetailValue label={t('asset.golden')} wide>
-                {loading ? treePending() : <RelationList empty={t('asset.noGolden')}>{golden.map(chip)}</RelationList>}
-              </DetailValue>
-            )}
-          </>
+          </DetailValue>
         );
       },
     },
     {
       key: 'notes', title: t('eq.groupNotes'), fields: [
         // Thẻ (Configuration › Tag) chọn ngay trong phần Remark.
-        { key: 'tag_ids', label: t('fields.tags'), wide: true, hint: t('tag.hint'),
+        { key: 'tag_ids', label: t('fields.tags'), wide: true,
           view: (r) => (r.tags.length ? <TagChips items={r.tags} /> : <span className="dp-empty">{t('tag.none')}</span>),
           editor: ({ id, value, onChange, label }) => <TagPicker id={id} value={value} onChange={onChange} tags={options?.tags} label={label} /> },
         { key: 'remark', label: t('fields.remark'), kind: 'textarea', wide: true, maxLength: 1000 },

@@ -80,7 +80,7 @@ export const swapLabel = (c: SwapCandidate) =>
   [c.serial_number, c.part_number, c.location, c.parent_serial ? `↳ ${c.parent_serial}` : null].filter(Boolean).join(' · ');
 
 /** Chọn thiết bị để Swap (cùng Type; golden board thì bất kỳ). */
-export function SwapPicker({ type, assetId, value, onChange, onPick, ariaLabel, placeholder }: {
+export function SwapPicker({ type, assetId, value, onChange, onPick, ariaLabel, placeholder, className }: {
   type: AssetType;
   assetId: string;
   value: string | null;
@@ -88,13 +88,14 @@ export function SwapPicker({ type, assetId, value, onChange, onPick, ariaLabel, 
   onPick?: (candidate: SwapCandidate | null) => void;
   ariaLabel: string;
   placeholder: string;
+  className?: string;
 }) {
   const [picked, setPicked] = useState<string | undefined>();
   const { items, loading, search } = useRemoteList((q) => fetchSwapCandidates(type, assetId, q));
   return (
     <SearchableSelect
       value={value ?? ''} options={items.map((c) => ({ value: c.id, label: swapLabel(c) }))} onSearch={search} loading={loading}
-      selectedLabel={picked} placeholder={placeholder} ariaLabel={ariaLabel}
+      selectedLabel={picked} placeholder={placeholder} ariaLabel={ariaLabel} className={className}
       onChange={(v) => {
         const candidate = items.find((c) => c.id === v) ?? null;
         setPicked(candidate ? swapLabel(candidate) : undefined);

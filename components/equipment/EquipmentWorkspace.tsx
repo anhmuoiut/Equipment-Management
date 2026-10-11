@@ -11,7 +11,7 @@ import { useCan } from '@/components/ViewerContext';
 import { RemarkCell, UsageTag } from '@/components/ui/tags';
 import { ModuleWorkspace, useList } from '@/components/ui/workspace/ModuleWorkspace';
 import { ImportModal } from '@/components/ui/ImportModal';
-import { RowCard, type Column } from '@/components/ui/masterlist/Masterlist';
+import type { Column } from '@/components/ui/masterlist/Masterlist';
 import { IMPORT_COLUMNS } from '@/lib/equipmentImport';
 import { EquipmentModal } from './EquipmentModal';
 import type { EquipmentRow } from '@/lib/types';
@@ -22,7 +22,7 @@ export function EquipmentWorkspace() {
   const list = useList<EquipmentRow>('/api/equipment');
 
   // Status, rồi nó là gì (serial, part number, Type), ở đâu (Location), phần còn lại.
-  // useMemo: Masterlist memo theo identity của columns / quickFilters / leading / mobileCard (cache chữ tìm kiếm, bộ lọc,
+  // useMemo: Masterlist memo theo identity của columns / leading / mobileCard (cache chữ tìm kiếm, bộ lọc,
   // TableRow / Card memo) — tạo mảng mới mỗi lần render làm mất hết các cache đó.
   const columns = useMemo<Column<EquipmentRow>[]>(() => [
     { key: 'usage', label: t('fields.usage'), value: (r) => t(`values.${r.usage}`), render: (r) => <UsageTag usage={r.usage} />, filter: true },
@@ -46,18 +46,18 @@ export function EquipmentWorkspace() {
       : null), [t]);
 
   const mobileCard = useCallback((r: EquipmentRow) => (
-    <RowCard
-      title={<>{r.serial_number}{relation(r)}</>}
-      tag={<UsageTag usage={r.usage} />}
-      lines={[
-        <><MapPin size={13} aria-hidden="true" /><span className="rc-place">{r.location ?? '—'}</span>{[r.part_number, r.type, r.jabil_id].filter(Boolean).map((x) => ` · ${x}`)}</>,
-      ]}
-    />
-  ), [relation]);
-
-  const quickFilters = useMemo(() => [
-    { key: 'unattached', label: t('asset.quickUnattached'), test: (r: EquipmentRow) => r.kind !== 'tester' && !r.parent_id },
-  ], [t]);
+    <>
+      <span className="rc-asset-row">
+        <span className="rc-asset-type" title={r.type ?? undefined}>{r.type ?? '—'}</span>
+        <span className="rc-asset-pn" title={r.part_number ?? undefined}>{r.part_number ?? '—'}</span>
+      </span>
+      <span className="rc-asset-row">
+        <span className="rc-asset-location" title={r.location ?? undefined}><MapPin size={14} aria-hidden="true" /><span>{r.location ?? '—'}</span></span>
+        <span className="rc-asset-serial" title={r.serial_number}>{r.serial_number}</span>
+      </span>
+      <span className="sr-only">{t('fields.usage')}: {t(`values.${r.usage}`)}</span>
+    </>
+  ), [t]);
 
   const leading = useMemo(() => (
     { label: t('eq.relation'), header: <ListTree size={14} aria-hidden="true" />, render: relation }
@@ -69,12 +69,14 @@ export function EquipmentWorkspace() {
       list={list}
       columns={columns}
       mobileCard={mobileCard}
+      mobileFilterKeys={['usage', 'part_number', 'type', 'location', 'parent', 'tags']}
+      searchPlaceholder={t('ml.assetSearchPlaceholder')}
+      mobileEmptyState={{ title: t('ml.noEquipment'), subtitle: t('ml.adjustFilters') }}
       storageKey="equipment"
       defaultColumns={['usage', 'serial_number', 'part_number', 'type', 'location', 'jabil_id', 'asset', 'level', 'tags']}
       exportName="equipment"
       canAdd={can.edit}
       addLabel={t('eq.add')}
-      quickFilters={quickFilters}
       tools={can.edit ? [{
         key: 'import', label: t('imp.button'), icon: <Upload size={14} aria-hidden="true" />,
         render: ({ onClose, reload }) => (

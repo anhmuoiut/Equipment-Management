@@ -39,7 +39,6 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
   const partNumberChoices = (current: string | undefined) => toSelect(
     options?.part_numbers.filter((pn) => pn.id === current || (pn.kind === 'sub_equipment' && !taken.has(pn.id))),
     current, ` (${t('cfg.hidden')})`);
-  const partNumberHint = t('cfg.calibrationPartHint');
 
   // useMemo: Masterlist memo theo identity của columns (xem EquipmentWorkspace). `def` là object cố định trong CONFIG_LISTS.
   const columns = useMemo<Column<ConfigRow>[]>(() => (def.isCalibration ? [
@@ -67,37 +66,34 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
     key: 'info', title: t('cfg.groupInfo'),
     fields: def.isCalibration ? [
       { key: 'part_number_id', label: t('fields.part_number'), kind: 'select', required: true, view: (r) => r.display_name,
-        options: (_d, r) => partNumberChoices(r?.part_number_id), editHint: partNumberHint,
+        options: (_d, r) => partNumberChoices(r?.part_number_id),
         lock: (r) => (r ? t('cfg.partNumberFixed') : null) },
       { key: 'interval_months', label: t('fields.interval_months'), kind: 'number', required: true, min: 1, max: 600,
         view: (r) => t('cal.months', { count: r.interval_months ?? 0 }) },
       { key: 'warning_days', label: t('fields.warning_days'), kind: 'number', required: true, min: 1, max: 3650,
-        hint: t('cfg.warningHint'), view: (r) => t('cal.days', { count: r.warning_days ?? 0 }) },
+        view: (r) => t('cal.days', { count: r.warning_days ?? 0 }) },
     ] : def.isTag ? [
       { key: 'display_name', label: t('fields.display_name'), required: true, maxLength: 100 },
       { key: 'sort_order', label: t('fields.sort_order'), kind: 'number', required: true, min: 0 },
-      { key: 'color', label: t('fields.color'), kind: 'radio', required: true, hint: t('cfg.colorHint'),
+      { key: 'color', label: t('fields.color'), kind: 'radio', required: true,
         options: () => STATUS_COLORS.map((c) => ({ value: c, label: t(`values.${c}`) })),
         optionView: (o) => colorChip(o.value as StatusColor), view: (r) => colorChip(r.color) },
     ] : [
       { key: 'display_name', label: t('fields.display_name'), required: true, maxLength: 200 },
       // Part Number → Type: equipment with this part number always gets this Type (the database keeps them in step).
       ...(def.hasType ? [{ key: 'type_id', label: t('fields.type'), kind: 'select' as const, required: true, view: (r: ConfigRow) => r.type,
-        options: (_d: unknown, r: ConfigRow | null) => toSelect(options?.types, r?.type_id, ` (${t('cfg.hidden')})`),
-        editHint: t('cfg.partTypeHint') }] : []),
+        options: (_d: unknown, r: ConfigRow | null) => toSelect(options?.types, r?.type_id, ` (${t('cfg.hidden')})`) }] : []),
       // Part Number → Level (không bắt buộc): Level đang dùng; Level đã ẩn mà part number đang giữ thì vẫn hiện.
       ...(def.hasLevel ? [{ key: 'level_id', label: t('fields.level'), kind: 'select' as const, view: (r: ConfigRow) => r.level,
-        options: (_d: unknown, r: ConfigRow | null) => toSelect(options?.levels, r?.level_id, ` (${t('cfg.hidden')})`),
-        editHint: t('cfg.partLevelHint') }] : []),
+        options: (_d: unknown, r: ConfigRow | null) => toSelect(options?.levels, r?.level_id, ` (${t('cfg.hidden')})`) }] : []),
       // Types → Group (bắt buộc): chỉ các nhóm sub_equipment đang dùng; 3 Type hệ thống giữ nhóm hệ thống của chúng.
       ...(def.hasGroup ? [{ key: 'group_id', label: t('fields.group'), kind: 'select' as const, required: true, view: (r: ConfigRow) => r.group,
         options: (_d: unknown, r: ConfigRow | null) => toSelect(
           options?.type_groups.filter((g) => g.kind === 'sub_equipment' || g.id === r?.group_id), r?.group_id, ` (${t('cfg.hidden')})`),
-        lock: (r: ConfigRow | null) => (r && r.kind !== 'sub_equipment' ? t('cfg.groupLocked') : null),
-        editHint: t('cfg.groupHint') }] : []),
+        lock: (r: ConfigRow | null) => (r && r.kind !== 'sub_equipment' ? t('cfg.groupLocked') : null) }] : []),
       ...(def.hasDescription ? [{ key: 'description', label: t('fields.description'), kind: 'textarea' as const, wide: true, maxLength: 1000 }] : []),
       { key: 'sort_order', label: t('fields.sort_order'), kind: 'number', required: true, min: 0 },
-      { key: 'is_active', label: t('fields.is_active'), kind: 'boolean', hint: t('cfg.activeHint'),
+      { key: 'is_active', label: t('fields.is_active'), kind: 'boolean',
         // 3 loại hệ thống (Tester, Base, Fixture) và 3 nhóm hệ thống cùng tên không ẩn được.
         lock: (r) => ((def.hasDescription || def.isTypeGroup) && r && r.kind !== 'sub_equipment' ? t(def.isTypeGroup ? 'cfg.systemGroupLocked' : 'cfg.systemTypeLocked') : null),
         view: (r) => <ToneTag text={r.is_active ? t('cfg.active') : t('cfg.hidden')} tone={r.is_active ? 'ok' : 'neutral'} /> },

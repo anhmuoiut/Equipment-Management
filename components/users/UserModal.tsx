@@ -28,7 +28,7 @@ export function UserModal({ ctx }: { ctx: DetailCtx<UserRow> }) {
   const sections: SectionDef<UserRow>[] = [
     {
       key: 'account', title: t('usr.groupAccount'), fields: [
-        { key: 'username', label: t('fields.username'), required: true, maxLength: 64, hint: t('usr.usernameHint'),
+        { key: 'username', label: t('fields.username'), required: true, maxLength: 64,
           lock: (r) => (r ? t('usr.usernameLocked') : null) },
         { key: 'full_name', label: t('fields.full_name'), required: true, maxLength: 200 },
         { key: 'employee_id', label: t('fields.employee_id'), maxLength: 100 },

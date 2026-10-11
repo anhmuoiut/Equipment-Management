@@ -7,7 +7,7 @@
   --jabil-prussian: #002B49;
   --jabil-white: #FFFFFF;
   --jabil-picton: #3CB4E5;
-  --font-ui: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-ui: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --machine: var(--jabil-prussian);
   --machine-dark: color-mix(in srgb, var(--jabil-prussian) 85%, var(--jabil-picton));
   --machine-tint: color-mix(in srgb, var(--jabil-picton) 10%, var(--jabil-white));
@@ -316,7 +316,7 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 .user-menu-trigger:hover { background: color-mix(in srgb, var(--jabil-white) 7.06%, transparent); border-color: color-mix(in srgb, var(--jabil-white) 12.55%, transparent); }
 .user-menu-trigger > svg { flex-shrink: 0; color: color-mix(in srgb, var(--jabil-prussian) 16%, var(--jabil-white)); }
 .user-menu-name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-menu-list { position: absolute; top: calc(100% + 6px); right: 0; z-index: 65; min-width: 190px; padding: 4px; border: 1px solid var(--rule); border-radius: 9px; background: var(--panel); box-shadow: 0 10px 28px color-mix(in srgb, var(--jabil-prussian) 13.33%, transparent); }
+.user-menu-list { position: fixed; top: auto; right: auto; z-index: 100; min-width: 190px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; border: 1px solid var(--rule); border-radius: 9px; background: var(--panel); box-shadow: 0 10px 28px color-mix(in srgb, var(--jabil-prussian) 13.33%, transparent); }
 .user-menu-list button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; border-radius: 6px; text-align: left; font-size: 12.5px; color: var(--ink); }
 .user-menu-list button:hover { background: var(--machine-tint); }
 .user-menu-list button[data-danger] { color: var(--alert); }
@@ -492,13 +492,18 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
   .modal-dialog--sheet .modal-header { padding-top: 12px; }
   .modal-dialog--sheet .modal-footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 }
-/* SearchableSelect on a phone (components/ui/SearchableSelect.tsx): same popover, at most half the screen, 48px rows. */
+.ss-group { padding: 8px 10px 4px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+@media (hover: none) and (pointer: coarse) {
+  .ss-searchrow input { font-size: 16px; }
+  .ss-opt { min-height: 48px; font-size: 16px; }
+}
+/* SearchableSelect on a phone: the shared anchor hook limits the popover to the visible viewport. */
 @media (max-width: 767px) {
   .ss-popover { max-height: 50dvh; }
   .ss-searchrow { min-height: 48px; padding-inline: 12px; }
   .ss-searchrow input { font-size: 16px; }
   .ss-list { max-height: none; }
-  .ss-opt { min-height: 48px; font-size: 15px; padding-inline: 12px; }
+  .ss-opt { min-height: 48px; font-size: 16px; padding-inline: 12px; }
 }
 @keyframes sheet-in { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {

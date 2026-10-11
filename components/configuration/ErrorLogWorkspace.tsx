@@ -38,7 +38,7 @@ function ErrorLogModal({ ctx }: { ctx: DetailCtx<ErrorLogRow> }) {
       {ctx.error ? <ErrorState message={ctx.error} onRetry={ctx.onRetry} /> : !row ? (
         <div className="dp-skeleton">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
       ) : (
-        <DetailSection title={t('err.group')}>
+        <DetailSection key={row.id} title={t('err.group')}>
           <DetailValue label={t('err.requestId')}>{row.request_id}</DetailValue>
           <DetailValue label={t('err.code')}>{row.error_code}</DetailValue>
           <DetailValue label={t('err.route')} wide>{row.route}</DetailValue>

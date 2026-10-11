@@ -11,7 +11,7 @@ import { addMonths, api, formatDate, formatTime, todayVN } from '@/lib/client/ap
 import { useFetch } from '@/lib/client/useFetch';
 import { toSelect, useOptions } from '@/lib/client/options';
 import { useCan } from '@/components/ViewerContext';
-import { ErrorState, Notice, Spinner } from '@/components/ui';
+import { ErrorState, Spinner } from '@/components/ui';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { ActionScreen } from '@/components/ui/record/ActionScreen';
 import { ActionField } from '@/components/ui/record/fields';
@@ -63,7 +63,7 @@ function CalibrationFields({ value, onChange, dueNote, dueRequired }: {
         <input id="cal-url" type="url" maxLength={1000} value={value.cert_file_url} onChange={(e) => onChange({ cert_file_url: e.target.value })} />
       </ActionField>
       {dueRequired && (
-        <ActionField htmlFor="cal-due" label={t('cal.newDueDate')} required hint={t('cal.noIntervalHint')}>
+        <ActionField htmlFor="cal-due" label={t('cal.newDueDate')} required>
           <input id="cal-due" type="date" required value={value.due_date} min={value.calibrated_at} onChange={(e) => onChange({ due_date: e.target.value })} />
         </ActionField>
       )}
@@ -101,7 +101,7 @@ export function RecordCalibrationScreen({ ctx }: { ctx: ActionCtx<SubEquipmentRo
       }}
     >
       <CalibrationFields value={f} onChange={(patch) => setF((p) => ({ ...p, ...patch }))} dueRequired={!interval}
-        dueNote={computed ? `${formatDate(computed)} · ${t('cal.everyMonths', { count: interval ?? 0 })}` : null} />
+        dueNote={computed ? formatDate(computed) : null} />
     </ActionScreen>
   );
 }
@@ -142,7 +142,7 @@ export function EditCalibrationScreen({ ctx, rec }: { ctx: ActionCtx<SubEquipmen
       }}
     >
       <CalibrationFields value={f} onChange={(patch) => setF((p) => ({ ...p, ...patch }))}
-        dueNote={newDue ? formatDate(newDue) : `${formatDate(rec.due_date)} · ${t('cal.autoComputed')}`} />
+        dueNote={formatDate(newDue ?? rec.due_date)} />
     </ActionScreen>
   );
 }
@@ -175,7 +175,6 @@ export function CalibrationRecordsTab({ subId, version, onEdit }: {
   if (data.length === 0) return <p className="hist-empty">{t('cal.noRecords')}</p>;
   return (
     <div className="cal-tab">
-      {can.edit && <Notice tone="info">{t('cal.recordsHint')}</Notice>}
       <div className="imp-table-wrap">
       <table className="imp-table cal-records">
         <thead>

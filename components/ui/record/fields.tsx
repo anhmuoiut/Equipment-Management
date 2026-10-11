@@ -5,7 +5,7 @@
  * FieldDef / SectionDef, khung RecordModal vẽ chúng ở chế độ xem (FieldView) và sửa
  * (FieldEditor). Nhóm cuối "Thông tin hệ thống" (SystemInfoSection) là của khung.
  */
-import type { ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatTime } from '@/lib/client/api';
 import { RequiredMark } from '@/components/ui';
@@ -34,12 +34,12 @@ export type FieldDef<R> = {
    * TRƯỚC khi đổi. Chỉ chạy khi nhập tay, không chạy khi khung đặt giá trị ban đầu.
    */
   afterChange?: (value: unknown, draft: Draft, record: R | null) => Draft | undefined;
-  /** Khóa khi sửa — trả về lý do (hiện dưới ô). */
+  /** Khóa khi sửa; lý do dùng để xác định trạng thái khóa, không hiển thị mô tả dưới ô. */
   lock?: (record: R | null, draft: Draft) => string | null;
   /** Luôn chỉ đọc (ví dụ trường tự tính). */
   readOnly?: boolean;
+  /** Legacy metadata accepted for compatibility; field guidance is not rendered. */
   hint?: string;
-  /** Gợi ý chỉ hiện khi đang nhập (thêm / sửa), thay cho `hint`. */
   editHint?: string;
   wide?: boolean;
   /** Chỉ có khi thêm mới (ví dụ mật khẩu ban đầu). */
@@ -81,14 +81,63 @@ export function DetailSection({ title, children }: { title: string; children: Re
   );
 }
 
-/** Một trường khi xem: nhãn ở trên, giá trị ở dưới; trống → —. */
-export function DetailValue({ label, children, wide, hint }: { label: string; children: ReactNode; wide?: boolean; hint?: string }) {
+/** Long read-only values stay within their column; relationship lists own their Show more behavior. */
+export function ReadonlyValue({ label, children }: { label: string; children: ReactNode }) {
+  const { t } = useTranslation();
+  const id = useId();
+  const previewRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const [managed, setManaged] = useState(false);
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    const preview = previewRef.current;
+    if (!content || !preview) return;
+    function measure() {
+      if (!content || !preview) return;
+      const ownsOverflow = !!content.querySelector('.eq-rel');
+      const limit = Number.parseFloat(getComputedStyle(preview).fontSize) * 4.8;
+      setManaged(ownsOverflow);
+      setOverflowing(!ownsOverflow && content.scrollHeight > limit + 1);
+    }
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(content);
+    observer?.observe(preview);
+    window.addEventListener('resize', measure);
+    measure();
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, [children]);
+
+  return (
+    <div className="dp-value dp-value-collapsible">
+      <div ref={previewRef} id={id} className="dp-value-preview" data-clipped={overflowing && !expanded && !managed || undefined}
+        onFocusCapture={(event) => {
+          if (expanded || managed || !overflowing || !previewRef.current) return;
+          const target = event.target as HTMLElement;
+          if (target.getBoundingClientRect().bottom > previewRef.current.getBoundingClientRect().bottom + 1) setExpanded(true);
+        }}>
+        <div ref={contentRef} className="dp-value-content">{children}</div>
+      </div>
+      {overflowing && (
+        <button type="button" className="dp-value-more" aria-expanded={expanded} aria-controls={id}
+          aria-label={t(expanded ? 'dp.showLessField' : 'dp.showMoreField', { name: label })}
+          onClick={() => setExpanded((value) => !value)}>
+          {t(expanded ? 'dp.showLess' : 'dp.showMore')}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Một trường khi xem; trống → —. Desktop có hai trường mỗi hàng, phone có nhãn / giá trị. */
+export function DetailValue({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean; hint?: string }) {
   const empty = children === null || children === undefined || children === '';
   return (
-    <div className="dp-field" data-wide={wide || undefined}>
+    <div className="dp-field dp-field-view" data-wide={wide || undefined}>
       <span className="dp-label">{label}</span>
-      <div className="dp-value">{empty ? <span className="dp-empty">—</span> : children}</div>
-      {hint && <span className="dp-hint">{hint}</span>}
+      <ReadonlyValue label={label}>{empty ? <span className="dp-empty">—</span> : children}</ReadonlyValue>
     </div>
   );
 }
@@ -124,8 +173,7 @@ export function FieldView<R>({ field, record, draft, editing }: { field: FieldDe
       content = raw.map((v) => opts.find((o) => o.value === v)?.label ?? String(v)).join(', ');
     } else content = raw === null || raw === undefined ? null : String(raw);
   }
-  const lockReason = editing ? field.lock?.(record, draft) : null;
-  return <DetailValue label={field.label} wide={field.wide} hint={lockReason ?? field.hint}>{content}</DetailValue>;
+  return <DetailValue label={field.label} wide={field.wide}>{content}</DetailValue>;
 }
 
 export function FieldEditor<R>({ field, record, draft, required, error, onChange }: {
@@ -196,7 +244,7 @@ export function FieldEditor<R>({ field, record, draft, required, error, onChange
     <div className="dp-field" data-wide={field.wide || kind === 'textarea' || kind === 'checkboxes' || kind === 'radio' || undefined} data-invalid={!!error || undefined}>
       <label className="dp-label" htmlFor={id}>{field.label}{required && <RequiredMark />}</label>
       <div className="dp-input">{input}</div>
-      {error ? <span className="dp-error" role="alert">{error}</span> : (field.editHint ?? field.hint) && <span className="dp-hint">{field.editHint ?? field.hint}</span>}
+      {error && <span className="dp-error" role="alert">{error}</span>}
     </div>
   );
 }
@@ -205,7 +253,7 @@ export function FieldEditor<R>({ field, record, draft, required, error, onChange
  * Ô nhập ngoài form của khung (màn hình thao tác, Account settings) — cùng kiểu với ô của form.
  * `htmlFor`: nhãn thật gắn với ô nhập (bắt buộc cho input / textarea); `wide: false`: nửa hàng.
  */
-export function ActionField({ label, required, children, hint, error, htmlFor, wide = true }: {
+export function ActionField({ label, required, children, error, htmlFor, wide = true }: {
   label: string; required?: boolean; children: ReactNode; hint?: ReactNode; error?: string; htmlFor?: string; wide?: boolean;
 }) {
   const text = <>{label}{required && <RequiredMark />}</>;
@@ -213,7 +261,7 @@ export function ActionField({ label, required, children, hint, error, htmlFor, w
     <div className="dp-field" data-wide={wide || undefined} data-invalid={!!error || undefined}>
       {htmlFor ? <label className="dp-label" htmlFor={htmlFor}>{text}</label> : <span className="dp-label">{text}</span>}
       <div className="dp-input">{children}</div>
-      {error ? <span className="dp-error">{error}</span> : hint && <span className="dp-hint">{hint}</span>}
+      {error && <span className="dp-error" role="alert">{error}</span>}
     </div>
   );
 }
