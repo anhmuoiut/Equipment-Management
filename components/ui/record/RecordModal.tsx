@@ -79,6 +79,8 @@ export type RecordModalProps<R extends { id: string } & Audit> = {
   createTitle?: string;
   sections: SectionDef<R>[];
   extraTabs?: { key: string; label: string; render: (record: R) => ReactNode }[];
+  /** Render this extra tab to the left of information on desktop; retain its tab on phones. */
+  detailAsideTab?: string;
   /** Tab mở sẵn khi mở một bản ghi (Overview mở tab Cây thiết bị); không có trong `extraTabs` thì tab Thông tin. */
   initialTab?: string;
   historyUrl?: (record: R) => string;
@@ -117,7 +119,7 @@ type Pending = { go: () => void; guard: LeaveGuard };
 
 export function RecordModal<R extends { id: string } & Audit>(props: RecordModalProps<R>) {
   const {
-    size, record, creating, loading, error, onRetry, heading, createTitle, sections, extraTabs, initialTab, historyUrl, historyFilter,
+    size, record, creating, loading, error, onRetry, heading, createTitle, sections, extraTabs, detailAsideTab, initialTab, historyUrl, historyFilter,
     historyLabels, canEdit, defaults, validate, beforeSave, onSave, savedScreen, actions = [], canDelete, deleteLabel, onDelete, deleteWarning,
     nav, trail = [], onClose, onSaved, onDeleted, reload,
   } = props;
@@ -126,6 +128,9 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
   const [view, setView] = useState<View>(creating ? { kind: 'create' } : { kind: 'detail' });
   const startTab = initialTab && extraTabs?.some((x) => x.key === initialTab) ? initialTab : 'info';
   const [tab, setTab] = useState(startTab);
+  const aside = !phone ? extraTabs?.find((x) => x.key === detailAsideTab) : undefined;
+  // Overview may request the tree tab; on desktop it is part of the information view.
+  const activeTab = aside?.key === tab ? 'info' : tab;
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
   /** Thao tác chạy ngay (ActionDef.run) đang gửi — khóa nút Thao tác và modal. */
@@ -160,7 +165,9 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       headRef.current?.querySelector<HTMLElement>('h2')?.focus();
-      headRef.current?.closest('.modal-dialog')?.querySelector('.modal-body')?.scrollTo?.({ top: 0 });
+      const dialog = headRef.current?.closest('.modal-dialog');
+      dialog?.querySelector('.modal-body')?.scrollTo?.({ top: 0 });
+      dialog?.querySelector('.rm-detail-fields')?.scrollTo?.({ top: 0 });
     });
     return () => cancelAnimationFrame(frame);
   }, [viewKey, record?.id]);
@@ -304,13 +311,13 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
   // ------------------------------------------------------------------ Tab
   const tabs = view.kind === 'detail' && loaded ? [
     { key: 'info', label: t('dp.tabInfo') },
-    ...(extraTabs ?? []).map((x) => ({ key: x.key, label: x.label })),
+    ...(extraTabs ?? []).filter((x) => x.key !== aside?.key).map((x) => ({ key: x.key, label: x.label })),
     ...(historyUrl ? [{ key: 'history', label: t('dp.tabHistory') }] : []),
   ] : [];
   const tabsRow = tabs.length > 1 ? (
     <div className="modal-tabs" role="tablist">
       {tabs.map((x) => (
-        <button key={x.key} type="button" role="tab" aria-selected={tab === x.key} className="modal-tab" onClick={() => setTab(x.key)}>{x.label}</button>
+        <button key={x.key} type="button" role="tab" aria-selected={activeTab === x.key} className="modal-tab" onClick={() => setTab(x.key)}>{x.label}</button>
       ))}
     </div>
   ) : undefined;
@@ -363,8 +370,8 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
       removed: (message) => { toast.success(message ?? t('dp.deleted')); onDeleted?.(record); },
       reload: () => reload?.(),
     }) : null;
-  } else if (tab !== 'info') {
-    const extra = extraTabs?.find((x) => x.key === tab);
+  } else if (activeTab !== 'info') {
+    const extra = extraTabs?.find((x) => x.key === activeTab);
     body = extra ? extra.render(record)
       : historyUrl ? <DetailHistory url={historyUrl(record)} fieldLabel={fieldLabel} filter={historyFilter} /> : null;
   } else {
@@ -390,6 +397,21 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
   }
 
   // ---------------------------------------------------------- Footer chi tiết
+  if (aside && record && view.kind === 'detail' && activeTab === 'info') {
+    body = (
+      <div className="rm-detail-split">
+        <section className="rm-detail-pane rm-detail-tree" aria-label={aside.label} tabIndex={0}>
+          <h3 className="rm-detail-pane-title">{aside.label}</h3>
+          {aside.render(record)}
+        </section>
+        <section className="rm-detail-pane rm-detail-fields" aria-label={t('dp.tabInfo')} tabIndex={0}>
+          <h3 className="rm-detail-pane-title">{t('dp.tabInfo')}</h3>
+          {body}
+        </section>
+      </div>
+    );
+  }
+
   let detailFooter: ReactNode = null;
   if (view.kind === 'detail' && loaded && record) {
     const toMore = (a: ActionDef<R>): MoreItem => ({ key: a.key, label: a.label, icon: a.icon, danger: a.danger, onClick: () => trigger(a) });
@@ -424,7 +446,11 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
   const guardText = pending?.guard === true || !pending ? null : pending.guard;
   const modalSize: ModalSize = creating ? 'm' : size;
   const mobileDetail = phone && !creating && view.kind === 'detail';
-  const modalClassName = [mobileDetail ? 'record-mobile-detail' : null, activeAction?.presentation?.modalClassName].filter(Boolean).join(' ') || undefined;
+  const modalClassName = [
+    mobileDetail ? 'record-mobile-detail' : null,
+    aside && !pending && view.kind === 'detail' && activeTab === 'info' ? 'record-split-detail' : null,
+    activeAction?.presentation?.modalClassName,
+  ].filter(Boolean).join(' ') || undefined;
   return (
     <RecordContext.Provider value={context}>
       <Modal

@@ -35,7 +35,10 @@ export async function loginWithUsername(input: { username?: unknown; password?: 
     if (error?.status === 429 || error?.code === 'over_request_rate_limit') throw new AppError('LOGIN_RATE_LIMITED');
     // Tài khoản bị khóa (ban_duration) — Supabase từ chối cả khi mật khẩu đúng.
     if (error?.code === 'user_banned') throw new AppError('USER_INACTIVE');
-    throw new AppError('INVALID_CREDENTIALS');
+    // Chỉ cho terminal: tách "sai mật khẩu" khỏi lỗi mạng / chứng chỉ / API key (client vẫn chỉ thấy một câu chung).
+    throw new AppError('INVALID_CREDENTIALS', {}, {
+      stage: 'sign_in', auth_name: error?.name, auth_status: error?.status, auth_code: error?.code, auth_message: error?.message,
+    });
   }
 
   const profile = await getProfileIdentity(data.user.id);

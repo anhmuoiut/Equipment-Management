@@ -32,7 +32,7 @@ vi.mock('@/lib/client/api', async (importOriginal) => {
 });
 
 import { ApiError, api } from '@/lib/client/api';
-import { resetUrl, currentSearch } from '@/lib/client/testing/urlParamsMock';
+import { resetUrl, currentSearch, historyDepth } from '@/lib/client/testing/urlParamsMock';
 import { ViewerProvider } from '@/components/ViewerContext';
 import { EquipmentWorkspace } from './EquipmentWorkspace';
 import type { Role } from '@/lib/permissions';
@@ -51,7 +51,11 @@ const openRow = async (serial: string) => {
 };
 const title = () => within(dialog()).getByRole('heading', { level: 2 }).textContent;
 
-beforeEach(() => { resetUrl(); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); });
+const phone = (matches: boolean) => {
+  vi.mocked(window.matchMedia).mockReturnValue({ matches, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
+};
+
+beforeEach(() => { resetUrl(); phone(false); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); });
 
 describe('Equipment — masterlist', () => {
   it('shows the parent/child column, Status first, and the default columns; Chưa gắn is a quick filter', async () => {
@@ -109,14 +113,30 @@ describe('Equipment — modal', () => {
     expect(within(footer()).getAllByRole('button').map((b) => b.textContent)).toEqual(['common.close']);
   });
 
-  it('clicking the parent chip opens it inside the same modal with a breadcrumb ← BASE-01 › TESTER-01', async () => {
+  it('clicking the parent chip changes the desktop selection inside the same modal without adding a breadcrumb', async () => {
     await mount();
     await openRow('BASE-01');
     await click(within(dialog()).getByRole('button', { name: /TESTER-01/ }));
     await waitFor(() => expect(title()).toBe('TESTER-01'));
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
     expect(currentSearch()).toBe('id=e-tester');
+    expect(dialog().querySelectorAll('.rm-crumbwrap')).toHaveLength(0);
+    expect(historyDepth()).toBe(1);
+  });
+
+  it('phone relation navigation keeps the breadcrumb and can return to the original equipment', async () => {
+    phone(true);
+    resetUrl('id=e-base');
+    await mount();
+    await click(within(dialog()).getByRole('button', { name: /TESTER-01/ }));
+    await waitFor(() => expect(title()).toBe('TESTER-01'));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(dialog().querySelectorAll('.rm-crumbwrap')).toHaveLength(1);
     expect(within(dialog()).getByRole('button', { name: 'BASE-01' })).toBeTruthy();
+    await click(within(dialog()).getByRole('button', { name: 'dp.back' }));
+    await waitFor(() => expect(title()).toBe('BASE-01'));
+    expect(currentSearch()).toBe('id=e-base');
+    expect(dialog().querySelectorAll('.rm-crumbwrap')).toHaveLength(0);
   });
 
   it('a Tester lists its sub-equipment (with Calibration Status); clicking one goes to that module with ?id=', async () => {
@@ -156,12 +176,12 @@ describe('Equipment — modal', () => {
     }
   });
 
-  it('the children, the Calibration summary and the Tree tab come from ONE tree request per record', async () => {
+  it('the children, Calibration summary and desktop tree pane share ONE tree request per record', async () => {
     vi.mocked(api.get).mockClear();
     await mount();
     await openRow('TESTER-01');
     await waitFor(() => expect(within(dialog()).getByRole('button', { name: /DMM-2/ })).toBeTruthy());
-    await click(within(dialog()).getByRole('tab', { name: 'eq.tabTree' }));
+    expect(within(dialog()).queryByRole('tab', { name: 'eq.tabTree' })).toBeNull();
     await waitFor(() => expect(within(dialog()).getByRole('tree')).toBeTruthy());
     const treeCalls = vi.mocked(api.get).mock.calls.map((c) => c[0] as string).filter((u) => u.startsWith('/api/equipment/e-tester/tree'));
     expect(treeCalls).toHaveLength(1);
@@ -185,19 +205,30 @@ describe('Equipment — modal', () => {
     expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toBe('asset.attach.equipment');
   });
 
-  it('the Tree tab shows the whole tree from the root and opens an equipment node in the same modal', async () => {
+  it('the desktop tree pane shows the whole tree and opens an equipment node in the same modal', async () => {
     await mount();
     await openRow('FIXTURE-01');
-    await click(within(dialog()).getByRole('tab', { name: 'eq.tabTree' }));
+    expect(within(dialog()).queryByRole('tab', { name: 'eq.tabTree' })).toBeNull();
     await waitFor(() => expect(within(dialog()).getByRole('tree')).toBeTruthy());
     const items = within(dialog()).getAllByRole('treeitem').map((li) => li.textContent);
     expect(items).toEqual(expect.arrayContaining([expect.stringContaining('TESTER-01'), expect.stringContaining('DMM-1'), expect.stringContaining('GB-1')]));
     expect(within(dialog()).getByRole('tree').querySelector('[data-current]')!.textContent).toContain('FIXTURE-01');
-    await click(within(dialog()).getByText('TESTER-01'));
-    await waitFor(() => expect(title()).toBe('TESTER-01'));
+    const initialDialog = dialog();
+    for (const [serial, id] of [
+      ['TESTER-01', 'e-tester'], ['BASE-01', 'e-base'], ['FIXTURE-01', 'e-fixture'],
+      ['TESTER-01', 'e-tester'], ['FIXTURE-01', 'e-fixture'], ['BASE-01', 'e-base'], ['TESTER-01', 'e-tester'],
+    ]) {
+      await click(await within(within(dialog()).getByRole('tree')).findByText(serial!));
+      await waitFor(() => expect(title()).toBe(serial));
+      expect(screen.getAllByRole('dialog')).toEqual([initialDialog]);
+      expect(dialog().querySelectorAll('.rm-crumbwrap')).toHaveLength(0);
+      expect(currentSearch()).toBe(`id=${id}`);
+      expect(historyDepth()).toBe(1);
+      expect(within(dialog()).getByRole('tree').querySelector('[data-current]')!.textContent).toContain(serial);
+    }
     // Dòng Sub / Golden chuyển sang module của chúng.
-    await click(within(dialog()).getByRole('tab', { name: 'eq.tabTree' }));
-    await click(await within(dialog()).findByText('DMM-2'));
+    expect(within(dialog()).queryByRole('tab', { name: 'eq.tabTree' })).toBeNull();
+    await click(await within(within(dialog()).getByRole('tree')).findByText('DMM-2'));
     expect(push).toHaveBeenCalledWith('/calibration?id=s2');
   });
 });

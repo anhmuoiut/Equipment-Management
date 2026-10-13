@@ -65,8 +65,8 @@ export type DetailCtx<R> = {
   version: number;
   /** Giá trị điền sẵn của form thêm mới đang mở (ví dụ thêm thiết bị con: { parent_id }). */
   defaults?: Record<string, unknown>;
-  /** Mở bản ghi liên quan trong cùng module (cha / con…); `fromLabel` = tên bản ghi đang xem, để hiện ở breadcrumb. */
-  open: (id: string, fromLabel: string) => void;
+  /** Mở bản ghi trong cùng module; trackTrail=false chỉ thay lựa chọn hiện tại, không thêm breadcrumb. */
+  open: (id: string, fromLabel: string, options?: { trackTrail?: boolean }) => void;
   /** Mở form thêm mới với giá trị điền sẵn. */
   create?: (defaults?: Record<string, unknown>) => void;
 };
@@ -198,9 +198,9 @@ export function ModuleWorkspace<R extends { id: string }>({
     reload,
     version,
     defaults: creating ? createDefaults : undefined,
-    open: (target, fromLabel) => {
+    open: (target, fromLabel, options) => {
       if (!id) return;
-      setTrailState({ owner: target, items: [...items, { id, label: fromLabel }] });
+      setTrailState({ owner: target, items: options?.trackTrail === false ? [] : [...items, { id, label: fromLabel }] });
       update({ id: target }, 'replace');
     },
     create: canAdd ? create : undefined,

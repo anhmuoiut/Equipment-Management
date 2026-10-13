@@ -127,10 +127,13 @@ Chỉ ở **màn hình chi tiết**.
 
 ### 3.4 Tab
 
+**Equipment trên laptop / desktop (cập nhật 13/10/2026):** từ 768px, tab Thông tin mở bố cục hai cột trong cùng modal L: **Cây thiết bị bên trái, thông tin bản ghi bên phải**, không có tab Cây thiết bị riêng. Hai vùng cuộn độc lập, header và footer cố định; trường ở cột thông tin dùng nhãn bên trái và giá trị bên phải theo hình mẫu; chọn dòng trong cây hoặc liên kết cha/con cập nhật bản ghi bên phải trong cùng modal, thay lựa chọn hiện tại và không thêm breadcrumb lịch sử đã bấm. Header chỉ hiển thị thiết bị đang xem; điện thoại giữ breadcrumb quan hệ hiện có. Lịch sử vẫn là tab riêng. Dưới 768px giữ các tab Thông tin / Cây thiết bị / Lịch sử. Overview yêu cầu mở cây thì mở bố cục gộp trên desktop và tab Cây thiết bị trên điện thoại. Form Sửa / Thêm mới và các màn thao tác dùng bố cục chung hiện có.
+
+
 | Vị trí | Tab | Có ở |
 | --- | --- | --- |
 | Đầu | **Thông tin** | Mọi module |
-| Giữa | Tab riêng của module (0–1 tab) | Equipment: Cây thiết bị |
+| Giữa | Tab riêng của module (0–1 tab) | Equipment: Cây thiết bị trên điện thoại; desktop gộp cây vào Thông tin |
 | Cuối | **Lịch sử** | Mọi module — bảng dùng chung, mỗi nhật ký một hàng, cột **Thay đổi** chỉ chứa các trường thay đổi của hàng đó theo dạng `trường: cũ → mới` (đọc `asset_logs` với tài sản; `configuration_histories` / `user_histories` với Configuration / User Management) |
 
 Tab Lịch sử và Dashboard **Thay đổi gần đây** dùng chung `HistoryTable`: mỗi sự kiện một hàng, các cột cố định **Thời gian · Người thao tác · Bản ghi · Hành động · Thay đổi**; Dashboard thêm **Module** và giữ liên kết mở bản ghi. Cột **Thay đổi** chỉ liệt kê các trường thay đổi của sự kiện trong hàng đó theo dạng `trường: cũ → mới`, bao gồm vị trí; giá trị bị xóa vẫn hiện `cũ → —`. Không tạo cột riêng cho mỗi trường xuất hiện ở những sự kiện khác. Sự kiện thông thường mặc định hiện hai thay đổi đầu tiên; **Xem thêm / Thu gọn** mở hoặc ẩn phần còn lại ngay trong ô đó. Sự kiện **CREATE** mặc định là tóm tắt thêm mới, mở rộng để xem các giá trị ban đầu; **DELETE** mặc định là tóm tắt xóa, mở rộng để xem dữ liệu bản ghi đã xóa. Nguồn và ghi chú nằm trong phần mở rộng của hàng, không có cột riêng. Bảng giữ nguyên trên điện thoại, cuộn ngang trong khung và có header cố định. Import nhiều bản ghi trên Dashboard vẫn là một hàng với tóm tắt số lượng; không hiện liên kết hoặc chi tiết các trường của bản ghi đại diện để mô tả cả lần import.

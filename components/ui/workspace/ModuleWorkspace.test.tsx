@@ -158,6 +158,29 @@ describe('ModuleWorkspace', () => {
     expect(screen.getByTestId('trail').textContent).toBe('');
   });
 
+  it('changing a selection without tracking clears an existing trail and replaces the URL until Close returns to the list', async () => {
+    resetUrl('sort=name');
+    await mountPage();
+    await click(screen.getByText('Alpha'));
+    await click(screen.getByRole('button', { name: 'open-related' }));
+    expect(screen.getByTestId('trail').textContent).toBe('Alpha');
+    const initialDialog = screen.getByRole('dialog');
+
+    for (const row of [rows[1]!, rows[0]!, rows[2]!, rows[1]!, rows[0]!]) {
+      await act(async () => { lastCtx!.open(row.id, lastCtx!.record!.name, { trackTrail: false }); });
+      expect(state()).toBe(`record:${row.name}`);
+      expect(screen.getByTestId('trail').textContent).toBe('');
+      expect(currentSearch()).toBe(`sort=name&id=${row.id}`);
+      expect(historyDepth()).toBe(1);
+      expect(screen.getAllByRole('dialog')).toEqual([initialDialog]);
+    }
+
+    await click(within(initialDialog).getByRole('button', { name: 'common.close' }));
+    expect(currentSearch()).toBe('sort=name');
+    expect(historyDepth()).toBe(0);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('+ Thêm opens the create modal (?new=1); saving a new row puts ?id= in its place and adds the row to the list', async () => {
     await mountPage();
     await click(screen.getAllByRole('button', { name: 'ml.add' })[0]!);

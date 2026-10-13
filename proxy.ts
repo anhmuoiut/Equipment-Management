@@ -15,7 +15,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * ở đây getSession() là đủ: đọc cookie, chỉ gọi mạng khi cần làm mới token hết hạn; phiên không hợp lệ vẫn bị layout chuyển về
  * /login, và dữ liệu luôn đi qua withAuth.
  */
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   let res = NextResponse.next({ request: req });
 
   const supabase = createServerClient(

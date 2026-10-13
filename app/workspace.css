@@ -614,3 +614,21 @@ li[data-match] > .tree-row .tree-sn, li[data-match] > .tree-row .tree-pn { backg
   .ob-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ob-more { min-height: 44px; }
 }
+
+/* Equipment desktop detail: tree and information share one modal body. */
+@media (min-width: 768px) {
+  .record-split-detail .modal-body { display: flex; padding: 14px 16px; overflow: hidden; }
+  .record-split-detail .rm-screen { flex: 1; min-width: 0; min-height: 0; }
+  .rm-detail-split { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; flex: 1; min-height: 0; }
+  .rm-detail-pane { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--rule-soft); border-radius: var(--radius-control); background: var(--panel); padding: 12px; }
+  .rm-detail-pane:focus-visible { outline: 2px solid var(--jabil-picton); outline-offset: -2px; }
+  .rm-detail-pane-title { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 12px; }
+  .rm-detail-fields .dp-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .rm-detail-fields .dp-field-view { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); align-items: start; gap: 10px; }
+  .rm-detail-fields .dp-label { padding-top: 3px; }
+  .rm-detail-fields .dp-value { overflow-wrap: anywhere; font-size: 13px; }
+  .rm-detail-tree .tree-search { flex-basis: 100%; min-width: 0; }
+  .rm-detail-tree .tree-list { overflow-x: auto; }
+  .rm-detail-tree .tree-row { min-height: 40px; }
+  .rm-detail-tree .tree-toolbar .ui-button { font-size: 12px; }
+}

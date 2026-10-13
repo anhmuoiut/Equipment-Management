@@ -12,7 +12,7 @@ type TopBarProps = {
   fullName: string;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
-  toggleRef: RefObject<HTMLButtonElement>;
+  toggleRef: RefObject<HTMLButtonElement | null>;
 };
 
 export function TopBar({ username, fullName, sidebarOpen, onToggleSidebar, toggleRef }: TopBarProps) {

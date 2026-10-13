@@ -154,12 +154,12 @@ describe('Overview board — opening a record', () => {
     expect(within(sub.querySelector('.modal-footer') as HTMLElement).getByRole('button', { name: 'cal.record' })).toBeTruthy();
   });
 
-  it('the root card opens the root\'s modal on the Equipment tree tab (?tab=tree); so does "+N thiết bị"', async () => {
+  it('the root card opens the combined desktop detail (?tab=tree); so does "+N thiết bị"', async () => {
     await mount();
     await click(within(column('TESTER-01')).getAllByRole('button')[0]!);
     expect(currentSearch()).toBe('id=e-tester&type=equipment&tab=tree');
     const dialog = await screen.findByRole('dialog');
-    await waitFor(() => expect(within(dialog).getByRole('tab', { name: 'eq.tabTree' }).getAttribute('aria-selected')).toBe('true'));
+    await waitFor(() => expect(within(dialog).getByRole('tab', { name: 'dp.tabInfo' }).getAttribute('aria-selected')).toBe('true'));
     await waitFor(() => expect(within(dialog).getByRole('tree')).toBeTruthy());
     // the tree and the children chips come from ONE request
     expect(calls.filter((c) => c.startsWith('/api/equipment/e-tester/tree'))).toHaveLength(1);
@@ -179,12 +179,12 @@ describe('Overview board — opening a record', () => {
     expect(within(dialog).getByRole('tab', { name: 'dp.tabInfo' }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('a ?id=&type=&tab=tree link opens the modal on the tree tab on load', async () => {
+  it('a ?id=&type=&tab=tree link opens the combined desktop detail on load', async () => {
     resetUrl('id=e-tester&type=equipment&tab=tree');
     await mount();
     const dialog = await screen.findByRole('dialog');
     await waitFor(() => expect(within(dialog).getByRole('heading', { level: 2 }).textContent).toBe('TESTER-01'));
-    expect(within(dialog).getByRole('tab', { name: 'eq.tabTree' }).getAttribute('aria-selected')).toBe('true');
+    expect(within(dialog).getByRole('tab', { name: 'dp.tabInfo' }).getAttribute('aria-selected')).toBe('true');
     expect(dialog.classList.contains('modal-dialog--l')).toBe(true);
   });
 
@@ -192,7 +192,7 @@ describe('Overview board — opening a record', () => {
     resetUrl('id=e-tester&type=equipment&tab=tree');
     await mount();
     const dialog = await screen.findByRole('dialog');
-    await click(await within(dialog).findByText('BASE-01'));
+    await click(await within(await within(dialog).findByRole('tree')).findByText('BASE-01'));
     await waitFor(() => expect(currentSearch()).toBe('id=e-base&type=equipment'));
   });
 });

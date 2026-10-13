@@ -1,10 +1,10 @@
 import { withAuth, ok } from '@/lib/auth/withAuth';
 import { AppError } from '@/lib/errors';
+import { isSameOriginRequest } from '@/lib/auth/requestOrigin';
 import { loginWithUsername } from '@/lib/services/login';
 
 export const POST = withAuth(async (req, { requestId }) => {
-  const origin = req.headers.get('origin');
-  if (origin && origin !== new URL(req.url).origin) throw new AppError('FORBIDDEN');
+  if (!isSameOriginRequest(req)) throw new AppError('FORBIDDEN');
   const text = await req.text();
   if (text.length > 4096) throw new AppError('INVALID_CREDENTIALS');
   let input;

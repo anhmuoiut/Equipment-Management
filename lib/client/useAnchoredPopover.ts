@@ -19,7 +19,7 @@ export function useAnchoredPopover({
   open, triggerRef, align = 'start', minWidth = 220, preferredHeight = 280, maxHeight = 400, maxViewportRatio = 1, onAnchorHidden,
 }: {
   open: boolean;
-  triggerRef: RefObject<HTMLElement>;
+  triggerRef: RefObject<HTMLElement | null>;
   align?: 'start' | 'end' | 'auto';
   minWidth?: number;
   preferredHeight?: number;

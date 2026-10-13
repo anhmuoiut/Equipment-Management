@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { MapPin, Plus } from 'lucide-react';
 import { api, formatRelativeTime } from '@/lib/client/api';
 import { useFetch } from '@/lib/client/useFetch';
+import { usePhone } from '@/lib/client/usePhone';
 import { toSelect, useOptions } from '@/lib/client/options';
 import { parentAllowed } from '@/lib/assetTree';
 import { useCan } from '@/components/ViewerContext';
@@ -39,7 +40,9 @@ export function EquipmentModal({ ctx, initialTab }: {
   const can = useCan();
   const hidden = ` (${t('cfg.hidden')})`;
   const record = ctx.creating ? null : ctx.record;
-  const openAsset = useOpenAsset('equipment', (id) => record && ctx.open(id, record.serial_number));
+  const phone = usePhone();
+  // Desktop tree/detail is one workspace: selecting a node replaces the current record.
+  const openAsset = useOpenAsset('equipment', (id) => record && ctx.open(id, record.serial_number, { trackTrail: phone }));
 
   // "Thêm thiết bị con": cha cố định (Thao tác › Thêm thiết bị con). Chọn cha ở form: vị trí theo cha.
   const fixedParentId = ctx.creating && typeof ctx.defaults?.parent_id === 'string' ? ctx.defaults.parent_id : null;
@@ -232,6 +235,7 @@ export function EquipmentModal({ ctx, initialTab }: {
   return (
     <RecordModal<EquipmentRow>
       {...ctx}
+      trail={phone ? ctx.trail : []}
       record={record}
       size="l"
       canEdit={can.edit}
@@ -250,9 +254,10 @@ export function EquipmentModal({ ctx, initialTab }: {
       })}
       sections={sections}
       initialTab={initialTab}
+      detailAsideTab="tree"
       extraTabs={[{
         key: 'tree', label: t('eq.tabTree'),
-        render: (r) => <TreeTab tree={loaded} error={loaded ? null : tree.error} onRetry={tree.reload} current={{ type: 'equipment', id: r.id }} onOpen={openAsset} />,
+        render: (r) => <TreeTab key={loaded?.root_id ?? r.id} tree={loaded} error={loaded ? null : tree.error} onRetry={tree.reload} current={{ type: 'equipment', id: r.id }} onOpen={openAsset} />,
       }]}
       historyUrl={(r) => `/api/equipment/${r.id}/history`}
       historyLabels={{ parent: t('fields.parent') }}
