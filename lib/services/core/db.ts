@@ -21,10 +21,23 @@ const ACTION_RPCS = new Set([
   'equipment_import', 'sub_equipment_import', 'golden_import',
 ]);
 
+/**
+ * TẠM THỜI — chỉ để app chạy được trên database dựng TRƯỚC baseline (project cũ): hàm ghi dữ liệu ở đó chưa có `p_action_id`
+ * (PostgREST: PGRST202). Khi đó gọi lại KHÔNG kèm id — thao tác vẫn chạy như trước (mỗi dòng nhật ký một dòng ở Thay đổi gần đây)
+ * — và nhớ 60 giây để không thử lại mỗi lần. Trên database baseline đoạn này không bao giờ chạy; bỏ nó (cùng
+ * `legacyActivities` trong dashboard.ts) khi không còn môi trường nào dùng schema cũ — xem docs/DEPLOY.md §8.
+ */
+let actionIdUnsupportedUntil = 0;
+
 /** Mọi dòng nhật ký do cùng một request ghi ra dùng chung một `p_action_id` (xem actionContext.ts). */
-function callRpc(fn: string, args: Record<string, unknown>) {
-  const actionId = ACTION_RPCS.has(fn) ? currentActionId() : undefined;
-  return db().rpc(fn, actionId ? { ...args, p_action_id: actionId } : args);
+async function callRpc(fn: string, args: Record<string, unknown>) {
+  const actionId = ACTION_RPCS.has(fn) && Date.now() >= actionIdUnsupportedUntil ? currentActionId() : undefined;
+  if (actionId) {
+    const res = await db().rpc(fn, { ...args, p_action_id: actionId });
+    if (res.error?.code !== 'PGRST202') return res;
+    actionIdUnsupportedUntil = Date.now() + 60_000;
+  }
+  return db().rpc(fn, args);
 }
 
 const PAGE = 1000;
