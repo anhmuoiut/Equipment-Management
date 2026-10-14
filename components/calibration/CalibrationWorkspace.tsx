@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { CalendarClock, MapPin, Upload } from 'lucide-react';
 import { formatDate } from '@/lib/client/api';
 import { useCan } from '@/components/ViewerContext';
-import { CalibrationStatusTag, DueDate, RemarkCell, UsageTag } from '@/components/ui/tags';
+import { CalibrationStatusTag, DueDate, RemarkCell, TagChips, UsageTag } from '@/components/ui/tags';
 import { ModuleWorkspace, useList } from '@/components/ui/workspace/ModuleWorkspace';
 import { ImportModal } from '@/components/ui/ImportModal';
 import { RowCard, type Column } from '@/components/ui/masterlist/Masterlist';
@@ -46,10 +46,11 @@ export function CalibrationWorkspace() {
   const mobileCard = useCallback((r: SubEquipmentRow) => (
     <RowCard
       title={r.serial_number}
-      tag={<CalibrationStatusTag status={r.status} />}
+      tag={<><UsageTag usage={r.usage} /><CalibrationStatusTag status={r.status} /></>}
       lines={[
         <><MapPin size={13} aria-hidden="true" /><span className="rc-place">{r.location ?? '—'}</span>{[r.part_number, r.type].filter(Boolean).map((x) => ` · ${x}`)}</>,
         r.due_date ? <><CalendarClock size={13} aria-hidden="true" /><DueDate date={r.due_date} status={r.status} /></> : t('cal.noRecordsYet'),
+        r.tags.length ? <TagChips items={r.tags} /> : null,
       ]}
     />
   ), [t]);
@@ -67,7 +68,7 @@ export function CalibrationWorkspace() {
       columns={columns}
       mobileCard={mobileCard}
       storageKey="calibration"
-      defaultColumns={['status', 'serial_number', 'part_number', 'location', 'calibrated_at', 'due_date']}
+      defaultColumns={['status', 'usage', 'serial_number', 'part_number', 'location', 'calibrated_at', 'due_date']}
       exportName="calibration"
       canAdd={can.edit}
       addLabel={t('cal.add')}

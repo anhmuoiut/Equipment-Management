@@ -10,7 +10,7 @@ const fields = {
   parent_id: optId,
   location_id: reqId,
   remark: optText(1000),
-  tag_ids: z.array(reqId).max(50),
+  tag_ids: z.array(reqId).max(1), // mỗi lần chỉ một thẻ (cột vẫn là mảng)
 };
 
 /** Có cha (tester / fixture) thì vị trí theo cha (không cần location_id). */

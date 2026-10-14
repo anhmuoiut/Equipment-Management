@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { AppError, type ErrorCode } from '@/lib/errors';
 import { getCaller } from '@/lib/auth/session';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { runInAction } from '@/lib/services/core/actionContext';
 import type { Role, UserProfile } from '@/lib/permissions';
 
 export type AuthContext = {
@@ -56,7 +57,9 @@ async function logError(requestId: string, route: string, userId: string | null,
 }
 
 export function withAuth(handler: Handler, options: Options = {}) {
-  return async (req: NextRequest, routeCtx: { params: Promise<Record<string, string>> }): Promise<NextResponse> => {
+  // Mỗi request API là MỘT thao tác của người dùng: sinh một action_id, mọi lần ghi database trong request dùng chung nó
+  // (lib/services/core/actionContext.ts) — Recent changes nhờ đó gộp các dòng nhật ký của một thao tác thành một dòng.
+  return (req: NextRequest, routeCtx: { params: Promise<Record<string, string>> }): Promise<NextResponse> => runInAction(async () => {
     const requestId = `req_${crypto.randomUUID()}`;
     const route = `${req.method} ${new URL(req.url).pathname}`;
     let userId: string | null = null;
@@ -95,5 +98,5 @@ export function withAuth(handler: Handler, options: Options = {}) {
       await logError(requestId, route, userId, 'SERVER_ERROR', err?.message ?? 'unknown', err?.stack);
       return fail(new AppError('SERVER_ERROR'), requestId);
     }
-  };
+  });
 }

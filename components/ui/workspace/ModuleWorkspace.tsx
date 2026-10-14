@@ -14,6 +14,7 @@ import { useUrlParams } from '@/lib/client/useUrlParams';
 import { PageHeading } from '@/components/layout/PageHeading';
 import { Masterlist, type Column, type QuickFilter } from '@/components/ui/masterlist/Masterlist';
 import type { TrailItem } from '@/components/ui/record/RecordModal';
+import type { AssetType } from '@/lib/types';
 
 export type ListState<R> = {
   rows: R[];
@@ -49,6 +50,8 @@ export function useList<R extends { id: string }>(url: string): ListState<R> {
  */
 export type DetailCtx<R> = {
   record: R | null;
+  /** Id đang được chọn: khác `record.id` trong lúc bản ghi vừa chọn còn đang tải (`record` vẫn là bản trước). */
+  id?: string;
   creating: boolean;
   loading: boolean;
   error: string | null;
@@ -67,6 +70,8 @@ export type DetailCtx<R> = {
   defaults?: Record<string, unknown>;
   /** Mở bản ghi trong cùng module; trackTrail=false chỉ thay lựa chọn hiện tại, không thêm breadcrumb. */
   open: (id: string, fromLabel: string, options?: { trackTrail?: boolean }) => void;
+  /** Overview: mở một tài sản bất kỳ loại nào ngay trong modal này (thay vì chuyển sang trang module của nó). */
+  openAny?: (type: AssetType, id: string) => void;
   /** Mở form thêm mới với giá trị điền sẵn. */
   create?: (defaults?: Record<string, unknown>) => void;
 };
@@ -178,6 +183,7 @@ export function ModuleWorkspace<R extends { id: string }>({
 
   const detail: DetailCtx<R> = {
     record: creating ? null : record,
+    id: id ?? undefined,
     creating,
     loading: (recordUrl ? fetched.loading : list.loading) && !record,
     error: recordUrl ? fetched.error : !record && list.error ? list.error : !record && !list.loading && id ? t('dp.notFound') : null,

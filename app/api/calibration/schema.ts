@@ -9,7 +9,7 @@ const sub = {
   tester_id: optId,
   location_id: reqId,
   remark: optText(1000),
-  tag_ids: z.array(reqId).max(50),
+  tag_ids: z.array(reqId).max(1), // mỗi lần chỉ một thẻ (cột vẫn là mảng)
 };
 /** Có tester thì vị trí theo tester (không cần location_id). */
 export const createSubSchema = z.object({ ...sub, location_id: optId }).strict();

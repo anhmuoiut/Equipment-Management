@@ -55,9 +55,20 @@ const openRow = async (serial: string) => {
   await waitFor(() => expect(title()).toBe(serial));
 };
 
-beforeEach(() => { resetUrl(); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); vi.mocked(api.delete).mockReset(); });
+beforeEach(() => {
+  resetUrl(); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); vi.mocked(api.delete).mockReset();
+  vi.mocked(window.matchMedia).mockReturnValue({ matches: false, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
+});
 
 describe('Calibration — masterlist', () => {
+  it('a phone card shows In use and Overdue together', async () => {
+    vi.mocked(window.matchMedia).mockReturnValue({ matches: true, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
+    await mount();
+    const card = screen.getByText('DMM-2').closest('.ml-card')!;
+    expect(card.querySelector('[data-usage="in_use"]')?.textContent).toBe('values.in_use');
+    expect(card.querySelector('[data-cal-status="overdue"]')?.textContent).toBe('cal.status.overdue');
+  });
+
   it('Calibration status leads the columns; quick filters for overdue / due soon / not calibrated; overdue rows are marked', async () => {
     await mount();
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '');

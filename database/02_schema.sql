@@ -84,6 +84,7 @@ create table public.user_histories (
   source     text not null default 'ui',
   created_at timestamptz not null default now(),
   created_by uuid references public.user_profiles (id),
+  action_id  uuid,  -- cùng một thao tác của người dùng = cùng action_id (view recent_actions gộp theo id này)
 
   constraint user_histories_action_check check (action in (
     'CREATE', 'UPDATE', 'ROLE_CHANGE', 'DISABLE', 'ENABLE', 'PASSWORD_RESET')),
@@ -134,7 +135,6 @@ create table public.types (
   display_name text not null,
   kind         text not null default 'sub_equipment',
   group_id     uuid not null references public.type_groups (id),
-  description  text,
   sort_order   integer not null default 0,
   is_active    boolean not null default true,
   created_by   uuid references public.user_profiles (id),
@@ -158,6 +158,7 @@ create table public.part_numbers (
   id           uuid primary key default gen_random_uuid(),
   display_name text not null,
   type_id      uuid not null references public.types (id),
+  description  text,
   sort_order   integer not null default 0,
   is_active    boolean not null default true,
   created_by   uuid references public.user_profiles (id),
@@ -203,14 +204,14 @@ create table public.tags (
   updated_by      uuid references public.user_profiles (id),
   updated_at      timestamptz not null default now(),
 
-  constraint tags_color_check check (color in ('green', 'yellow', 'red', 'blue', 'gray'))
+  constraint tags_color_check check (color in ('green', 'yellow', 'red', 'blue', 'gray', 'purple'))
 );
 create unique index tags_display_name_key on public.tags (lower(display_name));
 create index tags_sort_idx on public.tags (sort_order, display_name);
 create trigger tags_set_updated_at before update on public.tags
   for each row execute function public.set_updated_at();
 
-comment on column public.tags.color is 'Màu hiển thị (5 màu hệ thống): green / yellow / red / blue / gray.';
+comment on column public.tags.color is 'Màu thẻ pastel: green (xanh ngọc) / yellow / red / blue / gray / purple.';
 
 -- levels — level trên dây chuyền -------------------------------------------------
 create table public.levels (
@@ -302,6 +303,7 @@ create table public.configuration_histories (
   source     text not null default 'ui',
   created_at timestamptz not null default now(),
   created_by uuid references public.user_profiles (id),
+  action_id  uuid,  -- cùng một thao tác của người dùng = cùng action_id (view recent_actions gộp theo id này)
 
   constraint configuration_histories_table_name_check check (table_name in (
     'part_numbers', 'locations', 'types', 'type_groups', 'tags', 'levels', 'departments',
@@ -494,6 +496,7 @@ create table public.asset_logs (
   source        text not null default 'ui',
   user_id       uuid references public.user_profiles (id),
   created_at    timestamptz not null default now(),
+  action_id     uuid,  -- cùng một thao tác của người dùng (Swap, Move kèm con cháu, Import…) = cùng action_id; view recent_actions gộp theo id này
 
   constraint asset_logs_asset_type_check check (asset_type in ('equipment', 'sub_equipment', 'golden_board')),
   constraint asset_logs_action_check check (action in (

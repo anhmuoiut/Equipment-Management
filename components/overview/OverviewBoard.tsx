@@ -3,11 +3,13 @@
 /**
  * Bảng thẻ của Overview (docs/DETAIL_MODEL.md 4.6, docs/JABIL_UI.md "Overview board"): Location → cột → thẻ.
  * Một cột = một tài sản gốc (thẻ đậm) + tối đa 2 thẻ khác (3 thẻ kể cả thẻ gốc) nối bằng đường cây + "+N thiết bị". Thẻ không có icon:
- * dòng 1 tên Type (+ ⚠), dòng 2 PN, dòng 3 SN; viền trái là Status. Thuần hiển thị — dữ liệu và URL do OverviewPage giữ.
+ * dòng 1 Type, dòng 2 PN, dòng 3 SN, rồi tag vận hành + hạn hiệu chuẩn; viền trái là trạng thái vận hành.
+ * Thuần hiển thị — dữ liệu và URL do OverviewPage giữ.
  */
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
+import { CalibrationStatusTag, UsageTag } from '@/components/ui/tags';
 import type { CalAlert, OverviewCard, OverviewColumn, OverviewSection } from '@/lib/types';
 
 /** Mở modal của một thẻ; `tab` = tab mở sẵn (Cây thiết bị). */
@@ -70,14 +72,13 @@ const BoardCard = memo(function BoardCard({ card, root, highlight, parentSerial,
       data-status-color={card.usage === 'in_use' ? 'green' : 'gray'} aria-label={name} onClick={() => onOpen(card, tab)}>
       <span className="ob-line">
         <span className="ob-type" title={type}>{type}</span>
-        {card.cal_alert && (
-          <span className="ob-warn" data-tone={toneOf(card.cal_alert)} title={alertText ?? undefined}>
-            <TriangleAlert size={12} aria-hidden="true" />
-          </span>
-        )}
       </span>
       <span className="ob-line"><span className="ob-label" aria-hidden="true">{t('ov.pn')}</span><span className="ob-val" title={pn}>{pn}</span></span>
       <span className="ob-line"><span className="ob-label" aria-hidden="true">{t('ov.sn')}</span><span className="ob-val" title={card.serial_number}>{card.serial_number}</span></span>
+      <span className="ob-statuses">
+        <UsageTag usage={card.usage} />
+        {card.cal_alert && <CalibrationStatusTag status={card.cal_alert} />}
+      </span>
     </button>
   );
 });

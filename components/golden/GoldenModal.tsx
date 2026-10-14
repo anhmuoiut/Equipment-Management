@@ -13,7 +13,7 @@ import { toSelect, useOptions } from '@/lib/client/options';
 import { useCan } from '@/components/ViewerContext';
 import { TagChips, UsageTag } from '@/components/ui/tags';
 import { TagPicker } from '@/components/ui/TagPicker';
-import { RecordModal } from '@/components/ui/record/RecordModal';
+import { RecordModal, type RecordModalProps } from '@/components/ui/record/RecordModal';
 import type { SectionDef } from '@/components/ui/record/fields';
 import type { DetailCtx } from '@/components/ui/workspace/ModuleWorkspace';
 import { assetActions } from '@/components/assets/actions';
@@ -21,15 +21,27 @@ import { fetchSerialMatches } from '@/components/assets/api';
 import { ParentPicker } from '@/components/assets/pickers';
 import { ActionLink, ParentRelation, RelationList, useOpenAsset } from '@/components/assets/Relations';
 import { SerialWarning } from '@/components/assets/SerialWarning';
+import { TreeTab } from '@/components/assets/TreeTab';
+import type { AssetTreeState } from '@/components/assets/useAssetTree';
 import type { GoldenRow, ParentCandidate } from '@/lib/types';
 
 export function GoldenModal({ ctx }: { ctx: DetailCtx<GoldenRow> }) {
+  return <RecordModal<GoldenRow> {...useGoldenModal(ctx)} />;
+}
+
+/**
+ * Props của RecordModal cho Golden (xem `useEquipmentModal`). Overview truyền `treeState`: modal hiện thêm cây thiết bị bên phải
+ * chi tiết; trang Golden không truyền thì giữ nguyên, không có cây.
+ */
+export function useGoldenModal(ctx: DetailCtx<GoldenRow>, opts: { treeState?: AssetTreeState } = {}): RecordModalProps<GoldenRow> {
+  const { treeState } = opts;
   const { t, i18n } = useTranslation();
   const language = i18n.language === 'vi' ? 'vi' : 'en';
   const options = useOptions();
   const can = useCan();
   const record = ctx.creating ? null : ctx.record;
-  const openAsset = useOpenAsset('golden_board');
+  const openAsset = useOpenAsset('golden_board', undefined, ctx.openAny);
+  const switching = !!record && !!ctx.id && ctx.id !== record.id;
   const [picked, setPicked] = useState<ParentCandidate | null>(null);
 
   const parentLocation = (parentId: unknown) =>
@@ -92,41 +104,47 @@ export function GoldenModal({ ctx }: { ctx: DetailCtx<GoldenRow> }) {
 
   const actions = assetActions<GoldenRow>({ type: 'golden_board', t, isAdmin: can.remove });
 
-  return (
-    <RecordModal<GoldenRow>
-      {...ctx}
-      record={record}
-      size="l"
-      canEdit={can.edit}
-      createTitle={t('gs.addTitle')}
-      heading={(r) => ({
-        title: r.serial_number,
-        tags: <><UsageTag usage={r.usage} /><TagChips items={r.tags} /></>,
-        subtitle: [r.part_number, r.utd_part_number].filter(Boolean).join(' · ') || undefined,
-        meta: (
-          <>
-            {r.location && <span data-primary><MapPin size={12} aria-hidden="true" /> {r.location}</span>}
-            {r.parent_serial && <span>{t('asset.attachedTo')}: {r.parent_serial}</span>}
-            <span>{t('dp.updated', { when: formatRelativeTime(r.updated_at, language), who: r.updated_by_name ?? '—' })}</span>
-          </>
-        ),
-      })}
-      sections={sections}
-      historyUrl={(r) => `/api/golden/${r.id}/history`}
-      historyLabels={{ parent: t('asset.attachedTo') }}
-      beforeSave={async (payload, current) => {
-        const serial = typeof payload.serial_number === 'string' ? payload.serial_number : null;
-        if (!serial) return null;
-        const matches = await fetchSerialMatches(serial, current ? { type: 'golden_board', id: current.id } : undefined);
-        return matches.length ? <SerialWarning matches={matches} /> : null;
-      }}
-      onSave={async (payload, current) => {
-        const res = current
-          ? await api.put<GoldenRow>(`/api/golden/${current.id}`, payload)
-          : await api.post<GoldenRow>('/api/golden', payload);
-        return { row: res.data };
-      }}
-      actions={actions}
-    />
-  );
+  return {
+    ...ctx,
+    record,
+    switching,
+    size: 'l',
+    canEdit: can.edit,
+    createTitle: t('gs.addTitle'),
+    heading: (r) => ({
+      title: r.serial_number,
+      tags: <><UsageTag usage={r.usage} /><TagChips items={r.tags} /></>,
+      subtitle: [r.part_number, r.utd_part_number].filter(Boolean).join(' · ') || undefined,
+      meta: (
+        <>
+          {r.location && <span data-primary><MapPin size={12} aria-hidden="true" /> {r.location}</span>}
+          {r.parent_serial && <span>{t('asset.attachedTo')}: {r.parent_serial}</span>}
+          <span>{t('dp.updated', { when: formatRelativeTime(r.updated_at, language), who: r.updated_by_name ?? '—' })}</span>
+        </>
+      ),
+    }),
+    sections,
+    // Cây (chỉ Overview) cùng key / cùng cách vẽ với modal Equipment: chuyển loại tài sản không mount lại cây.
+    detailAsideTab: treeState ? 'tree' : undefined,
+    extraTabs: treeState ? [{
+      key: 'tree', label: t('eq.tabTree'),
+      render: (r: GoldenRow) => <TreeTab key={treeState.loaded?.root_id ?? r.id} tree={treeState.loaded} error={treeState.loaded ? null : treeState.tree.error}
+        onRetry={treeState.tree.reload} current={treeState.current ?? { type: 'golden_board', id: r.id }} home={treeState.home} onOpen={openAsset} />,
+    }] : undefined,
+    historyUrl: (r) => `/api/golden/${r.id}/history`,
+    historyLabels: { parent: t('asset.attachedTo') },
+    beforeSave: async (payload, current) => {
+      const serial = typeof payload.serial_number === 'string' ? payload.serial_number : null;
+      if (!serial) return null;
+      const matches = await fetchSerialMatches(serial, current ? { type: 'golden_board', id: current.id } : undefined);
+      return matches.length ? <SerialWarning matches={matches} /> : null;
+    },
+    onSave: async (payload, current) => {
+      const res = current
+        ? await api.put<GoldenRow>(`/api/golden/${current.id}`, payload)
+        : await api.post<GoldenRow>('/api/golden', payload);
+      return { row: res.data };
+    },
+    actions,
+  };
 }

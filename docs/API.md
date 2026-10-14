@@ -83,7 +83,7 @@ Cập nhật: 08/10/2026. Mọi route nằm ở `app/api/**/route.ts`, đều đ
 | `GET /api/overview?usage=&kind=&q=` | Mọi nhóm | Bảng thẻ: các dòng của `overview_board` ([DATABASE_MODIFIED.md](DATABASE_MODIFIED.md) mục 2) — cột = tài sản gốc nhóm theo Location, tối đa 3 thẻ mỗi cột (kể cả thẻ gốc), `descendants`, `alerts`, `matched`, `pos`. `usage` = `in_use` \| `not_in_use`; `kind` = `tester` \| `base` \| `fixture` \| `sub_equipment` \| `golden_board`; `q` = serial / part number. Bỏ trống cả ba = cả bảng. Tìm và lọc chạy trong database (một thẻ khớp có thể nằm sau "+N") |
 
 | `GET /api/dashboard` | Mọi nhóm | Số liệu tổng hợp |
-| `GET /api/dashboard/activities?module=&user=&q=&from=&to=&limit=` | Mọi nhóm | Thay đổi gần đây (Configuration và User chỉ Admin thấy) |
+| `GET /api/dashboard/activities?module=&user=&q=&from=&to=&limit=` | Mọi nhóm | Thay đổi gần đây, **một thao tác của người dùng = một phần tử** (`id`, `module`, `modules`, `action`, `source`, `created_by_name`, `created_at`, `item_count`, `records[]` ≤ 50). `module` = thao tác có chạm module đó; `q` khớp tên / serial của bất kỳ bản ghi nào trong thao tác; `limit` tính theo thao tác. Configuration và User chỉ Admin thấy |
 
 ## Configuration (Admin)
 

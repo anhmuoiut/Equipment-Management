@@ -19,11 +19,11 @@ async function loadTemplate(language: 'vi' | 'en' = 'vi') {
   return wb;
 }
 
-/** Điền file mẫu như người dùng: nhập từ dòng 3 của sheet Equipment. */
+/** Điền file mẫu như người dùng: nhập từ dòng 2 của sheet Equipment. */
 async function filledTemplate(rows: (string | number | null)[][]): Promise<Buffer> {
   const wb = await loadTemplate();
   const ws = wb.getWorksheet('Equipment')!;
-  rows.forEach((values, i) => values.forEach((v, c) => { if (v !== null) ws.getCell(3 + i, c + 1).value = v; }));
+  rows.forEach((values, i) => values.forEach((v, c) => { if (v !== null) ws.getCell(2 + i, c + 1).value = v; }));
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -50,46 +50,35 @@ const GOOD = () => line({ sn: 'SN-001', pn: 'P12316', jabil: 'J1', asset: 'A-01'
 const issues = (report: { rows: { row: number; issues: unknown[] }[] }) => report.rows.map((r) => [r.row, r.issues]);
 
 describe('equipment import template — theo Configuration lúc tải', () => {
-  it('has the entry sheet first, then guide and valid values', async () => {
-    expect((await loadTemplate('vi')).worksheets.map((w) => w.name)).toEqual(['Equipment', 'Hướng dẫn', 'Giá trị hợp lệ']);
-    expect((await loadTemplate('en')).worksheets.map((w) => w.name)).toEqual(['Equipment', 'Guide', 'Valid values']);
+  it('has the entry sheet first, then valid values — no guide sheet', async () => {
+    expect((await loadTemplate('vi')).worksheets.map((w) => w.name)).toEqual(['Equipment', 'Giá trị hợp lệ']);
+    expect((await loadTemplate('en')).worksheets.map((w) => w.name)).toEqual(['Equipment', 'Valid values']);
   });
 
-  it('row 2 is the header with * on required columns; row 1 tells what each column accepts', async () => {
+  it('row 1 is the header with * on required columns, with nothing else above or beside it', async () => {
     const ws = (await loadTemplate()).getWorksheet('Equipment')!;
-    const header = (c: number) => cellText(ws.getCell(2, c).value);
+    const header = (c: number) => cellText(ws.getCell(1, c).value);
     expect([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(header)).toEqual([
       'Serial number *', 'Part number *', 'Jabil ID', 'Asset', 'Type', 'Level *', 'Status', 'Location *',
       'Parent serial number', 'Parent part number', 'Tags', 'Remark',
     ]);
-    expect(ws.getCell('M2').value).toBeNull();
-    expect(cellText(ws.getCell('A1').value)).toContain('200');
-    // Part number: chỉ tester / base / fixture đang dùng — sub-equipment (DMM-100) và mã đã ẩn (OLD-PN) không có.
-    expect(cellText(ws.getCell('B1').value)).toContain('Chọn: P12316, P20001, B-100');
-    expect(cellText(ws.getCell('B1').value)).not.toContain('DMM');
-    expect(cellText(ws.getCell('E1').value)).toContain('Chọn: Tester, Fixture, Base');
-    expect(cellText(ws.getCell('F1').value)).toContain('Chọn: 1, 2, 3, 4, 5');
-    expect(cellText(ws.getCell('G1').value)).toContain('Chọn: In use, Not in use');
-    expect(cellText(ws.getCell('G1').value)).toContain('Chỉ Tester được In use khi không có cha');
-    expect(cellText(ws.getCell('H1').value)).toContain('B3F1, B3F2');
-    expect(cellText(ws.getCell('I1').value)).toContain('một dòng khác trong file này');
-    expect(cellText(ws.getCell('J1').value)).toContain('Chỉ cần khi serial cha trùng');
-    expect(cellText(ws.getCell('K1').value)).toContain('Chọn một hoặc nhiều, cách nhau dấu ; — Repair, Spare');
+    expect(ws.getCell('M1').value).toBeNull();
+    expect(ws.getCell('A2').value).toBeNull();
   });
 
   it('list columns get a drop-down from the valid values sheet, text columns a length limit', async () => {
     const wb = await loadTemplate();
     const ws = wb.getWorksheet('Equipment')!;
-    expect(ws.getCell('F3').dataValidation).toMatchObject({ type: 'list', formulae: ["'Giá trị hợp lệ'!$C$2:$C$6"] });
-    expect(ws.getCell('F1002').dataValidation.type).toBe('list');
-    expect(ws.getCell('A3').dataValidation).toMatchObject({ type: 'textLength', operator: 'lessThanOrEqual', formulae: [200] });
-    expect(ws.getCell('L3').dataValidation.formulae).toEqual([1000]);
+    expect(ws.getCell('F2').dataValidation).toMatchObject({ type: 'list', formulae: ["'Giá trị hợp lệ'!$C$2:$C$6"] });
+    expect(ws.getCell('F1001').dataValidation.type).toBe('list');
+    expect(ws.getCell('A2').dataValidation).toMatchObject({ type: 'textLength', operator: 'lessThanOrEqual', formulae: [200] });
+    expect(ws.getCell('L2').dataValidation.formulae).toEqual([1000]);
     // Status: danh sách cố định In use / Not in use.
-    expect(ws.getCell('G3').dataValidation).toMatchObject({ type: 'list', formulae: ["'Giá trị hợp lệ'!$D$2:$D$3"], errorStyle: 'stop' });
+    expect(ws.getCell('G2').dataValidation).toMatchObject({ type: 'list', formulae: ["'Giá trị hợp lệ'!$D$2:$D$3"], errorStyle: 'stop' });
     // Tags nhận nhiều giá trị trong một ô ("Repair; Spare"): một ô thả xuống chỉ nhận một giá trị nên không có kiểm tra danh sách.
-    expect(ws.getCell('K3').dataValidation.type).toBe('any');
+    expect(ws.getCell('K2').dataValidation.type).toBe('any');
     // Part number của cha dùng chung danh sách Part number, chỉ cảnh báo (mã đã ẩn vẫn tìm được).
-    expect(ws.getCell('J3').dataValidation).toMatchObject({ type: 'list', formulae: ["'Giá trị hợp lệ'!$A$2:$A$4"], errorStyle: 'warning' });
+    expect(ws.getCell('J2').dataValidation).toMatchObject({ type: 'list', formulae: ["'Giá trị hợp lệ'!$A$2:$A$4"], errorStyle: 'warning' });
 
     const values = wb.getWorksheet('Giá trị hợp lệ')!;
     const column = (c: number) => (values.getColumn(c).values as ExcelJS.CellValue[]).slice(1).map((v) => cellText(v));
@@ -105,7 +94,7 @@ describe('equipment import template — theo Configuration lúc tải', () => {
     expect(importChoices(more).levels).toEqual(['1', '2', '3', '4', '5', '6']);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load((await buildTemplate(more, 'en')) as unknown as ArrayBuffer);
-    expect(wb.getWorksheet('Equipment')!.getCell('F3').dataValidation.formulae).toEqual(["'Valid values'!$C$2:$C$7"]);
+    expect(wb.getWorksheet('Equipment')!.getCell('F2').dataValidation.formulae).toEqual(["'Valid values'!$C$2:$C$7"]);
   });
 });
 
@@ -131,16 +120,16 @@ describe('equipment import check — cùng quy tắc với form Thêm thiết b�
     expect(report).toMatchObject({ total: 4, valid: 1, invalid: 3 });
     expect(inserts).toHaveLength(1);
     expect(issues(report)).toEqual([
-      [4, [{ column: 'serial_number', code: 'required' }, { column: 'level_id', code: 'not_found', value: '6' }, { column: 'location_id', code: 'required' }]],
-      [5, [{ column: 'part_number_id', code: 'inactive', value: 'OLD-PN' }, { column: 'location_id', code: 'inactive', value: 'Closed' }]],
-      [6, [{ column: 'serial_number', code: 'too_long', max: 200 }]],
+      [3, [{ column: 'serial_number', code: 'required' }, { column: 'level_id', code: 'not_found', value: '6' }, { column: 'location_id', code: 'required' }]],
+      [4, [{ column: 'part_number_id', code: 'inactive', value: 'OLD-PN' }, { column: 'location_id', code: 'inactive', value: 'Closed' }]],
+      [5, [{ column: 'serial_number', code: 'too_long', max: 200 }]],
     ]);
   });
 
   it('a part number of sub-equipment is refused here (wrong_kind) — sub-equipment have their own import', async () => {
     const { report, inserts } = await check([line({ sn: 'S-1', pn: 'DMM-100' })]);
     expect(inserts).toEqual([]);
-    expect(issues(report)).toEqual([[3, [{ column: 'part_number_id', code: 'wrong_kind', value: 'DMM-100' }]]]);
+    expect(issues(report)).toEqual([[2, [{ column: 'part_number_id', code: 'wrong_kind', value: 'DMM-100' }]]]);
   });
 
   it('warns (does not block) on duplicate serials in any table or earlier in the file', async () => {
@@ -151,7 +140,7 @@ describe('equipment import check — cùng quy tắc với form Thêm thiết b�
     );
     expect(report).toMatchObject({ total: 4, valid: 4, invalid: 0, duplicates: 3 });
     expect(inserts).toHaveLength(4);
-    expect(report.rows.map((r) => [r.row, r.duplicate_of])).toEqual([[4, 3], [5, 'existing'], [6, 'existing']]);
+    expect(report.rows.map((r) => [r.row, r.duplicate_of])).toEqual([[3, 2], [4, 'existing'], [5, 'existing']]);
   });
 
   it('skips blank rows and accepts a file whose header is on row 1', async () => {
@@ -220,7 +209,7 @@ describe('equipment import — thiết bị cha (Tester ⊃ Base ⊃ Fixture)', 
       line({ sn: 'FX-1', pn: 'P20001', loc: 'B3F2', parent: 'TESTER-01' }),
       line({ sn: 'FX-2', pn: 'P20001', loc: 'B3F1', parent: 'TESTER-01' }),
     ], [TESTER]);
-    expect(issues(report)).toEqual([[4, [{ column: 'location_id', code: 'location_follows_parent', value: 'B3F2' }]]]);
+    expect(issues(report)).toEqual([[3, [{ column: 'location_id', code: 'location_follows_parent', value: 'B3F2' }]]]);
   });
 
   it('refuses a parent of the wrong kind — the tree rule is checked before the database sees the file', async () => {
@@ -231,9 +220,9 @@ describe('equipment import — thiết bị cha (Tester ⊃ Base ⊃ Fixture)', 
       line({ sn: 'FX-4', pn: 'P20001', loc: null, parent: 'FX-3' }), // Fixture dưới Fixture
     ], [TESTER, BASE]);
     expect(issues(report)).toEqual([
-      [3, [{ column: 'parent_serial', code: 'parent_type_invalid', value: 'TESTER-01' }]],
-      [4, [{ column: 'parent_serial', code: 'parent_type_invalid', value: 'BASE-01' }]],
-      [6, [{ column: 'parent_serial', code: 'parent_type_invalid', value: 'FX-3' }]],
+      [2, [{ column: 'parent_serial', code: 'parent_type_invalid', value: 'TESTER-01' }]],
+      [3, [{ column: 'parent_serial', code: 'parent_type_invalid', value: 'BASE-01' }]],
+      [5, [{ column: 'parent_serial', code: 'parent_type_invalid', value: 'FX-3' }]],
     ]);
     expect(inserts.map((r) => r.serial_number)).toEqual(['FX-3']);
   });
@@ -246,9 +235,9 @@ describe('equipment import — thiết bị cha (Tester ⊃ Base ⊃ Fixture)', 
       line({ sn: 'FX-3', pn: 'P20001', parentPn: 'P12316' }),
     ], twins);
     expect(issues(report)).toEqual([
-      [3, [{ column: 'parent_serial', code: 'parent_not_found', value: 'NOPE' }]],
-      [4, [{ column: 'parent_serial', code: 'parent_ambiguous', value: 'TWIN', count: 2 }]],
-      [5, [{ column: 'parent_serial', code: 'required' }]],
+      [2, [{ column: 'parent_serial', code: 'parent_not_found', value: 'NOPE' }]],
+      [3, [{ column: 'parent_serial', code: 'parent_ambiguous', value: 'TWIN', count: 2 }]],
+      [4, [{ column: 'parent_serial', code: 'required' }]],
     ]);
   });
 
@@ -259,7 +248,7 @@ describe('equipment import — thiết bị cha (Tester ⊃ Base ⊃ Fixture)', 
       line({ sn: 'FX-2', pn: 'P20001', loc: null, parent: 'TWIN', parentPn: 'P20001' }),
     ], twins);
     expect(inserts[0]).toMatchObject({ parent_id: 'x-2', location_id: 'loc-1' });
-    expect(issues(report)).toEqual([[4, [{ column: 'parent_serial', code: 'parent_not_found', value: 'TWIN · P20001' }]]]);
+    expect(issues(report)).toEqual([[3, [{ column: 'parent_serial', code: 'parent_not_found', value: 'TWIN · P20001' }]]]);
   });
 
   it('a file without Level and Location columns is fine when every row has a parent (both follow the parent)', async () => {
@@ -275,7 +264,7 @@ describe('equipment import — thiết bị cha (Tester ⊃ Base ⊃ Fixture)', 
 
   it('a row without a parent needs a Level too — the same rule as the form', async () => {
     const { report } = await check([line({ sn: 'NO-LEVEL', level: null })]);
-    expect(issues(report)).toEqual([[3, [{ column: 'level_id', code: 'required' }]]]);
+    expect(issues(report)).toEqual([[2, [{ column: 'level_id', code: 'required' }]]]);
   });
 });
 
@@ -289,8 +278,8 @@ describe('equipment import — Type theo part number', () => {
       line({ sn: 'E', pn: null }),
     ]);
     expect(issues(report)).toEqual([
-      [5, [{ column: 'type_id', code: 'type_follows_part_number', value: 'Tester' }]],
-      [7, [{ column: 'part_number_id', code: 'required' }]],
+      [4, [{ column: 'type_id', code: 'type_follows_part_number', value: 'Tester' }]],
+      [6, [{ column: 'part_number_id', code: 'required' }]],
     ]);
     expect(inserts.map((r) => [r.serial_number, r.type_id])).toEqual([['A', 'type-0'], ['B', 'type-0'], ['D', 'type-1']]);
   });
@@ -308,11 +297,6 @@ describe('equipment import — Type theo part number', () => {
     expect(report.rows).toEqual([]);
     expect(inserts.map((r) => r.type_id)).toEqual(['type-0', 'type-0']);
   });
-
-  it('the template tells the user to leave Type blank when Part number is given', async () => {
-    const ws = (await loadTemplate()).getWorksheet('Equipment')!;
-    expect(cellText(ws.getCell('E1').value)).toContain('Type theo part number');
-  });
 });
 
 describe('equipment import — Level theo thiết bị cha', () => {
@@ -327,7 +311,7 @@ describe('equipment import — Level theo thiết bị cha', () => {
       line({ sn: 'BS-1', pn: 'B-100', level: '1' }),
     ], [TESTER]);
     expect(issues(report)).toEqual([
-      [5, [{ column: 'level_id', code: 'level_follows_parent', value: '2' }]],
+      [4, [{ column: 'level_id', code: 'level_follows_parent', value: '2' }]],
     ]);
     // FX-4 (Fixture) dưới BS-1 (Base) mang Level của BS-1; BS-1 không có cha nên giữ Level 1.
     expect(inserts.map((r) => [r.serial_number, r.level_id])).toEqual([
@@ -341,8 +325,8 @@ describe('equipment import — Level theo thiết bị cha', () => {
       line({ sn: 'FX-2', pn: 'P20001', loc: null, parent: 'BARE', level: '1' }),
     ], [TESTER, eq('bare-1', 'BARE', 'pn-0', 'loc-0')]);
     expect(issues(report)).toEqual([
-      [3, [{ column: 'level_id', code: 'level_follows_parent', value: '2' }]],
-      [4, [{ column: 'level_id', code: 'level_follows_parent', value: '—' }]],
+      [2, [{ column: 'level_id', code: 'level_follows_parent', value: '2' }]],
+      [3, [{ column: 'level_id', code: 'level_follows_parent', value: '—' }]],
     ]);
   });
 });
@@ -363,7 +347,7 @@ describe('equipment import — Status (In use / Not in use)', () => {
   it('anything else is an error on the Status cell', async () => {
     const { report, inserts } = await check([line({ sn: 'A', usage: 'maybe' })]);
     expect(inserts).toEqual([]);
-    expect(issues(report)).toEqual([[3, [{ column: 'usage', code: 'usage_invalid', value: 'maybe' }]]]);
+    expect(issues(report)).toEqual([[2, [{ column: 'usage', code: 'usage_invalid', value: 'maybe' }]]]);
   });
 
   it('only a Tester can be In use without a parent — the same rule as the database (USAGE_NEEDS_PARENT)', async () => {
@@ -372,7 +356,7 @@ describe('equipment import — Status (In use / Not in use)', () => {
       line({ sn: 'BS', pn: 'B-100', usage: 'In use' }), // Base không cha: không
       line({ sn: 'FX', pn: 'P20001', usage: 'Not in use' }),
     ]);
-    expect(issues(report)).toEqual([[4, [{ column: 'usage', code: 'usage_needs_parent', value: 'In use' }]]]);
+    expect(issues(report)).toEqual([[3, [{ column: 'usage', code: 'usage_needs_parent', value: 'In use' }]]]);
     expect(inserts.map((r) => [r.serial_number, r.usage])).toEqual([['TS', 'in_use'], ['FX', 'not_in_use']]);
   });
 
@@ -397,14 +381,14 @@ describe('equipment import — Status (In use / Not in use)', () => {
       line({ sn: 'FX-3', pn: 'P20001', loc: null, parent: 'TESTER-OUT', usage: 'In use' }),
     ], [TESTER_IN, TESTER_OUT]);
     expect(issues(report)).toEqual([
-      [4, [{ column: 'usage', code: 'usage_follows_parent', value: 'In use' }]],
-      [5, [{ column: 'usage', code: 'usage_follows_parent', value: 'Not in use' }]],
+      [3, [{ column: 'usage', code: 'usage_follows_parent', value: 'In use' }]],
+      [4, [{ column: 'usage', code: 'usage_follows_parent', value: 'Not in use' }]],
     ]);
   });
 
   it('a row whose parent could not be found does not also complain about Status (the parent error is enough)', async () => {
     const { report } = await check([line({ sn: 'BS', pn: 'B-100', loc: null, parent: 'NOPE', usage: 'In use' })]);
-    expect(issues(report)).toEqual([[3, [{ column: 'parent_serial', code: 'parent_not_found', value: 'NOPE' }]]]);
+    expect(issues(report)).toEqual([[2, [{ column: 'parent_serial', code: 'parent_not_found', value: 'NOPE' }]]]);
   });
 });
 
@@ -420,7 +404,7 @@ describe('equipment import — Tags', () => {
 
   it('a tag that is not in Configuration is one error on the Tags cell listing every unknown name; nothing is created', async () => {
     const { report, inserts } = await check([line({ sn: 'A', tags: 'Repair; Nope; Gone' }), line({ sn: 'B', tags: 'Spare' })]);
-    expect(issues(report)).toEqual([[3, [{ column: 'tag_ids', code: 'not_found', value: 'Nope, Gone' }]]]);
+    expect(issues(report)).toEqual([[2, [{ column: 'tag_ids', code: 'not_found', value: 'Nope, Gone' }]]]);
     expect(inserts.map((r) => r.serial_number)).toEqual(['B']);
   });
 

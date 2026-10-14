@@ -1,6 +1,6 @@
-# UI requirements: SolarEdge Equipment Management
+# UI requirements: Equipment Management
 
-Updated: 8 October 2026 (side panel replaced by one modal system for every detail, form and action — see "Modal system": default fixed size per modal with the requested compact Swap presentation exception, unsaved-changes rule, one 768px phone breakpoint; earlier: phone cards and bottom bars, scan-friendly Masterlist, adaptive toolbar). Status: accepted design baseline.
+Updated: 14 October 2026 (manual sidebar footer control; SolarEdge logo and developer credit on desktop and phone; shared pastel status tags on laptop and phone; operating state independent of calibration deadlines; six admin tag palettes including yellow/red). Modal system: default fixed size per modal with the compact Swap presentation exception, unsaved-changes rule, one 768px phone breakpoint. Status: accepted design baseline.
 
 ## Read this before changing UI
 
@@ -46,7 +46,7 @@ Use Prussian text on Picton backgrounds and white text on Prussian backgrounds. 
 
 ## 2. Workspace shell and branding
 
-- Keep **Jabil | SolarEdge Equipment Management** on a single row at the **left edge of the top bar**, with the existing padding and a subtle vertical divider. Use that exact app name.
+- Keep **Jabil | Equipment Management** on a single row at the **left edge of the top bar**, with the existing padding and a subtle vertical divider. Use **Equipment Management** as the app name and browser title.
 - Both `.app-brand` and `.app-brand-row` must remain left-aligned with `justify-content: flex-start`. The parent must not inherit centered alignment when its flex direction is changed.
 - Do not center the brand group, put the app name below the logo, or repeat the brand as another banner inside a workspace page.
 - Keep preferences and user actions on the right. The page's own title belongs in its content heading, not a second header row.
@@ -60,10 +60,12 @@ The menu is defined in [APP_SHELL.md](APP_SHELL.md).
 
 - The sidebar has **one flat level** with seven items in this order: Dashboard (`/`), Overview (`/overview`), Equipment (`/equipment`), Sub-Equipment (`/calibration`), Golden (`/golden`), then a divider, then Configuration (`/configuration/…`) and User Management (`/users`). There is no second sidebar tier and no Administration group.
 - Configuration and User Management are shown only to Admin. User and Readonly see the first five items and no divider. The server layouts enforce the same rules, and an unauthorized route redirects to the Dashboard.
-- Menu items carry no count badges. The sidebar holds only the items and the divider: no caption above them and no status/footer line below (a static dot reads as a live status that it is not).
+- Menu items carry no count badges. The sidebar has navigation, the SolarEdge logo and a footer. The expanded desktop footer shows the exact credit **Developed by Man Tran8118** in centered 11px text above the collapse button, in both languages and themes. The phone drawer shows the same credit at the bottom, above its safe-area padding, with no desktop collapse button. The credit is hidden only in the collapsed desktop rail. Do not add a static dot or a live-status line.
 - A detail route (for example `/equipment/{id}`) marks its parent item as current.
 - Configuration picks its lists from an in-page grouped sub-list: DỮ LIỆU GỐC, HIỆU CHUẨN and HỆ THỐNG (Error log). Each group header is a disclosure button with `aria-expanded`. The group holding the current page is always open. On phones the sub-list becomes a grouped select at the top of the page.
-- Sidebar grids use `minmax(0, 1fr)` columns, so a long label (often Vietnamese) truncates with an ellipsis instead of widening every link past the sidebar edge. Its `title` shows the full name.
+- Sidebar grids use `minmax(0, 1fr)` columns. Expanded links place the name beside the icon and truncate long labels with an ellipsis. The collapsed desktop rail is **96px wide**, with each name centered **under** its icon (Inter 11px, 14px line height); longer names wrap inside the link. Labels remain visible in both states, and each link's `title` retains the full name. Desktop expansion is **manual only**: a centered footer button shows `ChevronsRight` (`>>`) to expand and rotates it 180° (`<<`) to collapse; hover, pointer leave and keyboard focus never resize the sidebar. Remember the user's choice with the existing storage key. The navigation scrolls separately on short screens so the footer stays reachable. On phones the header hamburger controls the drawer; the logo and developer credit remain at its top and bottom while the menu scrolls between them, regardless of the saved desktop choice.
+- Show [`solaredge-logo.svg`](../public/Icon/solaredge-logo.svg) above the menu in the expanded desktop sidebar and the phone drawer. Preserve the supplied black/red artwork on a small white surface so it stays readable on the Prussian rail in both themes. Hide it only in the collapsed desktop rail. Phone branding uses the full drawer layout and slides with the panel, without shrinking its logo or footer slots during movement.
+- Sidebar motion uses one damped spring for width, row heights, icon positions and footer chevron rotation. Opening has a subtle settle (less than 1px overshoot on desktop); closing is quicker and does not bounce. Rapid repeated clicks preserve momentum and settle at the latest choice. A native animation loop updates CSS variables without rendering React each frame. Desktop rows move between 38px expanded and 72px compact. Expanded labels reveal in a short sequence once there is space; compact labels fade back under the icons. Fixed text layouts prevent wrapping and font sizes from jumping midway. Keep the logo and credit mounted in reveal slots, with `aria-hidden` while collapsed; their space follows the spring and their text fades in later. The footer button gives a small press response. The phone drawer and backdrop share the same progress and finish their exit before becoming hidden. Reduced motion snaps directly to the chosen state, including when that preference changes during movement. Keep the 320ms CSS curve as a pre-hydration fallback. This choreography takes inspiration from [Material 3 motion](https://m3.material.io/styles/motion) and [Atlassian motion](https://atlassian.design/foundations/motion); the spring parameters are tuned for this workspace.
 
 ### Current compact dimensions
 
@@ -72,7 +74,7 @@ These are the baseline for shared workspace UI. Reuse the existing classes; do n
 | Element | Desktop baseline | Responsive behavior |
 | --- | --- | --- |
 | Header | 52px high | 56px below 768px |
-| Sidebar | 216px expanded / 64px rail | Drawer overlay below 768px; width limited to viewport |
+| Sidebar | 216px expanded / 96px rail, names below icons | Drawer overlay below 768px; width limited to viewport |
 | Content padding | 16px | 12px below 768px |
 | Page heading | 23px, weight 600 | 21px on mobile |
 | Body type | 14px | Keep readable; do not shrink the entire UI |
@@ -138,9 +140,9 @@ The Overview page ([DETAIL_MODEL.md](DETAIL_MODEL.md) §4.6) is a board of **car
 | Section header | One full-width **button** per Location (`aria-expanded`): 36px high on desktop, 44px on phones. Chevron `▾` / `▸`, the Location name (13px, weight 600, `--ink`) and `N tester · M In use · K ⚠` (12px, `--ink-2`). The ⚠ is `--warn` when K > 0 and `--alert` when a column of the section has a red alert. 1px `--rule-soft` bottom border on the `--surface` background. A Location with no columns, or none left after filtering, has no header at all. |
 | Grid | `display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-items: start`. That is about **7 columns** in the 1100px content area of a 1366px laptop. Below 768px the grid is exactly **2 columns** (`repeat(2, minmax(0, 1fr))`, 8px gap, 12px content padding). The grid sits 8px under its header; sections are 12px apart. |
 | Column | A `role="group"` named by the root serial. Cards stack with a 4px gap, **top-aligned** — columns have different heights. |
-| Card | A `button`, **no icon**. Padding 6px 8px, `border-radius: var(--radius-control)`, 1px `--rule` border, **3px left border = Status**, minimum height 52px (so it is a 44px+ touch target on phones). **Line 1:** Type name (`Tester`, `Base`, `Fixture`, `Golden`, `Sub (DMM)`), 12px weight 600 `--ink`, ⚠ at the right end. **Lines 2 and 3:** the label `PN` / `SN` in 10px `--ink-3`, then the value in 11px `--ink-2` with `font-variant-numeric: tabular-nums`; one line each, `text-overflow: ellipsis`, the full text in `title`. The card never shows the Location (the section header has it). Background `--panel`; the **root card uses `--surface`**, the darker of the two. |
+| Card | A `button`, **no icon**. Padding 6px 8px, `border-radius: var(--radius-control)`, 1px `--rule` border, left border = operating state, minimum height 52px. **Line 1:** Type name, 12px weight 600 `--ink`. **Lines 2 and 3:** `PN` / `SN` labels and values, truncated with full text in `title`. **Status row:** shared `UsageTag` and, when applicable, `CalibrationStatusTag`, wrapping within the card. The card never shows the Location. Background `--panel`; the root uses `--surface`. |
 | Status border | `data-status-color="green"` = In use, `"gray"` = Not in use (the shared `--sc-mark`). The accessible name carries the Status in words — colour is never the only signal. |
-| ⚠ | `lucide-react` `TriangleAlert`, 12px: `--warn` for `due_soon`, `--alert` for `overdue` and `failed`; tooltip and `aria-label` name the Calibration Status. On a sub-equipment card it is its own alert; on the root card it appears when any child — shown or hidden — has one, in the worst colour. |
+| Calibration tag | Text only: amber for `due_soon`, red for `overdue` and `failed`. On sub-equipment it is its own alert; on a root it is the worst alert among its children, including hidden children. It appears alongside the operating tag. Section alert counts retain their existing icon. |
 | "Chưa gắn" | A fourth line of the **root** card of an unattached asset (10px, `--ink-3`), not a separate element, so root cards of every column start at the same height. |
 | Tree line | A 1px `--rule` line from the root card down the column, `├` to each middle card and `└` to the last, drawn with CSS borders and `aria-hidden`. **10px indent per level**, at most **4 levels** (Tester → Base → Fixture → Golden); a child card is the column width minus its indent. A pulled-in parent card keeps the line unbroken. |
 | "+N thiết bị" | A text button (12px, `--machine`, underlined on hover) after the last tree glyph, only when N > 0; same action as the root card. |
@@ -149,39 +151,28 @@ The Overview page ([DETAIL_MODEL.md](DETAIL_MODEL.md) §4.6) is a board of **car
 | Filter bar | One row that wraps, above the sections: a segmented control (All / In use / Not in use), a Type select, a search box — 34px high on desktop, 44px on phones. |
 | Themes | Theme tokens only — no hard-coded colour. Both themes and EN / VI (long Vietnamese Type names truncate on line 1 like PN and SN) must be checked. |
 
-### Status and feedback
+### Status tags and feedback (14 October 2026)
 
-| Existing status meaning | Visual treatment |
-| --- | --- |
-| Active / valid / successful | Green success tokens |
-| Overdue / not calibrated / failed / error | Red alert tokens |
-| Due soon / repair / needs attention | Amber warning tokens |
-| Waiting / registration / informational | Blue info tokens |
-| Inactive / disabled / neutral | Neutral tokens |
-| Selection / navigation | Brand tokens |
+Every tag uses **Inter, 12px, semibold 600, padding 5px 10px, radius 7px**, a flat pastel background and no decorative icon, gradient, border or shadow. Only operating tags may include a small dot. Keep the same dimensions and the following exact HEX pairs in both themes, on laptop and phone; remove feature-specific tag overrides. Interactive pickers provide a 44px hit area around the same tag.
 
-Calibration due dates (`DueDate`) and account statuses (`AccountStatusTag`) use the semantic tokens above.
+| Status | Background | Text |
+| --- | --- | --- |
+| Upcoming receive | `#EAF4FF` | `#1B66A5` |
+| Normal | `#E7F5F8` | `#176D83` |
+| Deactivated | `#EEF1F4` | `#657384` |
+| Wait for registration | `#F1ECFF` | `#7354B5` |
+| In use (Online) | `#E7F7EE` | `#187A4C` |
+| Not in use (Offline) | `#F3F4F6` | `#576575` |
+| Overdue | `#FDE9E9` | `#B42332` |
+| Due soon | `#FFF3D6` | `#976300` |
 
-### Status colors
+- `StatusTag` and `TagPicker` render manual tags using `data-manual-color`. Admin Configuration offers six pastel choices: `blue` → blue, `green` → teal, `gray` → gray, `purple` → purple, `yellow` → yellow and `red` → red. Yellow uses `#FFF3D6` / `#976300`; red uses `#FDE9E9` / `#B42332`, with the same typography and dimensions as the previous colors. The latest user request permits these two colors on custom manual tags. The four canonical manual names (and supported Vietnamese equivalents) keep their specified palettes, including purple for Wait for registration. Apply [the tag palette migration](../database/migrations/2026-10-14_tag_palette.sql) before deploying this picker on an existing database: it adds the explicit `purple` key and converts the former yellow-key purple tags once, preserving their IDs, assignments, timestamps and history. Subsequent yellow selections remain yellow when the migration is rerun.
+- `UsageTag` is the operating state. `CalibrationStatusTag` is independently calculated from calibration dates. An equipment may show **In use + Overdue** or **Not in use + Due soon** at the same time. The same distinction applies to future PM deadlines; this UI change does not add a PM data model.
+- Phone cards keep visible operating, calibration and manual tags; never replace their text with a dot. Calibration's default desktop columns include both calibration and operating states. Overview cards show both states when an alert exists. Tags wrap within narrow containers, including Vietnamese text.
+- `DueDate` uses the shared calibration tag for deadline labels. Failed remains an error state, Valid a success state and Not calibrated neutral. Account and other feedback tags retain their semantic meanings with the shared pastel styling.
+- Exact pairs live in `globals.css` as `--tag-*`; `workspace.css` owns shared tag styling. General alerts, destructive controls and chart marks retain their existing theme tokens. Nominal charts such as location/type use Picton.
 
-Admins create tags in Configuration › Tag and must pick one of **five system colors** for each (`tags.color`, see [DATABASE_MODIFIED.md](DATABASE_MODIFIED.md)). Red, green and yellow are required by the business; blue and gray complete the set. The meanings follow ISA-101 (green = running, yellow = caution, red = alarm, blue = manual/waiting, gray = stopped) and common design systems (Carbon, Atlassian, Primer).
-
-| `color` | Meaning | Example | Text / tint (light) | Mark light | Mark dark |
-| --- | --- | --- | --- | --- | --- |
-| `green` | Normal, passed, running | Active, Pass | `--success` / `--success-tint` | `#3DA535` | `#65C281` |
-| `yellow` | Needs attention, in progress | Repair | `--warn` / `--warn-tint` | `#EFC23A` | `#F6CE22` |
-| `red` | Failed, act now | Fail | `--alert` / `--alert-tint` | `#C8202D` | `#E93F2D` |
-| `blue` | Waiting, informational | Wait Registration | `--info` / `--info-tint` | `#2A72D8` | `#447BE4` |
-| `gray` | Inactive, neutral | Inactive | `--neutral` / `--neutral-tint` | `#98A3AD` | `#7A858F` |
-
-- The database stores only the color name. The hex values live in `globals.css` (`--status-*` for marks), so retuning a shade changes every status that uses it. Never let admins enter free hex codes.
-- The five marks were validated with the dataviz palette checker against the real surfaces (white, and the dark panel `#0D3652`): every pair stays apart under red-green color blindness (OKLab ΔE ≥ 8.8 light / 11.9 dark) and for normal vision (ΔE ≥ 15). Yellow and gray marks are below 3:1 on white by design, so a status mark is always accompanied by its text label.
-- Text always uses the text tokens of the table (contrast ≥ 4.5:1 on its tint), never the mark color.
-- `StatusTag name color` renders the colored tag. Put `data-status-color` on an element to get `--sc-mark`, `--sc-ink` and `--sc-tint` for custom marks (for example `.status-dot`, Dashboard segments).
-- A missing status (`null`) uses the plain rule color, not gray, so "not set" never looks like Inactive.
-- Status colors are reserved for statuses. Nominal breakdowns such as location or type use the single Picton bar color.
-
-Keep visible status text on desktop and mobile. Supplement color with text, icons or existing border patterns; never show only a colored dot. Preserve existing status meanings and translations. Error copy should state the problem and a useful next step without exposing internal secrets.
+Error copy should state the problem and a useful next step without exposing internal secrets.
 
 ### Modal system (details, forms and actions)
 

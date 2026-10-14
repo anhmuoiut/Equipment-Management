@@ -244,6 +244,7 @@ User nhập sai thì sửa lại (cập nhật), không xóa. Muốn ghi chú m�
 | `source` | text | ✔ | `ui` | `ui` / `import` / `script` | Nguồn thay đổi |
 | `created_at` | timestamptz | ✔ | now() | index (`created_at desc`) | Thời điểm thay đổi |
 | `created_by` | uuid | | | FK `user_profiles` | Người thay đổi |
+| `action_id` | uuid | | | partial index (`action_id` khi không null) | **Một thao tác của người dùng = một `action_id`**: mọi dòng nhật ký do cùng một thao tác ghi ra (xem [Thao tác và `action_id`](#thao-tác-và-action_id)) dùng chung id này. Null = dòng cũ / ghi từ SQL tay |
 
 Quy tắc chung của mọi nhật ký (kể cả `asset_logs`):
 - **Database tự ghi** bằng trigger trên mỗi bảng chính, trong cùng giao dịch với thay đổi. Server không tự thêm dòng nhật ký.
@@ -261,12 +262,39 @@ Không có bảng riêng — chỉ đọc từ các module.
 | Khối trên Dashboard | Đọc từ | Ai thấy |
 | --- | --- | --- |
 | Số lượng theo Status — Equipment (In use / Not in use) và Calibration (Calibration Status tự tính); thanh màu cố định | `equipment`, `sub_equipment`, `golden_boards`, `sub_equipment_calibration` | Mọi nhóm |
-| Số lượng theo thẻ | `equipment`, `sub_equipment`, `golden_boards` (cột `tag_ids`) | Mọi nhóm |
-| Số lượng theo vị trí / loại | `equipment`, `sub_equipment`, `golden_boards` | Mọi nhóm |
-| Sub-equipment quá hạn / sắp đến hạn hiệu chuẩn | view `sub_equipment_calibration` | Mọi nhóm |
-| **Thay đổi gần đây** | view `recent_activities` | Mọi nhóm; dòng của Configuration và User Management chỉ Admin thấy |
+| Số lượng theo thẻ | `equipment`, `sub_equipment`, `golden_boards` (cột `tag_ids`); tài sản chưa gắn thẻ nằm ở dòng riêng **Untagged** | Mọi nhóm |
+| Số lượng theo vị trí / loại | `equipment`, `sub_equipment`, `golden_boards`. Vị trí, loại và thẻ **cùng một phạm vi: mọi tài sản, mỗi tài sản đếm một lần**; golden board (không có Type) nằm ở dòng **No type** — nên tổng các dòng luôn bằng tổng tài sản (riêng thẻ: bản ghi cũ còn nhiều thẻ thì được đếm ở từng thẻ). Mỗi thẻ trên Dashboard có một dòng nói rõ phạm vi | Mọi nhóm |
+| Sub-equipment quá hạn / sắp đến hạn hiệu chuẩn | view `sub_equipment_calibration`. Calibration Status của từng sub-equipment được tính **một lần** trong `getDashboard`; KPI, tiêu đề hai danh sách và thanh Status đều lấy số từ đó (`by_calibration_status`). `Failed` (cũng màu đỏ) đếm riêng, không nằm trong Quá hạn | Mọi nhóm |
+| **Thay đổi gần đây** — **một thao tác của người dùng = một dòng** | view `recent_actions` (gộp theo `action_id`; kèm các bản ghi bị ảnh hưởng) | Mọi nhóm; thao tác của Configuration và User Management chỉ Admin thấy |
 
-### View `recent_activities` — thay đổi gần đây (tính khi đọc, không lưu)
+### Thao tác và `action_id`
+
+Một **thao tác** là một hành động của người dùng bấm một lần (một request API): Swap hai thiết bị, Move kèm con cháu, Check-out cả cây, Import một file, lưu form sửa… Mỗi thao tác có thể ghi **nhiều dòng nhật ký** (mỗi bản ghi bị ảnh hưởng một dòng, kể cả con cháu đi theo). Các dòng đó dùng chung một `action_id`:
+
+- **App**: `withAuth` sinh một id cho mỗi request (`lib/services/core/actionContext.ts`); `appWrite` và các hàm ghi dữ liệu truyền xuống database qua `p_action_id`. Nên một lần sửa form gồm nhiều bước (Move + sửa trường + đổi vị trí) vẫn là một thao tác.
+- **Database**: `app_write` và 9 hàm (`asset_change_location`, `asset_move`, `asset_detach`, `asset_swap`, `asset_delete`, `asset_set_usage`, `equipment_import`, `sub_equipment_import`, `golden_import`) nhận `p_action_id uuid default null` và đặt vào ngữ cảnh giao dịch; trigger `write_history` ghi nó vào mọi dòng nhật ký. Không truyền (script, SQL) thì hàm tự sinh một id cho mỗi lần gọi.
+- Tab Lịch sử của từng bản ghi **không đổi** (vẫn một dòng cho mỗi bản ghi); chỉ "Thay đổi gần đây" gộp.
+- Dòng cũ (null) hiện như một thao tác riêng — riêng import cũ vẫn gộp theo (module, người import, lần import) như trước. Gộp thêm các thao tác cũ là tùy chọn: `database/migrations/2026-10-15_action_id_backfill_OPTIONAL.sql`.
+
+Các thao tác ghi nhiều dòng nhật ký trong một lần của người dùng: Swap · Move (Gắn vào / Đổi cha) · Detach · Đổi vị trí · Xóa tài sản (kèm con thành chưa gắn) · Check-out / Check-in · Import Excel (Equipment, Calibration, Golden) · sửa form Equipment / Calibration / Golden (nhiều bước) · sửa tài khoản (nhóm quyền + thông tin). Ghi nhận một lần hiệu chuẩn chỉ ghi **một** dòng (due_date do trigger tính ngay trong dòng đó).
+
+### View `recent_actions` — thay đổi gần đây theo thao tác (tính khi đọc, không lưu)
+
+Một dòng mỗi thao tác (gộp các dòng của `asset_logs`, `configuration_histories`, `user_histories` có cùng `action_id`), mới nhất lên đầu. `security_invoker = true`, chỉ `service_role` đọc được.
+
+| Trường | Ý nghĩa |
+| --- | --- |
+| `id` | `action_id` (dòng cũ: id dòng nhật ký, hoặc khóa gộp của import cũ) |
+| `module`, `action`, `source`, `created_by` | Của bản ghi **đứng đầu** (bản ghi chính trước, bản ghi đi theo sau) |
+| `modules` | Mọi module có bản ghi trong thao tác — lọc theo module (`@>`) và phân quyền (không phải Admin: `<@ {equipment, sub_equipment, golden_board}`) |
+| `created_at` | Lúc bắt đầu thao tác (nhỏ nhất của các dòng) — lọc ngày và sắp xếp theo đây |
+| `item_count` | Tổng số dòng nhật ký của thao tác |
+| `records` | Các bản ghi bị ảnh hưởng: `module, object_id, label, action, changes, note, from_location, to_location` — **tối đa 50**, theo thứ tự ghi (bản ghi chính trước; bản ghi đi theo có `note` `via_parent:` / `parent_deleted:` sau) |
+| `search_text` | Tên / serial của **mọi** bản ghi trong thao tác (ngăn bằng `chr(31)`) — tìm theo bất kỳ bản ghi nào cũng khớp |
+
+Giới hạn "Xem thêm" của Dashboard tính theo **thao tác**, không phải dòng nhật ký.
+
+### View `recent_activities` — nhật ký từng dòng (giữ lại để tương thích)
 
 Gộp `asset_logs`, `configuration_histories`, `user_histories` thành một danh sách, mới nhất lên đầu. Không chứa dữ liệu riêng.
 
@@ -360,7 +388,7 @@ Tester, base, fixture. Cây Tester ⊃ Base ⊃ Fixture; sub-equipment và golde
 | `level_id` | uuid | | | FK `levels` | Level trên dây chuyền. Có cha → **luôn bằng Level của cha** (database tự đặt khi thêm / sửa / Đổi cha / Swap / import; form khóa ô, ghi "theo thiết bị cha"). Không có cha → **bắt buộc** (form, API và Import Excel đòi; form điền sẵn Level của part number, sửa được); Tách khỏi cha giữ Level đang có. Database vẫn cho trống để dữ liệu và thao tác cũ (Check-out, Move…) không bị chặn — thiết bị cũ chưa có Level phải chọn khi sửa lần sau |
 | `location_id` | uuid | ✔ | | FK `locations`; index | Vị trí hiện tại; có cha thì tự theo vị trí của cha |
 | `remark` | text | | | check ≤ 1000 ký tự | Ghi chú tự do |
-| `tag_ids` | uuid[] | ✔ | `{}` | Mỗi phần tử là `tags.id`; GIN index. Database kiểm tra mọi lần ghi (`04_functions.sql` mục 3e): bỏ trùng, thẻ phải có thật. Xóa thẻ đang gắn → `TAG_IN_USE` | **Thẻ** tình trạng người dùng chọn (không nằm trong chữ của Remark), nhiều thẻ cùng lúc; rỗng = chưa gắn thẻ. Độc lập với Status |
+| `tag_ids` | uuid[] | ✔ | `{}` | Mỗi phần tử là `tags.id`; GIN index. Database kiểm tra mọi lần ghi (`04_functions.sql` mục 3e): bỏ trùng, thẻ phải có thật. Xóa thẻ đang gắn → `TAG_IN_USE` | **Thẻ** tình trạng người dùng chọn (không nằm trong chữ của Remark), **mỗi lần chọn một thẻ** (từ 14/10/2026: form và API chỉ nhận tối đa một phần tử; cột vẫn là mảng, bản ghi cũ có nhiều thẻ vẫn hiện đủ cho tới khi người dùng chọn lại; Import Excel chưa giới hạn); rỗng = chưa gắn thẻ. Độc lập với Status |
 | `parent_id` | uuid | | | FK `equipment` (`on delete restrict` — không xóa được cha khi còn con; xóa qua `asset_delete`); check `id <> parent_id`; index | Thiết bị cha — xem [Cây tài sản](#cây-tài-sản); đặt khi thêm (form, import Excel), đổi trong form Sửa hoặc qua Move / Swap / Detach |
 | `created_at` | timestamptz | ✔ | now() | | |
 | `created_by` | uuid | | | FK `user_profiles` | |
@@ -505,6 +533,7 @@ Một bảng cho cả ba loại tài sản. Database tự ghi bằng trigger, tr
 | `source` | text | ✔ | `ui` | `ui` / `import` / `script` | Nguồn thay đổi |
 | `user_id` | uuid | | | FK `user_profiles` | Người thay đổi |
 | `created_at` | timestamptz | ✔ | now() | index (`created_at desc`) | Thời điểm |
+| `action_id` | uuid | | | partial index (`action_id` khi không null) | Cùng một thao tác của người dùng (Swap hai thiết bị, Move kèm con cháu, Check-out cả cây, Import, sửa form nhiều bước…) = cùng `action_id` — xem [Thao tác và `action_id`](#thao-tác-và-action_id). Tab Lịch sử của từng tài sản **không đổi**: vẫn mỗi tài sản một dòng nhật ký riêng |
 
 | `action` | Khi nào |
 | --- | --- |
@@ -555,6 +584,7 @@ Quy tắc:
 | `display_name` | text | ✔ | | UQ (không phân biệt hoa/thường) | Mã part |
 | `type_id` | uuid | ✔ | | FK `types`; index | Loại thiết bị của part number — Admin chọn khi thêm part number. `kind` của Type quyết định part number dùng cho **equipment** (tester / base / fixture) hay **sub_equipment**. **Chỉ đổi được khi chưa thiết bị nào dùng part number này** (`PART_NUMBER_IN_USE`) |
 | `level_id` | uuid | | | FK `levels`; index | Level của part number — Admin chọn trong Configuration › Level khi thêm / sửa part number (không bắt buộc; đổi được bất cứ lúc nào). Chỉ là giá trị **điền sẵn** cho Level của thiết bị khi thêm thiết bị mang part number này; thiết bị không bị ép theo, và đổi Level của part number không đổi thiết bị đã có |
+| `description` | text | | | | Mô tả part number (cột **Mô tả** ở Configuration › Part Number). Không bắt buộc, tối đa 1000 ký tự (app kiểm tra). Trước 14/10/2026 cột này nằm ở `types` — đã chuyển sang đây, mô tả cũ của Type không được chuyển theo |
 | `sort_order` | integer | ✔ | `0` | index (`sort_order`, `display_name`) | Thứ tự hiển thị |
 | `is_active` | boolean | ✔ | `true` | | `false` = ngừng dùng cho dữ liệu mới |
 | `created_by` | uuid | | | FK `user_profiles` | |
@@ -591,7 +621,6 @@ Quy tắc Type theo part number (`04_functions.sql` mục 3b):
 | `display_name` | text | ✔ | | UQ (không phân biệt hoa/thường) | Tên loại |
 | `kind` | text | ✔ | `sub_equipment` | `tester` / `base` / `fixture` / `sub_equipment`; không đổi sau khi tạo; **UQ** riêng cho 3 loại hệ thống (mỗi loại đúng một dòng) | Loại hệ thống: `tester` / `base` / `fixture` → thiết bị thuộc bảng `equipment`; `sub_equipment` → bảng `sub_equipment`. **Luôn bằng `kind` của nhóm (`group_id`) — database tự đặt, không gửi lên** |
 | `group_id` | uuid | ✔ | nhóm cùng `kind` đầu tiên khi không nói | FK `type_groups`; index | Nhóm của Type (cột **Group** ở Configuration › Type). Admin chọn trong các nhóm `sub_equipment` đang dùng; 3 Type hệ thống nằm cố định trong 3 nhóm hệ thống cùng tên |
-| `description` | text | | | | Mô tả |
 | `sort_order` | integer | ✔ | `0` | index (`sort_order`, `display_name`) | Thứ tự hiển thị |
 | `is_active` | boolean | ✔ | `true` | | |
 | `created_by` | uuid | | | FK `user_profiles` | |
@@ -628,14 +657,14 @@ Quy tắc:
 
 ### `tags` — thẻ tình trạng
 
-Danh sách thẻ (có màu) dùng chung cho cả project: người dùng chọn **nhiều thẻ** cho Equipment, Sub-equipment và Golden board (cột `tag_ids` của từng bảng), hiện thành badge, lọc được theo thẻ và đếm được trên Dashboard. Thẻ lưu ở cột riêng, **không** nằm trong chữ của Remark. Thẻ **không phải Status**: Status (In use / Not in use) và Calibration Status (not_calibrated / failed / overdue / due_soon / valid) do hệ thống tự quản, admin không cấu hình.
+Danh sách thẻ (có màu) dùng chung cho cả project: người dùng chọn **một thẻ** (mỗi lần) cho Equipment, Sub-equipment và Golden board (cột `tag_ids` của từng bảng), hiện thành badge, lọc được theo thẻ và đếm được trên Dashboard. Thẻ lưu ở cột riêng, **không** nằm trong chữ của Remark. Thẻ **không phải Status**: Status (In use / Not in use) và Calibration Status (not_calibrated / failed / overdue / due_soon / valid) do hệ thống tự quản, admin không cấu hình.
 
 | Trường | Kiểu | ✔ | Mặc định | Ràng buộc / liên kết | Ý nghĩa |
 | --- | --- | --- | --- | --- | --- |
 | `id` | uuid | ✔ | tự sinh | PK | |
 | `display_name` | text | ✔ | | UQ (không phân biệt hoa/thường) | Tên thẻ |
 | `sort_order` | integer | ✔ | `0` | index (`sort_order`, `display_name`) | Thứ tự hiển thị (thẻ của một bản ghi xếp theo thứ tự này) |
-| `color` | text | ✔ | `gray` | `green` / `yellow` / `red` / `blue` / `gray` | Màu hiển thị của thẻ trên toàn hệ thống. Admin bắt buộc chọn khi thêm |
+| `color` | text | ✔ | `gray` | `green` / `yellow` / `red` / `blue` / `gray` / `purple` | Màu hiển thị của thẻ trên toàn hệ thống. Admin bắt buộc chọn khi thêm |
 | `created_by` | uuid | | | FK `user_profiles` | |
 | `created_at` | timestamptz | ✔ | now() | | |
 | `updated_by` | uuid | | | FK `user_profiles` | |
@@ -644,17 +673,18 @@ Danh sách thẻ (có màu) dùng chung cho cả project: người dùng chọn 
 Quy tắc:
 - Thẻ đang được gắn trên bản ghi nào thì không xóa được (`TAG_IN_USE`); xóa thật khi không còn dùng.
 - Nhật ký của bản ghi ghi **tên** thẻ (trường `tags`: cũ → mới, theo thứ tự cấu hình, action `TAGS` khi chỉ đổi thẻ); đổi thứ tự chọn mà cùng tập thẻ thì không ghi.
-- `color` chỉ là một trong 5 màu hệ thống bên dưới, không nhập mã màu tự do. Database lưu tên màu; mã màu sáng / tối nằm ở giao diện (docs/JABIL_UI.md), nên đổi sắc độ một màu thì mọi thẻ dùng màu đó đổi theo.
+- `color` có sáu mã bên dưới; không nhập HEX tự do. Theo yêu cầu mới ngày 14/10/2026, Admin có thể chọn thêm vàng/đỏ pastel cho thẻ thủ công, cùng quy chuẩn ở docs/JABIL_UI.md. Database đang có dữ liệu cần chạy [migration tag palette](../database/migrations/2026-10-14_tag_palette.sql) trước app mới: thêm mã `purple`, chuyển mã `yellow` cũ đang hiển thị tím sang `purple` một lần, giữ ID, liên kết, timestamps và lịch sử. Chạy lại không chuyển những thẻ vàng được tạo sau nâng cấp.
 
-5 màu hệ thống (đỏ, xanh lá, vàng là bắt buộc; thêm xanh dương và xám):
+Mã lưu trong database và bảng màu manual hiện tại:
 
 | `color` | Màu | Dùng cho | Ví dụ |
 | --- | --- | --- | --- |
-| `green` | Xanh lá | Bình thường, đạt, đang chạy | Active |
-| `yellow` | Vàng | Cần chú ý, đang xử lý | Repair |
-| `red` | Đỏ | Lỗi, không đạt, phải xử lý ngay | Fail |
-| `blue` | Xanh dương | Đang chờ, thông tin, chưa bắt đầu | Wait Registration |
-| `gray` | Xám | Ngừng dùng, trung tính | Inactive |
+| `green` | Xanh ngọc pastel | Bình thường | Normal |
+| `purple` | Tím pastel | Chờ đăng ký | Wait for registration |
+| `yellow` | Vàng pastel | Thẻ tùy chỉnh do Admin chọn | Under repair |
+| `red` | Đỏ pastel | Thẻ tùy chỉnh do Admin chọn | Fail |
+| `blue` | Xanh dương pastel | Sắp nhận | Upcoming receive |
+| `gray` | Xám pastel | Ngừng dùng, trung tính | Deactivated |
 
 Không có dữ liệu mẫu: Admin tự tạo thẻ (ví dụ Under registration, Under repair, Spare, Pass, Fail).
 

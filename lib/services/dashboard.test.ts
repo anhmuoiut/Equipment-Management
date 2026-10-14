@@ -53,11 +53,15 @@ describe('getDashboard', () => {
     ]);
   });
 
-  it('counts by tag, location and type across the tables', async () => {
+  it('counts by tag, location and type over ALL assets; no-type and untagged assets get their own row so the totals reconcile', async () => {
     const d = await getDashboard();
-    expect(d.by_tag).toEqual([{ id: 'tg1', label: 'Repair', count: 2 }, { id: 'tg2', label: 'Spare', count: 2 }].sort((a, b) => b.count - a.count));
+    // 7 assets: s1 carries two tags, so the tag rows add up to 8 here (a legacy multi-tag asset); with one tag each they add up to 7.
+    expect(d.by_tag).toEqual([{ id: null, label: null, count: 4 }, { id: 'tg1', label: 'Repair', count: 2 }, { id: 'tg2', label: 'Spare', count: 2 }]);
     expect(d.by_location).toEqual([{ id: 'loc-0', label: 'B3F1', count: 4 }, { id: 'loc-1', label: 'B3F2', count: 3 }]);
-    expect(d.by_type).toEqual([{ id: 'type-3', label: 'DMM', count: 4 }, { id: 'type-0', label: 'Tester', count: 1 }, { id: 'type-1', label: 'Fixture', count: 1 }]);
+    expect(d.by_location.reduce((n, i) => n + i.count, 0)).toBe(d.equipment_total + d.sub_equipment_total + d.golden_total);
+    // the golden board has no Type: it is the "No type" row (id null), so the Type rows also add up to all 7 assets.
+    expect(d.by_type).toEqual([{ id: 'type-3', label: 'DMM', count: 4 }, { id: 'type-0', label: 'Tester', count: 1 }, { id: 'type-1', label: 'Fixture', count: 1 }, { id: null, label: null, count: 1 }]);
+    expect(d.by_type.reduce((n, i) => n + i.count, 0)).toBe(7);
   });
 
   it('lists overdue and due-soon sub-equipment with their tester, soonest due first', async () => {
@@ -72,19 +76,31 @@ describe('getDashboard', () => {
 });
 
 describe('recentActivities', () => {
-  it('non-admins never see Configuration or User rows; admins see all; filters are passed to the view', async () => {
-    const c = chain({ data: [{ module: 'equipment', object_id: 'e1', label: 'SN', created_at: '2026-10-01T00:00:00Z', created_by: 'u1' }] });
+  it('one user action = one row (view recent_actions); non-admins never see Configuration or User actions; filters apply to the grouped action', async () => {
+    const c = chain({ data: [{ id: 'act-1', module: 'equipment', modules: ['equipment'], action: 'SWAP', source: 'ui', created_at: '2026-10-01T00:00:00Z', created_by: 'u1', item_count: 2, records: [] }] });
     m.from.mockReturnValue(c.proxy);
     const rows = await recentActivities('user', { module: 'sub_equipment', userId: 'u1', search: 'a_b', from: '2026-10-01', limit: 20 });
-    expect(m.from).toHaveBeenCalledWith('recent_activities');
-    expect(c.call('in')).toEqual(['module', ['equipment', 'sub_equipment', 'golden_board']]);
+    expect(m.from).toHaveBeenCalledWith('recent_actions');
+    expect(c.call('containedBy')).toEqual(['modules', ['equipment', 'sub_equipment', 'golden_board']]);
+    expect(c.call('contains')).toEqual(['modules', ['sub_equipment']]);
     expect(c.call('limit')).toEqual([20]);
-    expect(c.call('ilike')).toEqual(['label', '%a\\_b%']);
-    expect(rows[0]).toMatchObject({ created_by_name: 'Ann' });
+    // search matches the name / serial of ANY record of the action
+    expect(c.call('ilike')).toEqual(['search_text', '%a\\_b%']);
+    expect(rows[0]).toMatchObject({ id: 'act-1', created_by_name: 'Ann', item_count: 2 });
 
     const admin = chain({ data: [] });
     m.from.mockReturnValue(admin.proxy);
     await recentActivities('admin', {});
-    expect(admin.names()).not.toContain('in');
+    expect(admin.names()).not.toContain('containedBy');
+  });
+
+  it('falls back to the old one-row-per-log view while the database has no recent_actions view yet', async () => {
+    const missing = chain({ data: null, error: { code: '42P01', message: 'relation "public.recent_actions" does not exist' } });
+    const legacy = chain({ data: [{ module: 'equipment', object_id: 'e1', label: 'SN-1', action: 'UPDATE', changes: {}, created_by: 'u1', created_at: '2026-10-01T00:00:00Z', note: null, source: 'ui', item_count: 1 }] });
+    m.from.mockReturnValueOnce(missing.proxy).mockReturnValueOnce(legacy.proxy);
+    const rows = await recentActivities('admin', {});
+    expect(m.from).toHaveBeenLastCalledWith('recent_activities');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ module: 'equipment', action: 'UPDATE', item_count: 1, records: [expect.objectContaining({ label: 'SN-1' })] });
   });
 });

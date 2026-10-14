@@ -8,7 +8,7 @@ const fields = {
   part_number_id: reqId,
   asset: optText(200),
   level_id: optId,
-  tag_ids: z.array(reqId).max(50),
+  tag_ids: z.array(reqId).max(1), // mỗi lần chỉ một thẻ (cột vẫn là mảng)
   location_id: reqId,
   remark: optText(1000),
 };

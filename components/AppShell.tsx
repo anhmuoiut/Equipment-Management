@@ -1,14 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { TopBar } from '@/components/TopBar';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { ToastViewport } from '@/components/ui';
 import { usePhone } from '@/lib/client/usePhone';
+import { seedOptions } from '@/lib/client/options';
+import { useSidebarMotion } from '@/lib/client/useSidebarMotion';
 import { ViewerProvider } from '@/components/ViewerContext';
 import type { Role } from '@/lib/permissions';
+import type { Options } from '@/lib/types';
 
 const STORAGE_KEY = 'equipment-sidebar-pinned';
 // Trang Masterlist + Detail Panel chiếm đủ chiều cao (chỉ thân bảng / panel
@@ -18,40 +21,32 @@ const isListPage = (pathname: string) =>
   FULL_HEIGHT_LIST_PAGES.some((p) => (p.endsWith('/') ? pathname.startsWith(p) : pathname === p));
 
 export function AppShell({
-  userId, username, fullName, role, children,
+  userId, username, fullName, role, options, children,
 }: {
-  userId: string; username: string; fullName: string; role: Role; children: React.ReactNode;
+  userId: string; username: string; fullName: string; role: Role;
+  /** Danh sách chọn (Configuration) do layout đọc sẵn ở server — xem `seedOptions`. */
+  options?: Options; children: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const pathname = usePathname();
-  const [pinned, setPinned] = useState(false);
-  const [hoverOpen, setHoverOpen] = useState(false);
-  const [focusOpen, setFocusOpen] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const desktopOpen = pinned || hoverOpen || focusOpen;
-  const cancelClose = () => {
-    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
-    closeTimer.current = null;
-  };
-  useEffect(() => () => {
-    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
-  }, []);
+  // Layout effect: chạy trước effect của các form con, nên `useOptions()` thấy bản này ngay và không gọi /api/options.
+  useLayoutEffect(() => { if (options) seedOptions(options); }, [options]);
+  const [desktopExpanded, setDesktopExpanded] = useState(false);
   const isMobile = usePhone();
   const [mobileOpen, setMobileOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
-  const sidebarOpen = isMobile ? mobileOpen : desktopOpen;
+  const sidebarOpen = isMobile ? mobileOpen : desktopExpanded;
+  useSidebarMotion(shellRef, sidebarOpen, isMobile);
 
   useEffect(() => {
-    try { setPinned(localStorage.getItem(STORAGE_KEY) === 'true'); } catch {}
+    try { setDesktopExpanded(localStorage.getItem(STORAGE_KEY) === 'true'); } catch {}
   }, []);
 
-  // Phone ↔ desktop: drop transient sidebar state (hover / focus / open drawer).
+  // Phone ↔ desktop: close the phone drawer; preserve the user's desktop choice.
   useEffect(() => {
-    setHoverOpen(false);
-    setFocusOpen(false);
     setMobileOpen(false);
     if (panelRef.current?.contains(document.activeElement)) toggleRef.current?.focus();
   }, [isMobile]);
@@ -66,8 +61,8 @@ export function AppShell({
       if (mobileOpen) closeMobile();
       else setMobileOpen(true);
     } else {
-      const next = !pinned;
-      setPinned(next);
+      const next = !desktopExpanded;
+      setDesktopExpanded(next);
       try { localStorage.setItem(STORAGE_KEY, String(next)); } catch {}
     }
   }
@@ -129,7 +124,7 @@ export function AppShell({
 
   return (
     <ViewerProvider viewer={{ userId, username, fullName, role }}>
-    <div ref={shellRef} className="app-shell" data-page={isListPage(pathname) ? 'masterlist' : undefined} data-sidebar-pinned={pinned} data-mobile-open={mobileOpen} data-sidebar-open={sidebarOpen}>
+    <div ref={shellRef} className="app-shell" data-page={isListPage(pathname) ? 'masterlist' : undefined} data-sidebar-pinned={desktopExpanded} data-mobile-open={mobileOpen} data-sidebar-open={sidebarOpen}>
       {/* Visible only on keyboard focus — the
           first focusable element on every page, so Tab from the address
           bar reaches main content without tabbing through the whole header
@@ -146,30 +141,15 @@ export function AppShell({
           type="button" className="sidebar-backdrop" tabIndex={-1}
           aria-label={t('nav.closeMenu')} onClick={closeMobile}
         />}
-        {/* Desktop collapse narrows to an icon rail (styled off data-sidebar-open
+        {/* Desktop collapse narrows to an icon-and-name rail (styled off data-sidebar-open
             on .app-shell). On mobile this now always stays mounted and slides
             off-screen via transform (CSS) instead of unmounting via `hidden` —
             unmounting on close would skip the close transition entirely. The
             `inert` effect above keeps it out of the tab order/AT while closed. */}
-        <div id="app-sidebar-panel" ref={panelRef} className="sidebar-region"
-          onPointerEnter={(event) => {
-            if (isMobile || event.pointerType === 'touch') return;
-            cancelClose();
-            setHoverOpen(true);
-          }}
-          onPointerLeave={() => {
-            cancelClose();
-            closeTimer.current = setTimeout(() => setHoverOpen(false), 250);
-          }}
-          onFocusCapture={(event) => {
-            if (!isMobile && event.target.matches(':focus-visible')) setFocusOpen(true);
-          }}
-          onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setFocusOpen(false);
-          }}>
+        <div id="app-sidebar-panel" ref={panelRef} className="sidebar-region">
 
           <AppSidebar
-            role={role} pinned={pinned} onToggleCollapse={toggleSidebar}
+            role={role} expanded={isMobile || desktopExpanded} onToggleCollapse={toggleSidebar}
             onNavigate={() => { if (isMobile) closeMobile(); }}
           />
         </div>

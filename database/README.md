@@ -19,12 +19,15 @@ App chỉ chạy được khi đã có đủ bước 2 – 6.
 
 ## Nâng cấp database đang có dữ liệu
 
-Database dựng **sau** ngày 09/10/2026 đã có sẵn mọi thứ. Database dựng trước đó (có dữ liệu, không muốn xóa) nâng cấp bằng các file trong `migrations/`, mỗi file chạy **một lần** theo thứ tự ngày, rồi chạy lại `04_functions.sql` (chạy lại được nhiều lần). Mỗi file chạy lại cũng an toàn và nằm trong một giao dịch.
+Database dựng **sau** ngày 14/10/2026 đã có sẵn mọi thứ. Database dựng trước đó (có dữ liệu, không muốn xóa) nâng cấp bằng các file trong `migrations/`, mỗi file chạy **một lần** theo thứ tự ngày, rồi chạy lại `04_functions.sql` (chạy lại được nhiều lần). Mỗi file chạy lại cũng an toàn và nằm trong một giao dịch.
 
 | File | Làm gì |
 | --- | --- |
 | `migrations/2026-10-09_type_groups_and_part_number_level.sql` | Thêm bảng `type_groups` (4 nhóm ban đầu), cột `types.group_id` (gán nhóm theo `kind` hiện có — không ghi lịch sử, không đổi `updated_at`), cột `part_numbers.level_id` (trống), cho phép `type_groups` trong `configuration_histories`. Dữ liệu cũ giữ nguyên. Kết quả kiểm tra cuối file: `groups = 4` (hoặc hơn), `types_without_group = 0`, `types_with_wrong_kind = 0`, `part_number_level_column = 1` |
 | `migrations/2026-10-09_overview_board.sql` | Bỏ hai hàm của cây Overview cũ (`overview_children`, `overview_unattached_count`) — `04_functions.sql` không còn định nghĩa chúng nhưng `create or replace` không tự xóa khỏi database đang có. **Thứ tự khác các file trên**: chạy lại `04_functions.sql` trước (thêm `overview_board` và `asset_tree`, hai hàm cũ còn nguyên nên app cũ vẫn chạy), triển khai app mới (Overview dạng thẻ; modal Equipment lấy con từ `asset_tree`), **rồi mới** chạy file này — file từ chối chạy nếu thiếu một trong hai hàm mới. Kết quả kiểm tra cuối file: `old_overview_functions = 0`, `overview_board = 1`, `asset_tree = 1` |
+| `migrations/2026-10-14_part_number_description.sql` | Thêm cột `part_numbers.description` (trống) và **xóa** cột `types.description` — **mất mọi mô tả đã nhập ở Type, không khôi phục được** (xuất Configuration › Type ra Excel hoặc backup trước). Chạy file này **trước** khi triển khai app mới; không cần chạy lại `04_functions.sql`. Kết quả kiểm tra cuối file: `part_number_description = 1`, `type_description = 0` |
+| `migrations/2026-10-14_tag_palette.sql` | Thêm mã `purple` để Configuration › Tag có sáu màu pastel, gồm vàng/đỏ. Chuyển những tag mã `yellow` cũ (đang hiển thị tím) sang `purple` một lần, giữ ID, liên kết, timestamps và lịch sử. Chạy file này **trước** app mới; không cần chạy lại `04_functions.sql`. Chạy lại giữ những tag vàng mới. Kiểm tra cuối file: `tag_color_palette` gồm sáu mã, có `purple` |
+| `migrations/2026-10-15_action_id.sql` | Thêm cột `action_id` (uuid, cho phép null) vào `asset_logs`, `configuration_histories`, `user_histories` — **một thao tác của người dùng = một `action_id`**, để "Thay đổi gần đây" gộp một thao tác (Swap, Move kèm con cháu, Check-out, Import…) thành một dòng. Chỉ thêm cột + chỉ mục, không đổi dữ liệu. **Thứ tự**: chạy file này, **rồi chạy lại `04_functions.sql`** (ghi `action_id`, các hàm ghi dữ liệu nhận `p_action_id`, view mới `recent_actions`; chữ ký cũ bị bỏ trong cùng giao dịch), rồi mới triển khai app (app mới vẫn chạy với database chưa nâng cấp, chỉ chưa gộp). Kết quả kiểm tra: `action_id_columns = 3`, và ở cuối `04_functions.sql`: `action_id_functions = 10`, `asset_swap_args = 6`, `views = 3`. Tùy chọn, **chưa chạy**: `migrations/2026-10-15_action_id_backfill_OPTIONAL.sql` gộp các thao tác cũ (cùng người, cùng nguồn, cùng created_at chính xác) — sửa dòng nhật ký nên cần duyệt riêng |
 
 Sau khi dựng xong một project mới, trỏ `.env.local` (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) sang project đó.
 
@@ -75,3 +78,5 @@ Từ admin đầu tiên, mọi tài khoản khác do Admin tạo trong app (User
 ## Kiểm tra
 
 `database/tests/assets.test.mjs` dựng database mới (02 → 03 → 04) trên PGlite rồi kiểm tra từng trigger / hàm, kể cả mọi hàm `p_dry_run = true` (không ghi `asset_logs`, không đổi bảng nào, kết quả khớp lần gọi thật). Chạy: `npm i --no-save @electric-sql/pglite && node database/tests/assets.test.mjs`.
+
+`node database/tests/tag_palette.test.mjs` kiểm tra riêng sáu màu Tag, migration màu tím cũ, chạy lại an toàn, giữ ID/liên kết/timestamps/lịch sử và schema mới (cũng dùng PGlite, không kết nối Supabase).

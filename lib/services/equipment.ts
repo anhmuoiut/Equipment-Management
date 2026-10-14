@@ -159,8 +159,13 @@ type DbTreeRow = {
  * Cây chứa thiết bị này, từ tài sản gốc (đi ngược theo cha) xuống mọi con cháu — cả sub-equipment và golden board
  * (docs/DETAIL_MODEL.md 4.1). Base / Fixture không có cha thì cây bắt đầu từ chính nó. MỘT lần gọi hàm asset_tree.
  */
-export async function equipmentTree(id: string): Promise<EquipmentTree> {
-  const rows = await rpc<DbTreeRow[]>('asset_tree', { p_type: 'equipment', p_id: id }) ?? [];
+export function equipmentTree(id: string): Promise<EquipmentTree> {
+  return assetTree('equipment', id);
+}
+
+/** Cùng cây, hỏi từ bất kỳ tài sản nào của nó (Overview mở cây từ sub-equipment / golden board). */
+export async function assetTree(type: AssetType, id: string): Promise<EquipmentTree> {
+  const rows = await rpc<DbTreeRow[]>('asset_tree', { p_type: type, p_id: id }) ?? [];
   const root = rows.find((r) => r.depth === 0);
   if (!root) throw new AppError('NOT_FOUND');
   const nodes = [...rows].sort((a, b) => a.pos - b.pos).map((r): TreeNode => ({

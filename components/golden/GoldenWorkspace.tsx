@@ -5,7 +5,7 @@ import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapPin, Upload } from 'lucide-react';
 import { useCan } from '@/components/ViewerContext';
-import { RemarkCell, UsageTag } from '@/components/ui/tags';
+import { RemarkCell, TagChips, UsageTag } from '@/components/ui/tags';
 import { ModuleWorkspace, useList } from '@/components/ui/workspace/ModuleWorkspace';
 import { ImportModal } from '@/components/ui/ImportModal';
 import { RowCard, type Column } from '@/components/ui/masterlist/Masterlist';
@@ -40,6 +40,7 @@ export function GoldenWorkspace() {
       lines={[
         <><MapPin size={13} aria-hidden="true" /><span className="rc-place">{r.location ?? '—'}</span>{[r.part_number, r.utd_part_number].filter(Boolean).map((x) => ` · ${x}`)}</>,
         r.purpose,
+        r.tags.length ? <TagChips items={r.tags} /> : null,
       ]}
     />
   ), []);

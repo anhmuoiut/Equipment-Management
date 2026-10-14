@@ -15,7 +15,8 @@
 -- 4. Calibration: tự tính due_date; Calibration Status (view sub_equipment_calibration).
 -- 5. Overview: overview_board() — bảng thẻ theo Location cho trang Overview (mỗi cột một tài sản gốc, tối đa 3 thẻ kể cả thẻ gốc);
 --    asset_tree() — cây đầy đủ chứa một tài sản (tab Cây thiết bị, chip thiết bị con của modal Equipment).
--- 6. Dashboard: view recent_activities (thay đổi gần đây; import gộp một dòng).
+-- 6. Dashboard: view recent_actions (thay đổi gần đây: MỘT thao tác của người dùng = MỘT dòng, gộp theo action_id;
+--    kèm danh sách các bản ghi bị ảnh hưởng). View recent_activities (mỗi nhật ký một dòng, import gộp một dòng) giữ lại để tương thích.
 --
 -- Chạy lại nhiều lần được (create or replace).
 -- =============================================================================
@@ -119,6 +120,16 @@ language sql immutable set search_path = '' as $$
   from (select jsonb_object_keys(coalesce(p_old, '{}'::jsonb) || coalesce(p_new, '{}'::jsonb)) as k) keys
 $$;
 
+-- action_id: mọi dòng nhật ký do CÙNG MỘT thao tác của người dùng ghi ra dùng chung một id (app đặt qua p_action_id của các hàm
+-- bên dưới; hàm tự sinh nếu không truyền). Dòng ghi từ SQL tay không có id (null) và hiện như một thao tác riêng.
+-- Thêm cột ở đây (chạy lại được) để chạy lại file này trên database cũ không lỗi dù chưa chạy migrations/2026-10-15_action_id.sql.
+alter table public.asset_logs add column if not exists action_id uuid;
+alter table public.configuration_histories add column if not exists action_id uuid;
+alter table public.user_histories add column if not exists action_id uuid;
+create index if not exists asset_logs_action_idx on public.asset_logs (action_id) where action_id is not null;
+create index if not exists configuration_histories_action_idx on public.configuration_histories (action_id) where action_id is not null;
+create index if not exists user_histories_action_idx on public.user_histories (action_id) where action_id is not null;
+
 create or replace function public.write_history() returns trigger
 language plpgsql set search_path = '' as $$
 declare
@@ -131,6 +142,7 @@ declare
   v_action  text  := public.ctx('action');
   v_note    text  := public.ctx('note');
   v_source  text  := coalesce(public.ctx('source'), 'ui');
+  v_action_id uuid := public.ctx('action_id')::uuid;
   v_actor   uuid;
   v_label   text;
   v_type    text;
@@ -174,11 +186,11 @@ begin
 
   if v_type is not null then
     insert into public.asset_logs (asset_type, asset_id, label, action, old_value, new_value,
-                                   from_location, to_location, reason, source, user_id)
+                                   from_location, to_location, reason, source, user_id, action_id)
     values (v_type, v_asset, v_label, v_action,
       case when tg_op = 'INSERT' then null else (select jsonb_object_agg(e.key, e.value -> 'old') from jsonb_each(v_changes) e) end,
       case when tg_op = 'DELETE' then null else (select jsonb_object_agg(e.key, e.value -> 'new') from jsonb_each(v_changes) e) end,
-      v_changes -> 'location' ->> 'old', v_changes -> 'location' ->> 'new', v_note, v_source, v_actor);
+      v_changes -> 'location' ->> 'old', v_changes -> 'location' ->> 'new', v_note, v_source, v_actor, v_action_id);
     return null;
   end if;
 
@@ -192,8 +204,8 @@ begin
       v_label := v_row ->> 'display_name';
     end if;
     v_action := case tg_op when 'INSERT' then 'CREATE' when 'DELETE' then 'DELETE' else 'UPDATE' end;
-    insert into public.configuration_histories (table_name, record_id, label, action, changes, note, source, created_by)
-    values (tg_table_name, v_id, v_label, v_action, v_changes, v_note, v_source, v_actor);
+    insert into public.configuration_histories (table_name, record_id, label, action, changes, note, source, created_by, action_id)
+    values (tg_table_name, v_id, v_label, v_action, v_changes, v_note, v_source, v_actor, v_action_id);
 
   -- -------------------------------------------------------------- User profile
   elsif tg_table_name = 'user_profiles' then
@@ -215,8 +227,8 @@ begin
         when 'role' = any (v_keys) then 'ROLE_CHANGE'
         else 'UPDATE' end);
     end if;
-    insert into public.user_histories (user_id, label, action, changes, note, source, created_by)
-    values (v_id, v_label, v_action, v_changes, v_note, v_source, v_actor);
+    insert into public.user_histories (user_id, label, action, changes, note, source, created_by, action_id)
+    values (v_id, v_label, v_action, v_changes, v_note, v_source, v_actor, v_action_id);
   end if;
 
   return null;
@@ -242,6 +254,8 @@ $$;
 --    p_op: 'insert' | 'update' | 'delete'. Chỉ ghi các cột có trong p_data.
 --    Trả về dòng sau khi ghi (delete: dòng trước khi xóa).
 -- =============================================================================
+-- Chữ ký mới thêm p_action_id: bỏ chữ ký cũ (cùng giao dịch với create bên dưới) để không còn hai hàm trùng tên.
+drop function if exists public.app_write(text, text, uuid, jsonb, uuid, text, text, text);
 create or replace function public.app_write(
   p_table  text,
   p_op     text,
@@ -250,7 +264,8 @@ create or replace function public.app_write(
   p_actor  uuid,
   p_action text default null,
   p_note   text default null,
-  p_source text default 'ui'
+  p_source text default 'ui',
+  p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -270,6 +285,7 @@ begin
   end if;
 
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('action', p_action);
   perform public.set_ctx('note', p_note);
   perform public.set_ctx('source', coalesce(p_source, 'ui'));
@@ -536,8 +552,9 @@ $$;
 
 -- Đổi vị trí — chỉ tài sản chưa gắn cha; đang In use thì không đổi được (EQUIPMENT_IN_USE).
 -- Con cháu (cả sub-equipment, golden board) luôn đi theo.
+drop function if exists public.asset_change_location(text, uuid, uuid, uuid, boolean);
 create or replace function public.asset_change_location(
-  p_type text, p_id uuid, p_location_id uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_id uuid, p_location_id uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -546,7 +563,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_change_location(p_type, p_id, p_location_id, p_actor, false);
+      v_result := public.asset_change_location(p_type, p_id, p_location_id, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -556,6 +573,7 @@ begin
   if public.asset_parent(p_type, p_id) is not null then raise exception 'LOCATION_INHERITED_READ_ONLY'; end if;
   if public.asset_usage(p_type, p_id) = 'in_use' then raise exception 'EQUIPMENT_IN_USE'; end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -574,8 +592,9 @@ $$;
 -- Gắn vào cha / đổi cha (Move). LUÔN được (chỉ theo quy tắc cây), kể cả khi đang In use: tài sản lấy vị trí, Level (equipment)
 -- và Usage của cha mới, cả nhánh con đi theo — nên In use → Not in use khi cha mới Not in use (xem usage_changes của kết quả).
 -- Cha mới phải đúng loại (PARENT_TYPE_INVALID); danh sách cha hợp lệ: valid_parents.
+drop function if exists public.asset_move(text, uuid, uuid, uuid, boolean);
 create or replace function public.asset_move(
-  p_type text, p_id uuid, p_parent_id uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_id uuid, p_parent_id uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -586,7 +605,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_move(p_type, p_id, p_parent_id, p_actor, false);
+      v_result := public.asset_move(p_type, p_id, p_parent_id, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -597,6 +616,7 @@ begin
   select location_id, usage into v_loc, v_usage from public.equipment where id = p_parent_id;
   if not found then raise exception 'PARENT_NOT_FOUND'; end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -614,8 +634,9 @@ end;
 $$;
 
 -- Tách khỏi cha — giữ vị trí hiện tại; tài sản (và con cháu) về Not in use. Được cả khi đang In use.
+drop function if exists public.asset_detach(text, uuid, uuid, boolean);
 create or replace function public.asset_detach(
-  p_type text, p_id uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_id uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -624,7 +645,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_detach(p_type, p_id, p_actor, false);
+      v_result := public.asset_detach(p_type, p_id, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -633,6 +654,7 @@ begin
   if not public.asset_lock(p_type, p_id) then raise exception 'NOT_FOUND'; end if;
   if public.asset_parent(p_type, p_id) is null then raise exception 'EQUIPMENT_HAS_NO_PARENT'; end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -653,8 +675,9 @@ $$;
 -- board lấy Usage của cha mới (Not in use nếu cha trống). Con cháu luôn đi theo. Nhật ký mỗi bên một dòng SWAP,
 -- ghi chú swap_with:<SN>. Không thay đổi gì (cùng cha, cùng vị trí) → SWAP_NO_CHANGE.
 -- Danh sách tài sản hợp lệ để swap: swap_candidates.
+drop function if exists public.asset_swap(text, uuid, uuid, uuid, boolean);
 create or replace function public.asset_swap(
-  p_type text, p_a uuid, p_b uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_a uuid, p_b uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -665,7 +688,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_swap(p_type, p_a, p_b, p_actor, false);
+      v_result := public.asset_swap(p_type, p_a, p_b, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -687,6 +710,7 @@ begin
   if a_parent is not distinct from b_parent and a_loc = b_loc then raise exception 'SWAP_NO_CHANGE'; end if;
 
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', 'SWAP');
   perform public.set_ctx('note', 'swap_with:' || b_serial);
@@ -718,8 +742,9 @@ $$;
 -- Xóa tài sản thật (đang In use thì chặn: EQUIPMENT_IN_USE). Con trực tiếp (equipment, sub-equipment, golden board) luôn
 -- được GIỮ và thành chưa gắn: Not in use (cả nhánh của con theo), nhật ký DETACH, ghi chú parent_deleted:<SN>; không tự gắn
 -- lên ông. Lần hiệu chuẩn của sub-equipment xóa theo (nhật ký DELETE đã chụp lại cả dòng).
+drop function if exists public.asset_delete(text, uuid, uuid, boolean);
 create or replace function public.asset_delete(
-  p_type text, p_id uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_id uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -730,7 +755,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_delete(p_type, p_id, p_actor, false);
+      v_result := public.asset_delete(p_type, p_id, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -740,6 +765,7 @@ begin
   if public.asset_usage(p_type, p_id) = 'in_use' then raise exception 'EQUIPMENT_IN_USE'; end if;
   v_serial := public.asset_serial(p_type, p_id);
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', null);
   for r in select c.asset_type as t, c.id as i from public.asset_children(p_type, p_id) c loop
@@ -770,8 +796,9 @@ $$;
 -- giao dịch. Nhật ký: CHECK_OUT / CHECK_IN kèm ghi chú p_note. Không tài sản nào đổi → USAGE_NO_CHANGE.
 -- Check-out RIÊNG một con thì cha phải In use (PARENT_NOT_IN_USE) — trừ khi cha cũng nằm trong lần Check-out này.
 -- (Đây là chỗ duy nhất dùng PARENT_NOT_IN_USE: Move không bị chặn vì In use.)
+drop function if exists public.asset_set_usage(jsonb, text, uuid, text, boolean);
 create or replace function public.asset_set_usage(
-  p_refs jsonb, p_usage text, p_actor uuid, p_note text default null, p_dry_run boolean default false
+  p_refs jsonb, p_usage text, p_actor uuid, p_note text default null, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -784,7 +811,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_set_usage(p_refs, p_usage, p_actor, p_note, false);
+      v_result := public.asset_set_usage(p_refs, p_usage, p_actor, p_note, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -816,6 +843,7 @@ begin
     end loop;
   end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', case p_usage when 'in_use' then 'CHECK_OUT' else 'CHECK_IN' end);
   perform public.set_ctx('note', p_note);
@@ -870,7 +898,8 @@ $$;
 -- equipment: server đặt sẵn id để dòng con trỏ được tới dòng cha trong cùng file (parent_id), và đặt location_id của
 -- dòng con = vị trí của cha. Quy tắc cha–con kiểm tra sau khi cả file đã vào bảng. Server cũng đã quyết usage (Status: theo cha,
 -- hoặc ô Status, hoặc Not in use) và tag_ids; thiếu thì Not in use và không có thẻ (app cũ không gửi hai trường này).
-create or replace function public.equipment_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false) returns jsonb
+drop function if exists public.equipment_import(jsonb, uuid, boolean);
+create or replace function public.equipment_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
   v_marks  uuid[] := public.asset_log_marks();
@@ -878,7 +907,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.equipment_import(p_rows, p_actor, false);
+      v_result := public.equipment_import(p_rows, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -888,6 +917,7 @@ begin
     raise exception 'VALIDATION_ERROR' using detail = 'no rows';
   end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'import');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -901,7 +931,8 @@ begin
 end;
 $$;
 
-create or replace function public.sub_equipment_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false) returns jsonb
+drop function if exists public.sub_equipment_import(jsonb, uuid, boolean);
+create or replace function public.sub_equipment_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
   v_marks  uuid[] := public.asset_log_marks();
@@ -909,7 +940,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.sub_equipment_import(p_rows, p_actor, false);
+      v_result := public.sub_equipment_import(p_rows, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -919,6 +950,7 @@ begin
     raise exception 'VALIDATION_ERROR' using detail = 'no rows';
   end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'import');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -931,7 +963,8 @@ begin
 end;
 $$;
 
-create or replace function public.golden_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false) returns jsonb
+drop function if exists public.golden_import(jsonb, uuid, boolean);
+create or replace function public.golden_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
   v_marks  uuid[] := public.asset_log_marks();
@@ -939,7 +972,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.golden_import(p_rows, p_actor, false);
+      v_result := public.golden_import(p_rows, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -949,6 +982,7 @@ begin
     raise exception 'VALIDATION_ERROR' using detail = 'no rows';
   end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'import');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -1746,6 +1780,65 @@ from (
 
 revoke all on public.recent_activities from public, anon, authenticated;
 grant select on public.recent_activities to service_role;
+
+-- -----------------------------------------------------------------------------
+-- recent_actions — "Thay đổi gần đây" theo THAO TÁC: MỘT thao tác của người dùng = MỘT dòng (tính khi đọc, không lưu).
+--   Gộp các dòng nhật ký có cùng action_id (Swap hai thiết bị = một dòng, Move / Check-out kèm con cháu = một dòng, Import = một dòng).
+--   Dòng cũ chưa có action_id: mỗi dòng là một thao tác riêng, trừ import cũ vẫn gộp theo (module, người import, lần import) như
+--   view recent_activities đã làm. Không đổi, không xóa dữ liệu nhật ký nào.
+--   id          action_id (hoặc id dòng nhật ký / khóa gộp của dòng cũ)
+--   module      module của bản ghi đứng đầu; modules = mọi module trong thao tác (để lọc theo module và phân quyền)
+--   action      mã hành động của bản ghi đứng đầu; source, created_by lấy theo bản ghi đứng đầu; created_at = lúc bắt đầu
+--   item_count  số dòng nhật ký của thao tác; records = các bản ghi bị ảnh hưởng (TỐI ĐA 50 — item_count là tổng thật)
+--   search_text tên / serial của MỌI bản ghi trong thao tác (ngăn bằng chr(31)) — để tìm theo bản ghi nào cũng khớp
+--   Thứ tự bản ghi: bản ghi chính (do người dùng chọn) trước, bản ghi đi theo (note via_parent: / parent_deleted:) sau; trong mỗi nhóm theo
+--   THỨ TỰ GHI (ctid — bảng nhật ký chỉ thêm, không sửa / xóa nên ctid tăng dần theo lúc ghi): Swap hiện "A ⇄ B" đúng thứ tự thao tác, import
+--   liệt kê theo thứ tự dòng trong file.
+-- -----------------------------------------------------------------------------
+create or replace view public.recent_actions with (security_invoker = true) as
+with activity as (
+  select l.asset_type as module, l.asset_id as object_id, l.label, l.action, l.old_value, l.new_value, null::jsonb as changes,
+         l.user_id as created_by, l.created_at, l.reason as note, l.source, l.from_location, l.to_location, l.id as log_id, l.ctid as row_pos,
+         coalesce(l.action_id, case when l.source = 'import'
+           then md5(l.asset_type || ':' || coalesce(l.user_id::text, '') || ':' || l.created_at::text)::uuid else l.id end) as group_id
+  from public.asset_logs l
+  union all
+  select 'configuration', c.record_id, c.label, c.action, null::jsonb, null::jsonb, c.changes,
+         c.created_by, c.created_at, c.note, c.source, null::text, null::text, c.id, c.ctid,
+         coalesce(c.action_id, case when c.source = 'import'
+           then md5('configuration:' || coalesce(c.created_by::text, '') || ':' || c.created_at::text)::uuid else c.id end)
+  from public.configuration_histories c
+  union all
+  select 'user', u.user_id, u.label, u.action, null::jsonb, null::jsonb, u.changes,
+         u.created_by, u.created_at, u.note, u.source, null::text, null::text, u.id, u.ctid,
+         coalesce(u.action_id, case when u.source = 'import'
+           then md5('user:' || coalesce(u.created_by::text, '') || ':' || u.created_at::text)::uuid else u.id end)
+  from public.user_histories u
+), ranked as (
+  select a.*, row_number() over (
+    partition by a.group_id
+    order by (coalesce(a.note ~ '^(via_parent|parent_deleted):', false))::int, a.row_pos, a.log_id) as rn
+  from activity a
+)
+select r.group_id as id,
+       (array_agg(r.module order by r.rn))[1] as module,
+       array_agg(distinct r.module) as modules,
+       (array_agg(r.action order by r.rn))[1] as action,
+       (array_agg(r.source order by r.rn))[1] as source,
+       (array_agg(r.created_by order by r.rn))[1] as created_by,
+       min(r.created_at) as created_at,
+       count(*)::integer as item_count,
+       coalesce(jsonb_agg(jsonb_build_object(
+         'module', r.module, 'object_id', r.object_id, 'label', r.label, 'action', r.action,
+         'changes', coalesce(r.changes, public.asset_log_changes(r.old_value, r.new_value)),
+         'note', r.note, 'from_location', r.from_location, 'to_location', r.to_location
+       ) order by r.rn) filter (where r.rn <= 50), '[]'::jsonb) as records,
+       string_agg(r.label, chr(31) order by r.rn) as search_text
+from ranked r
+group by r.group_id;
+
+revoke all on public.recent_actions from public, anon, authenticated;
+grant select on public.recent_actions to service_role;
 revoke all on public.sub_equipment_calibration from public, anon, authenticated;
 grant select on public.sub_equipment_calibration to service_role;
 
@@ -1763,8 +1856,9 @@ commit;
 --   type_group_triggers = 2 (Type theo nhóm + 3 nhóm hệ thống khóa)
 --   tree_triggers = 3 (quy tắc cha–con) · level_triggers = 2 · usage_rule_triggers = 3 (Usage cần cha)
 --   tag_triggers = 4 · serial_triggers = 3 · calibration_triggers = 2 · user_guard_triggers = 1 (bảo vệ Admin)
---   asset_ops = 6 (hàm thao tác asset_*) · asset_swap_args = 5 · dry_run_functions = 9 (6 asset_* + 3 import)
---   lookup_functions = 3 (valid_parents, swap_candidates, serial_matches) · overview_board = 1 · asset_tree = 1 · views = 2
+--   asset_ops = 6 (hàm thao tác asset_*) · asset_swap_args = 6 (có p_action_id) · dry_run_functions = 9 (6 asset_* + 3 import)
+--   action_id_columns = 3 (asset_logs, configuration_histories, user_histories) · action_id_functions = 10 (app_write + 6 asset_* + 3 import)
+--   lookup_functions = 3 (valid_parents, swap_candidates, serial_matches) · overview_board = 1 · asset_tree = 1 · views = 3
 --   app_write = 1 · equipment_import = 1 · sub_equipment_import = 1 · golden_import = 1
 -- -----------------------------------------------------------------------------
 select
@@ -1801,7 +1895,11 @@ select
   (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = 'asset_tree') as asset_tree,
   (select count(*) from pg_views where schemaname = 'public'
-    and viewname in ('recent_activities', 'sub_equipment_calibration')) as views,
+    and viewname in ('recent_activities', 'recent_actions', 'sub_equipment_calibration')) as views,
+  (select count(*) from information_schema.columns where table_schema = 'public' and column_name = 'action_id'
+    and table_name in ('asset_logs', 'configuration_histories', 'user_histories')) as action_id_columns,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and 'p_action_id' = any (p.proargnames)) as action_id_functions,
   (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = 'app_write') as app_write,
   (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace

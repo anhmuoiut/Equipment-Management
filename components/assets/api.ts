@@ -19,6 +19,8 @@ export const ASSET_ROUTE: Record<AssetType, string> = {
   equipment: '/equipment', sub_equipment: '/calibration', golden_board: '/golden',
 };
 export const assetHref = (type: AssetType, id: string) => `${ASSET_ROUTE[type]}?id=${encodeURIComponent(id)}`;
+/** Cây chứa tài sản: Equipment giữ đường dẫn riêng của nó; sub-equipment / golden board hỏi qua `/api/assets`. */
+export const assetTreeUrl = (type: AssetType, id: string) => (type === 'equipment' ? `/api/equipment/${id}/tree` : `/api/assets/${type}/${id}/tree`);
 
 export type AssetRecord = EquipmentRow | SubEquipmentRow | GoldenRow;
 

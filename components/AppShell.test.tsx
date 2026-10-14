@@ -1,47 +1,46 @@
 ﻿// @vitest-environment jsdom
-import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/components/TopBar', () => ({ TopBar: () => null }));
 vi.mock('@/components/ui', () => ({ ToastViewport: () => null }));
 vi.mock('@/components/ViewerContext', () => ({ ViewerProvider: ({ children }: { children: React.ReactNode }) => children }));
-vi.mock('@/components/layout/AppSidebar', () => ({ AppSidebar: ({ onToggleCollapse }: { onToggleCollapse: () => void }) => <button onClick={onToggleCollapse}>Pin</button> }));
+vi.mock('@/components/layout/AppSidebar', () => ({ AppSidebar: ({ expanded, onToggleCollapse }: { expanded: boolean; onToggleCollapse: () => void }) => <button aria-expanded={expanded} onClick={onToggleCollapse}>{expanded ? 'Collapse' : 'Expand'}</button> }));
 import { AppShell } from './AppShell';
 beforeEach(() => {
-  vi.useFakeTimers();
   localStorage.clear();
   window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); });
 function setup() {
   const view = render(<AppShell userId="1" username="user" fullName="User" role="user">Content</AppShell>);
   return { ...view, shell: view.container.querySelector('.app-shell')!, panel: view.container.querySelector('.sidebar-region')! };
 }
-it('starts collapsed, opens on hover and closes after a short delay', () => {
-  const { shell, panel } = setup();
+it('keeps the sidebar collapsed when the pointer or keyboard focus enters or leaves', () => {
+  const { shell, panel, getByText } = setup();
   expect(shell.getAttribute('data-sidebar-open')).toBe('false');
   fireEvent.pointerEnter(panel);
-  expect(shell.getAttribute('data-sidebar-open')).toBe('true');
+  fireEvent.focus(getByText('Expand'));
+  expect(shell.getAttribute('data-sidebar-open')).toBe('false');
   fireEvent.pointerLeave(panel);
-  act(() => vi.advanceTimersByTime(200));
-  expect(shell.getAttribute('data-sidebar-open')).toBe('true');
-  act(() => vi.advanceTimersByTime(50));
+  fireEvent.blur(getByText('Expand'));
   expect(shell.getAttribute('data-sidebar-open')).toBe('false');
 });
-it('cancels closing when the pointer returns and remembers pinning', () => {
+it('expands and collapses only by click, and remembers both choices after remounting', () => {
   const { shell, panel, getByText, unmount } = setup();
-  fireEvent.pointerEnter(panel);
-  fireEvent.pointerLeave(panel);
-  act(() => vi.advanceTimersByTime(100));
-  fireEvent.pointerEnter(panel);
-  act(() => vi.advanceTimersByTime(300));
+  fireEvent.click(getByText('Expand'));
   expect(shell.getAttribute('data-sidebar-open')).toBe('true');
-  fireEvent.click(getByText('Pin'));
+  fireEvent.pointerEnter(panel);
   fireEvent.pointerLeave(panel);
-  act(() => vi.advanceTimersByTime(300));
   expect(shell.getAttribute('data-sidebar-open')).toBe('true');
   expect(localStorage.getItem('equipment-sidebar-pinned')).toBe('true');
   unmount();
-  expect(setup().shell.getAttribute('data-sidebar-open')).toBe('true');
+  const reopened = setup();
+  expect(reopened.shell.getAttribute('data-sidebar-open')).toBe('true');
+  fireEvent.click(reopened.getByText('Collapse'));
+  expect(reopened.shell.getAttribute('data-sidebar-open')).toBe('false');
+  expect(localStorage.getItem('equipment-sidebar-pinned')).toBe('false');
+  reopened.unmount();
+  expect(setup().shell.getAttribute('data-sidebar-open')).toBe('false');
 });

@@ -67,8 +67,9 @@ export function OverviewPage() {
     if (modalOpen) update(changes, 'replace');
     else { pushedRef.current = true; update(changes, 'push'); }
   }, [modalOpen, update]);
-  function openRelated(id: string) {
-    update({ id, type: urlType, tab: null }, 'replace');
+  /** Nút trong cây / chip cha – con: mở ngay trong modal đang mở, kể cả khi là loại tài sản khác. */
+  function openRelated(relatedType: AssetType, id: string) {
+    update({ id, type: relatedType, tab: null }, 'replace');
   }
   function closeRecord() {
     if (pushedRef.current) { pushedRef.current = false; back(); } else update({ id: null, type: null, tab: null }, 'replace');
@@ -124,7 +125,7 @@ export function OverviewPage() {
       </div>
 
       {modalOpen && urlId && urlType && (
-        <OverviewRecord key={urlType} type={urlType} id={urlId} tab={urlTab} onClose={closeRecord} onChanged={reload} onOpen={openRelated} />
+        <OverviewRecord type={urlType} id={urlId} tab={urlTab} onClose={closeRecord} onChanged={reload} onOpen={openRelated} />
       )}
     </div>
   );

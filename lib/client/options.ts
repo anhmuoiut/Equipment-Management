@@ -27,6 +27,16 @@ function load(force = false): Promise<Options> {
   return inflight;
 }
 
+/**
+ * Danh sách chọn do server đưa sẵn trong layout (`(app)/layout.tsx`): form đầu tiên khỏi phải gọi `/api/options` (2 lần xác thực
+ * cho 0 lần đọc dữ liệu). Chỉ đặt khi chưa có gì — không bao giờ ghi đè bản mới hơn của `refreshOptions()`.
+ */
+export function seedOptions(initial: Options): void {
+  if (cache) return;
+  cache = initial;
+  listeners.forEach((l) => l(initial));
+}
+
 /** Sau khi Configuration đổi dữ liệu gốc: tải lại danh sách chọn cho mọi form. Lỗi → chỗ gọi báo. */
 export async function refreshOptions(): Promise<void> {
   await load(true);

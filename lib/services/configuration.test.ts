@@ -10,6 +10,7 @@ vi.mock('./core/lookups', async (importOriginal) => ({
 }));
 
 import { configList } from '@/lib/configuration';
+import { schemaFor } from '@/app/api/configuration/schema';
 import { createConfig, deleteConfig, listConfig, updateConfig } from './configuration';
 
 const audit = { created_at: '2026-10-01T00:00:00Z', created_by: 'u1', updated_at: '2026-10-01T00:00:00Z', updated_by: null };
@@ -23,13 +24,15 @@ beforeEach(() => {
 describe('listConfig', () => {
   it('Types carry their kind and their Group: the system Types (tester / base / fixture) and the sub-equipment Types the Admin added', async () => {
     m.selectAll.mockResolvedValue([
-      { id: 'type-0', display_name: 'Tester', kind: 'tester', group_id: 'group-0', description: null, sort_order: 0, is_active: true, ...audit },
-      { id: 'type-3', display_name: 'DMM', kind: 'sub_equipment', group_id: 'group-3', description: 'Meter', sort_order: 3, is_active: true, ...audit },
+      { id: 'type-0', display_name: 'Tester', kind: 'tester', group_id: 'group-0', sort_order: 0, is_active: true, ...audit },
+      { id: 'type-3', display_name: 'DMM', kind: 'sub_equipment', group_id: 'group-3', sort_order: 3, is_active: true, ...audit },
     ]);
     const rows = await listConfig(list('types'));
-    expect(rows.map((r) => [r.display_name, r.kind, r.description, r.group_id, r.group])).toEqual([
-      ['Tester', 'tester', null, 'group-0', 'Tester'], ['DMM', 'sub_equipment', 'Meter', 'group-3', 'Sub-equipment'],
+    expect(rows.map((r) => [r.display_name, r.kind, r.group_id, r.group])).toEqual([
+      ['Tester', 'tester', 'group-0', 'Tester'], ['DMM', 'sub_equipment', 'group-3', 'Sub-equipment'],
     ]);
+    // Mô tả nay thuộc Part Number, không còn ở Type.
+    expect(rows[0]).not.toHaveProperty('description');
   });
 
   it('Groups are a plain list with their kind, so the system Groups can be told apart', async () => {
@@ -52,6 +55,14 @@ describe('listConfig', () => {
     expect((await listConfig(list('part-numbers')))[0]).toMatchObject({ level_id: 'level-2', level: '3' });
   });
 
+  it('a part number carries its Description (empty when none was entered)', async () => {
+    m.selectAll.mockResolvedValue([
+      { id: 'pn-0', display_name: 'P12316', type_id: 'type-0', description: 'Unified FT tester', sort_order: 0, is_active: true, ...audit },
+      { id: 'pn-1', display_name: 'P20001', type_id: 'type-1', sort_order: 1, is_active: true, ...audit },
+    ]);
+    expect((await listConfig(list('part-numbers'))).map((r) => r.description)).toEqual(['Unified FT tester', null]);
+  });
+
   it('a calibration Setup is named after its part number', async () => {
     m.selectAll.mockResolvedValue([{ id: 'cc1', part_number_id: 'pn-4', interval_months: 12, warning_days: 30, ...audit }]);
     expect((await listConfig(list('calibration-setup')))[0]).toMatchObject({ display_name: 'DMM-100', interval_months: 12, warning_days: 30 });
@@ -59,6 +70,17 @@ describe('listConfig', () => {
 });
 
 describe('writes', () => {
+  it.each(['yellow', 'red', 'purple'] as const)('accepts %s in the tag create and edit APIs', async (color) => {
+    m.appWrite.mockResolvedValue({ id: 'tg1' });
+    m.selectOne.mockResolvedValue({ id: 'tg1', display_name: 'Custom tag', sort_order: 0, color, ...audit });
+    const payload = schemaFor(list('tags'), 'create').parse({ display_name: 'Custom tag', sort_order: 0, color });
+    expect((await createConfig(list('tags'), payload, 'u1')).color).toBe(color);
+    expect(m.appWrite).toHaveBeenCalledWith('tags', 'insert', null, payload, 'u1');
+    const update = schemaFor(list('tags'), 'update').parse({ color });
+    await updateConfig(list('tags'), 'tg1', update, 'u1');
+    expect(m.appWrite).toHaveBeenCalledWith('tags', 'update', 'tg1', { color }, 'u1');
+  });
+
   it('a new Setup needs a part number that exists and is still in use; the sub-equipment kind is checked by the database', async () => {
     await expect(createConfig(list('calibration-setup'), { interval_months: 12 }, 'u1')).rejects.toMatchObject({ details: { fields: { part_number_id: 'required' } } });
     m.selectOne.mockResolvedValue(null);

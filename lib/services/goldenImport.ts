@@ -13,7 +13,7 @@ import {
   readWorkbook, serialKey, type Entry, type ParentCandidate, type SheetTable, type UploadedFile,
 } from './core/importKit';
 import { allSerials, type ExistingEquipment } from './equipmentImport';
-import { textFor, type Language } from '@/lib/i18n/text';
+import type { Language } from '@/lib/i18n/text';
 import { parentAllowed } from '@/lib/assetTree';
 import { GOLDEN_IMPORT_COLUMNS, type GoldenImportColumnKey } from '@/lib/goldenImport';
 import { IMPORT_MAX_ROWS, type ImportIssue, type ImportReport, type ImportRowReport } from '@/lib/equipmentImport';
@@ -42,19 +42,10 @@ export function goldenImportChoices(lookups: Lookups) {
 }
 
 export async function buildGoldenTemplate(lookups: Lookups, language: Language, now = new Date()): Promise<Buffer> {
-  const t = textFor(language);
   return buildImportTemplate({
     columns: GOLDEN_IMPORT_COLUMNS,
     choices: goldenImportChoices(lookups),
     sheet: DATA_SHEET,
-    guideTitle: t('gimp.tpl.guideTitle'),
-    steps: [
-      t('gimp.tpl.step1', { sheet: DATA_SHEET }), t('imp.tpl.step2'), t('imp.tpl.step3'), t('gimp.tpl.stepParent'),
-      t('gimp.tpl.step4', { max: IMPORT_MAX_ROWS }),
-    ],
-    leadingNotes: (col, tr) => col.key === 'parent_serial' ? [tr('gimp.tpl.parentSerial')]
-      : col.key === 'parent_part_number' ? [tr('imp.tpl.parentPart')] : [],
-    extraRules: (col, tr) => col.key === 'serial_number' ? [tr('imp.tpl.serialDuplicate')] : [],
     lenientLists: ['parent_part_number'],
     language, now,
   });

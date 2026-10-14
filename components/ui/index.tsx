@@ -74,11 +74,6 @@ const ModalContext = createContext<ModalContextValue | null>(null);
 /** Màn hình đang bị che (ví dụ "Hủy bỏ thay đổi?" đang hiện trên form): nút footer của nó tạm ngừng hiện. */
 const SuspendedContext = createContext(false);
 
-/** True khi nằm trong một Modal — popover (SearchableSelect…) khi đó không được mở thêm hộp thoại. */
-export function useInModal(): boolean {
-  return useContext(ModalContext) !== null;
-}
-
 export function ModalSuspend({ suspended, children }: { suspended: boolean; children: ReactNode }) {
   return <SuspendedContext.Provider value={suspended}>{children}</SuspendedContext.Provider>;
 }

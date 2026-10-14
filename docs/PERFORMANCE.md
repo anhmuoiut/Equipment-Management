@@ -35,6 +35,8 @@ Trước đây **mỗi** request đọc lại 9 bảng (Part Number, Location, T
 
 `withActorNames` (tên người thao tác ở tab Lịch sử) dùng lại chính dữ liệu này thay vì đọc thêm `user_profiles`.
 
+Layout `(app)/layout.tsx` đọc `loadLookups()` **song song** với xác thực rồi đưa danh sách chọn (`toOptions`) xuống `AppShell` → `seedOptions` (`lib/client/options.ts`): form đầu tiên của một lần tải trang không còn gọi `/api/options` (trước đây 2 lần xác thực cho 0 lần đọc dữ liệu). Đọc lỗi ở layout thì bỏ qua và form tự gọi `/api/options` như cũ; `refreshOptions()` sau khi Configuration đổi vẫn đi qua API và không bị `seedOptions` ghi đè.
+
 ### 2.4 Truy vấn nhúng thay cho truy vấn nối đuôi
 
 PostgREST cho gửi quan hệ trong **cùng** một truy vấn. Dùng ở:
@@ -60,6 +62,7 @@ Mặc định Node đóng kết nối rảnh sau ~4 s, nên người dùng dừn
 ## 3. Phía trình duyệt
 
 - **GET trùng nhau dùng chung một request** (`lib/client/api.ts`): React StrictMode ở dev chạy mọi effect hai lần, nhiều vùng màn hình có thể cùng mở một URL. Chỉ nhập vào request bắt đầu **sau** lần ghi gần nhất — sau khi lưu, GET mới luôn lấy dữ liệu mới.
+- **Mở Dashboard là một request** (`app/api/dashboard/route.ts`): số liệu kèm trang đầu của "Thay đổi gần đây" (không lọc, 50 dòng, cùng nội dung `/api/dashboard/activities?limit=50`). Lần hiện đầu tiên dùng luôn các dòng đó; đổi bộ lọc / "Xem thêm" (kể cả quay về bộ lọc mặc định sau đó) vẫn gọi `/api/dashboard/activities`.
 - **Danh sách được nhớ khi quay lại trang** (`lib/client/cache.ts`, `useFetch(url, { cache: true })`, dùng bởi `useList`): quay lại một module thì hiện ngay danh sách lần trước trong lúc tải bản mới. Chỉ ở bộ nhớ của tab, **xóa khi đăng nhập / đăng xuất** (đăng xuất → đăng nhập tài khoản khác là chuyển trang mềm). Không dùng cho một bản ghi: chi tiết luôn phải là dữ liệu vừa tải.
 - **Mở một dòng hiện ngay** (`ModuleWorkspace`): modal hiện bằng dòng của danh sách (cùng dạng dữ liệu với chi tiết — các dịch vụ dùng chung một `toRow`), rồi thay bằng bản vừa tải. Tải lỗi thì hiện lỗi như cũ, không để lại dữ liệu cũ trên màn hình.
 - **Masterlist** (`components/ui/masterlist/Masterlist.tsx`): ô tìm kiếm cập nhật ngay còn lọc + vẽ lại chạy sau (`useDeferredValue`); chữ để tìm của mỗi dòng tính **một** lần cho mỗi lần dữ liệu đổi (không phải mỗi lần gõ phím); mỗi dòng là component `memo` nên mở modal / đổi dòng chọn chỉ vẽ lại dòng thật sự đổi; khóa sắp xếp tính một lần cho mỗi dòng; tùy chọn cột không tạo mảng mới khi nội dung giống hệt.

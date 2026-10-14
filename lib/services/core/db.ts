@@ -10,9 +10,33 @@ import 'server-only';
  */
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { AppError, mapRpcError } from '@/lib/errors';
+import { currentActionId } from './actionContext';
 import { invalidateLookups, LOOKUP_TABLES } from './lookupCache';
 
 export const db = supabaseAdmin;
+
+/** Hàm GHI dữ liệu của database có tham số `p_action_id` (04_functions.sql). Hàm tra cứu (valid_parents, asset_tree…) không có. */
+const ACTION_RPCS = new Set([
+  'app_write', 'asset_change_location', 'asset_move', 'asset_detach', 'asset_swap', 'asset_delete', 'asset_set_usage',
+  'equipment_import', 'sub_equipment_import', 'golden_import',
+]);
+
+/**
+ * Database chưa chạy migrations/2026-10-15_action_id.sql + 04_functions.sql thì hàm chưa nhận `p_action_id` (PostgREST: PGRST202).
+ * Khi đó gọi lại KHÔNG kèm id — thao tác vẫn chạy như trước (mỗi dòng nhật ký một dòng ở Thay đổi gần đây) — và nhớ 60 giây để không
+ * thử lại mỗi lần. Chạy xong migration, tối đa 60 giây sau app tự dùng id.
+ */
+let actionIdUnsupportedUntil = 0;
+
+async function callRpc(fn: string, args: Record<string, unknown>) {
+  const actionId = ACTION_RPCS.has(fn) && Date.now() >= actionIdUnsupportedUntil ? currentActionId() : undefined;
+  if (actionId) {
+    const res = await db().rpc(fn, { ...args, p_action_id: actionId });
+    if (res.error?.code !== 'PGRST202') return res;
+    actionIdUnsupportedUntil = Date.now() + 60_000;
+  }
+  return db().rpc(fn, args);
+}
 
 const PAGE = 1000;
 
@@ -43,17 +67,6 @@ export async function selectAll<T>(table: string, columns = '*', order = 'id'): 
   }
 }
 
-/** Đọc các dòng có id trong danh sách (cắt đợt 150 id để URL PostgREST không quá dài). */
-export async function selectIn<T>(table: string, columns: string, ids: readonly string[], column = 'id'): Promise<T[]> {
-  const out: T[] = [];
-  for (let i = 0; i < ids.length; i += 150) {
-    const { data, error } = await db().from(table).select(columns).in(column, ids.slice(i, i + 150));
-    if (error) throw mapRpcError(error);
-    out.push(...((data ?? []) as T[]));
-  }
-  return out;
-}
-
 export async function selectOne<T>(table: string, id: string, columns = '*'): Promise<T | null> {
   const { data, error } = await db().from(table).select(columns).eq('id', id).maybeSingle();
   if (error) throw mapRpcError(error);
@@ -70,7 +83,7 @@ export async function appWrite<T = Record<string, unknown>>(
   actor: string | null,
   options: WriteOptions = {},
 ): Promise<T> {
-  const { data: result, error } = await db().rpc('app_write', {
+  const { data: result, error } = await callRpc('app_write', {
     p_table: table,
     p_op: op,
     p_id: id,
@@ -88,7 +101,7 @@ export async function appWrite<T = Record<string, unknown>>(
 }
 
 export async function rpc<T = unknown>(fn: string, args: Record<string, unknown>): Promise<T> {
-  const { data, error } = await db().rpc(fn, args);
+  const { data, error } = await callRpc(fn, args);
   if (error) throw mapRpcError(error);
   return data as T;
 }

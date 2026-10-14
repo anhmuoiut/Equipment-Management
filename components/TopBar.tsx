@@ -23,7 +23,7 @@ export function TopBar({ username, fullName, sidebarOpen, onToggleSidebar, toggl
       <div className="app-brand">
         <div className="app-brand-row">
           <JabilLogo />
-          <span className="app-brand-title" title="SolarEdge Equipment Management">SolarEdge Equipment Management</span>
+          <span className="app-brand-title" title="Equipment Management">Equipment Management</span>
           {/* Hamburger — mobile only (CSS-hidden from 768px). The sidebar's
               own collapse toggle handles the desktop case; see AppSidebar. */}
           <button ref={toggleRef} type="button" className="sidebar-toggle"

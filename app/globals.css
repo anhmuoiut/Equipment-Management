@@ -30,6 +30,23 @@
   --info-tint: #EAF2FF;
   --neutral: var(--ink-2);
   --neutral-tint: color-mix(in srgb, var(--jabil-prussian) 6%, var(--jabil-white));
+  /* Status tags: exact requested HEX pairs, shared by light/dark and all viewports. */
+  --tag-upcoming-bg: #EAF4FF;
+  --tag-upcoming-ink: #1B66A5;
+  --tag-normal-bg: #E7F5F8;
+  --tag-normal-ink: #176D83;
+  --tag-deactivated-bg: #EEF1F4;
+  --tag-deactivated-ink: #657384;
+  --tag-registration-bg: #F1ECFF;
+  --tag-registration-ink: #7354B5;
+  --tag-online-bg: #E7F7EE;
+  --tag-online-ink: #187A4C;
+  --tag-offline-bg: #F3F4F6;
+  --tag-offline-ink: #576575;
+  --tag-overdue-bg: #FDE9E9;
+  --tag-overdue-ink: #B42332;
+  --tag-due-soon-bg: #FFF3D6;
+  --tag-due-soon-ink: #976300;
   /* 5 màu trạng thái (tags.color, docs/JABIL_UI.md "Status colors"): chấm,
      thanh biểu đồ. Chữ trạng thái dùng --success / --warn / --alert / --info /
      --neutral trên nền -tint. Bộ màu đã kiểm tra mù màu đỏ-lục cho mọi cặp. */
@@ -218,20 +235,9 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 .app-shell {
   /* 240px expanded / 72px rail, 64px header minimum (docs/JABIL_UI.md › Current compact dimensions). */
   --sidebar-width: 240px; --sidebar-rail-width: 72px; --header-height: 64px;
-  /* Shared timing for the sidebar collapse/expand system below — width,
-     labels, nested indent and the collapse chevron all key off the same
-     duration/easing so they read as one motion instead of several
-     independently-timed ones. */
-  --sidebar-duration: 260ms;
-  --sidebar-ease: cubic-bezier(0.4, 0, 0.2, 1);
-  /* Labels fade out late (mostly-through the width shrink) and fade in
-     early-but-not-immediately (once there's room) — see the fade rules
-     near .sidebar-link-label below for why the two directions use
-     different delay/duration splits. */
-  --sidebar-label-out-delay: 150ms;
-  --sidebar-label-out-duration: 110ms;
-  --sidebar-label-in-delay: 90ms;
-  --sidebar-label-in-duration: 170ms;
+  /* CSS fallback until the shared spring controller mounts. */
+  --sidebar-duration: 320ms;
+  --sidebar-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 /* One continuous navy bar across the brand block and the actions, so
    collapsing the sidebar never shows a seam between two headers. */
@@ -242,67 +248,67 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 .app-brand .jabil-logo { width: 112px; color: white; }
 .sidebar-toggle { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; color: white; background: color-mix(in srgb, var(--jabil-white) 4.71%, transparent); border: 1px solid color-mix(in srgb, var(--jabil-white) 21.96%, transparent); border-radius: 8px; }
 .sidebar-toggle:hover { background: color-mix(in srgb, var(--jabil-white) 12.55%, transparent); }
-/* The collapse/expand control now lives on the sidebar itself (a persistent,
-   always-clickable rail), not in the header — the header's own copy is only
-   ever shown on mobile, where the sidebar is an off-canvas drawer with no
-   surface of its own to hold a toggle until it's already open. */
+/* Desktop uses the sidebar footer control; the header toggle opens the phone drawer. */
 .app-brand .sidebar-toggle { display: none; }
 .sidebar-region {
   display: flex; width: var(--sidebar-width); flex-shrink: 0;
   transition: width var(--sidebar-duration) var(--sidebar-ease);
-  will-change: width;
 }
-/* Collapsing now narrows the sidebar to an icon-only rail instead of hiding
-   it outright, so navigation (and the toggle to re-expand) stays reachable
-   with one click instead of disappearing along with the rest of the menu. */
+/* Collapse to a compact rail; desktop names remain visible below the icons. */
 .app-shell[data-sidebar-open='false'] .sidebar-region { width: var(--sidebar-rail-width); }
+/* One progress value keeps the rail and content edge together on every frame. */
+.app-shell[data-sidebar-motion='spring'] .sidebar-region {
+  width: calc(var(--sidebar-rail-width) + (var(--sidebar-width) - var(--sidebar-rail-width)) * var(--sidebar-progress, 0));
+  transition: none;
+}
 .sidebar-backdrop {
   position: fixed; inset: var(--header-height) 0 0; z-index: 40; background: color-mix(in srgb, var(--jabil-prussian) 50.2%, transparent); cursor: default; border: 0;
   opacity: 0; visibility: hidden; pointer-events: none;
-  transition: opacity 220ms var(--sidebar-ease), visibility 0s linear 220ms;
+  transition: opacity var(--sidebar-duration) var(--sidebar-ease), visibility 0s linear var(--sidebar-duration);
 }
 .app-shell[data-mobile-open='true'] .sidebar-backdrop {
   opacity: 1; visibility: visible; pointer-events: auto;
-  transition: opacity 220ms var(--sidebar-ease), visibility 0s linear 0s;
+  transition: opacity var(--sidebar-duration) var(--sidebar-ease), visibility 0s linear 0s;
 }
-.app-sidebar { display: flex; flex-direction: column; width: 100%; background: var(--navy); color: white; padding: 16px 12px 24px; }
-/* Fixed at the same left offset as every .sidebar-link-icon below in both
-   states (the toggle itself must not jump when the rail narrows). */
-.sidebar-collapse-toggle { align-self: flex-start; margin-bottom: 18px; }
+.app-shell[data-sidebar-motion='spring'] .sidebar-backdrop {
+  opacity: var(--sidebar-fx-progress, 0); visibility: var(--sidebar-motion-visibility, hidden); transition: none;
+}
+.app-sidebar { display: flex; flex-direction: column; width: 100%; min-height: 0; background: var(--navy); color: white; padding: 16px 12px 24px; }
+.sidebar-brand-slot, .sidebar-credit-slot { display: grid; flex-shrink: 0; grid-template-rows: 1fr; width: 100%; opacity: 1; visibility: visible;
+  transition: grid-template-rows var(--sidebar-duration) var(--sidebar-ease), opacity 160ms ease-out 100ms, visibility 0s linear; }
+.sidebar-brand-slot[aria-hidden='true'], .sidebar-credit-slot[aria-hidden='true'] { grid-template-rows: 0fr; opacity: 0; visibility: hidden; pointer-events: none;
+  transition: grid-template-rows var(--sidebar-duration) var(--sidebar-ease), opacity 100ms ease-out, visibility 0s linear 100ms; }
+.app-shell[data-sidebar-motion='spring'] :is(.sidebar-brand-slot, .sidebar-credit-slot) {
+  grid-template-rows: var(--sidebar-reveal-track, 0fr); visibility: visible; transition: none;
+}
+.app-shell[data-sidebar-motion='spring'] .sidebar-brand-slot { opacity: clamp(0, calc((var(--sidebar-fx-progress, 0) - .5) * 2), 1); }
+.app-shell[data-sidebar-motion='spring'] .sidebar-credit-slot { opacity: clamp(0, calc((var(--sidebar-fx-progress, 0) - .65) / .35), 1); }
+.sidebar-reveal { min-height: 0; overflow: hidden; }
+.sidebar-brand { width: 172px; margin: 0 auto 12px; padding: 8px 12px; border-radius: 7px; background: var(--jabil-white); }
+.sidebar-brand img { display: block; width: 100%; height: auto; }
+.sidebar-footer { display: flex; flex-direction: column; flex-shrink: 0; align-items: center; justify-content: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--on-brand-active-border); }
+.sidebar-credit { width: 192px; margin: 0 auto 8px; color: color-mix(in srgb, var(--jabil-white) 75%, var(--jabil-prussian)); font-size: 11px; line-height: 16px; text-align: center; white-space: nowrap; }
+.sidebar-collapse-toggle { margin: 0; transition: transform 100ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out; }
+.sidebar-collapse-toggle:hover { border-color: color-mix(in srgb, var(--jabil-white) 42%, transparent); }
+.sidebar-collapse-toggle:active { transform: scale(.92); }
 .sidebar-collapse-toggle svg { transition: transform var(--sidebar-duration) var(--sidebar-ease); }
-.app-shell[data-sidebar-open='false'] .sidebar-collapse-toggle svg { transform: rotate(180deg); }
+.sidebar-collapse-toggle[aria-expanded='true'] svg { transform: rotate(180deg); }
+.app-shell[data-sidebar-motion='spring'] .sidebar-collapse-toggle svg { transform: rotate(calc(180deg * var(--sidebar-progress, 0))); transition: none; }
 /* minmax(0, 1fr): an `auto` column grows to the widest link's unbreakable
    label, pushing every link past the sidebar edge; bounded, a long label
    (e.g. Vietnamese) truncates with an ellipsis and its title shows it all. */
-.app-sidebar nav { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
-/* Icon lives in a fixed-width column (.sidebar-link-icon) at a constant
-   left offset — padding never changes between expanded/collapsed, so the
-   icon's x-position is pixel-identical in both states. Only the
-   label column's own opacity/width animates away next to it. */
+.app-sidebar nav { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--space-1); flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+/* Expanded links use an icon beside the name; the compact desktop rail stacks them. */
 .sidebar-link { display: flex; align-items: center; gap: var(--space-2); min-height: 48px; padding: var(--space-3); border-radius: var(--radius-control); font-size: 13px; color: color-mix(in srgb, var(--jabil-picton) 7%, var(--jabil-white)); border: 1px solid transparent; border-left: 3px solid transparent; }
 .sidebar-link-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; }
 .sidebar-link-icon svg { flex-shrink: 0; }
 .sidebar-link:hover { background: color-mix(in srgb, var(--jabil-white) 4.71%, transparent); }
 .sidebar-link[aria-current='page'] { color: white; background: color-mix(in srgb, var(--jabil-white) 7.06%, transparent); border-color: color-mix(in srgb, var(--jabil-white) 12.55%, transparent); border-left-color: var(--jabil-picton); font-weight: 500; }
-/* Collapsed rail: icons only — the accessible name moves to aria-label
-   (always set) and a hover title, so nothing is lost for anyone, just not
-   shown at 72px wide. The label fades out and only leaves the accessibility
-   tree once the width shrink is nearly finished (opacity starts at
-   --sidebar-label-out-delay, visibility flips at the very end), rather than
-   vanishing the instant the toggle is pressed. */
+/* Labels stay visible in both desktop states. Full names also remain in link titles. */
 .sidebar-link-label {
-  display: inline-block; white-space: nowrap; overflow: hidden;
-  opacity: 1; visibility: visible; transform: translateX(0);
-  transition: opacity var(--sidebar-label-in-duration) var(--sidebar-ease) var(--sidebar-label-in-delay),
-              transform var(--sidebar-label-in-duration) var(--sidebar-ease) var(--sidebar-label-in-delay),
-              visibility 0s linear 0s;
+  display: inline-block; min-width: 0; white-space: nowrap; overflow: hidden;
 }
-.app-shell[data-sidebar-open='false'] .sidebar-link-label {
-  opacity: 0; visibility: hidden; transform: translateX(-6px); pointer-events: none;
-  transition: opacity var(--sidebar-label-out-duration) var(--sidebar-ease) var(--sidebar-label-out-delay),
-              transform var(--sidebar-label-out-duration) var(--sidebar-ease) var(--sidebar-label-out-delay),
-              visibility 0s linear var(--sidebar-duration);
-}
+.sidebar-link-compact-label { display: none; }
 /* A rule separates the workspace items from the admin-only ones
    (Configuration, User Management). */
 .sidebar-divider { flex-shrink: 0; height: 1px; margin: var(--space-3) var(--space-2); background: var(--on-brand-active-border); }
@@ -346,7 +352,7 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 /* Sidebar owns its own scroll region too, independent of content — so a
    sidebar that ever grows taller than the viewport scrolls itself instead
    of pushing the toggle/footer note off-screen or scrolling the page. */
-.sidebar-region { overflow-y: auto; }
+.sidebar-region { overflow: hidden; }
 /* PageHeading — one shared heading for every page (Dashboard, every
    Masterlist). Exactly one h1 per page. */
 .page-heading { display: flex; justify-content: space-between; gap: var(--space-5); align-items: center; margin-bottom: var(--space-6); }
@@ -432,6 +438,11 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
      header keeps a hamburger here instead. */
   .app-brand .sidebar-toggle { display: grid; }
   .sidebar-collapse-toggle { display: none; }
+  /* Phone branding stays in place while the whole drawer slides. Only the menu scrolls. */
+  .app-shell .app-sidebar :is(.sidebar-brand-slot, .sidebar-credit-slot) {
+    grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: none;
+  }
+  .sidebar-credit { margin-bottom: 0; }
   .sidebar-toggle, .theme-switch { min-height: 44px; }
   /* Off-canvas drawer: always mounted so both directions can
      animate (a conditionally-rendered node has no exit transition), slides
@@ -448,12 +459,16 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
     position: fixed; top: var(--header-height); left: 0; bottom: 0; z-index: 50; overflow-y: auto;
     box-shadow: 8px 0 24px color-mix(in srgb, var(--jabil-prussian) 18.82%, transparent); width: var(--sidebar-width);
     transform: translateX(-100%); visibility: hidden;
-    transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 250ms;
+    transition: transform var(--sidebar-duration) var(--sidebar-ease), visibility 0s linear var(--sidebar-duration);
   }
   .app-shell[data-mobile-open='true'] .sidebar-region,
   .app-shell[data-mobile-open='true'][data-sidebar-open='false'] .sidebar-region {
     transform: translateX(0); visibility: visible;
-    transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0s;
+    transition: transform var(--sidebar-duration) var(--sidebar-ease), visibility 0s linear 0s;
+  }
+  .app-shell[data-sidebar-motion='spring'] .sidebar-region {
+    width: var(--sidebar-width); transform: translateX(calc(-100% + 100% * var(--sidebar-progress, 0)));
+    visibility: var(--sidebar-motion-visibility, hidden); transition: none;
   }
   /* Every modal size is full screen on a phone: no rounded corners, no dimmed backdrop, fixed header and footer, only the body scrolls. */
   .modal-overlay { padding: 0; align-items: stretch; }
@@ -507,10 +522,7 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 }
 @keyframes sheet-in { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  /* transition-delay also zeroed — several sidebar transitions above stage
-     their fade behind a delay (see --sidebar-label-out-delay etc.), which
-     without this would still leave a visible pause before an otherwise
-     instant change. */
+  /* Remove staged transition delays as well as motion. */
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; transition-delay: 0ms !important; }
 }
 

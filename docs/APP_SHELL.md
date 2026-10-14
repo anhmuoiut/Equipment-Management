@@ -1,6 +1,6 @@
 # Khung sườn ứng dụng (App Shell)
 
-Cập nhật: 09/10/2026. Code — menu: [components/layout/AppSidebar.tsx](../components/layout/AppSidebar.tsx); danh sách con Configuration: [components/configuration/ConfigNav.tsx](../components/configuration/ConfigNav.tsx); route: `app/(app)/…`.
+Cập nhật: 14/10/2026. Code — menu: [components/layout/AppSidebar.tsx](../components/layout/AppSidebar.tsx); danh sách con Configuration: [components/configuration/ConfigNav.tsx](../components/configuration/ConfigNav.tsx); route: `app/(app)/…`.
 
 Khung gồm top bar, sidebar (thu gọn được, thành ngăn kéo trên điện thoại), sáng / tối và ngôn ngữ. Nội dung trong từng trang theo [DETAIL_MODEL.md](DETAIL_MODEL.md) (Masterlist full chiều rộng + Detail Modal); dữ liệu theo [DATABASE_MODIFIED.md](DATABASE_MODIFIED.md); màu, font, kích thước theo [JABIL_UI.md](JABIL_UI.md).
 
@@ -28,13 +28,19 @@ Bảy mục, **một cấp duy nhất**, đúng thứ tự:
 
 | Phần | Quy tắc |
 | --- | --- |
-| Top bar | Logo Jabil + **SolarEdge Equipment Management** bên trái (một dòng); bên phải: ngôn ngữ + sáng / tối · menu tài khoản. Điện thoại: chỉ còn `☰` · thương hiệu · tài khoản (nút tròn, không mũi tên); **ngôn ngữ và sáng / tối nằm trong menu tài khoản** (English ✓ / Tiếng Việt, Chuyển sang chế độ tối) |
-| Sidebar | Nền Prussian, mục đang chọn màu Picton; nút thu gọn ở đầu sidebar (còn icon, rê chuột hiện tên, ghi nhớ lựa chọn). Sidebar chỉ có các mục menu: không có chữ chú thích phía trên và không có dòng trạng thái / ghi chú phía dưới |
-| Điện thoại / màn hẹp (dưới 768px — ngưỡng duy nhất của cả giao diện) | Sidebar ẩn, nút `☰` trên top bar mở sidebar phủ lên nội dung, chọn menu xong tự đóng. Ngăn kéo chỉ có bảy mục. |
+| Top bar | Logo Jabil + **Equipment Management** bên trái (một dòng); bên phải: ngôn ngữ + sáng / tối · menu tài khoản. Điện thoại: chỉ còn `☰` · thương hiệu · tài khoản (nút tròn, không mũi tên); **ngôn ngữ và sáng / tối nằm trong menu tài khoản** (English ✓ / Tiếng Việt, Chuyển sang chế độ tối) |
+| Sidebar | Nền Prussian, mục đang chọn màu Picton. Desktop chỉ mở rộng / thu gọn khi bấm nút ở footer: `>>` để mở, `<<` để thu gọn; rê chuột, rời chuột và focus không đổi chiều rộng. Ghi nhớ lựa chọn. Khi thu gọn, rail rộng 96px, tên menu hiện dưới icon, căn giữa và xuống dòng nếu dài; khi mở rộng, tên nằm cạnh icon. Menu cuộn riêng để footer luôn nhìn thấy trên màn hình thấp. Phone dùng nút `☰` trên top bar, hiện logo SolarEdge ở đầu ngăn kéo và credit tác giả ở footer; ẩn nút thu gọn desktop. Không có dòng trạng thái hệ thống trang trí |
+| Điện thoại / màn hẹp (dưới 768px — ngưỡng duy nhất của cả giao diện) | Sidebar ẩn, nút `☰` trên top bar mở sidebar phủ lên nội dung, chọn menu xong tự đóng. Ngăn kéo có logo SolarEdge, bảy mục theo quyền và credit ở cuối; menu cuộn riêng, giữ logo và footer nhìn thấy. |
 | Tiêu đề trang | Nằm trong nội dung trang, không lặp lại trên top bar |
 | Kích thước | Theo bảng "Current compact dimensions" trong [JABIL_UI.md](JABIL_UI.md) |
 
 Không có cấp menu thứ hai trong sidebar.
+
+Sidebar desktop đang mở rộng và ngăn kéo phone hiện logo [SolarEdge](../public/Icon/solaredge-logo.svg) ở phía trên menu, trên nền trắng để giữ rõ phần chữ đen/đỏ của SVG gốc. Logo chỉ ẩn khi thu gọn trên desktop; lựa chọn desktop không ảnh hưởng logo trên phone.
+
+Footer khi sidebar desktop mở rộng hiện **Developed by Man Tran8118**, chữ 11px căn giữa phía trên nút thu gọn. Ngăn kéo phone hiện cùng dòng chữ ở footer, có khoảng đệm safe area và không có nút thu gọn desktop. Giữ nguyên dòng chữ này trong cả EN/VI; chỉ ẩn khi thu gọn trên desktop.
+
+Chuyển trạng thái dùng spring chung cho chiều rộng, chiều cao dòng menu, vị trí icon và mũi tên footer; mở có nhịp dừng nhẹ, đóng nhanh hơn. Hai cách đặt tên menu chuyển bằng fade tuần tự, không đổi layout chữ đột ngột. Logo/credit giữ trong DOM để đóng/mở mượt và dùng `aria-hidden` khi ẩn trên desktop. Trên phone, logo và footer giữ nguyên kích thước và trượt cùng ngăn kéo. Bấm liên tiếp giữ đà chuyển động và dừng ở lựa chọn cuối; chế độ giảm chuyển động bỏ hiệu ứng. Nhịp CSS 320ms chỉ là fallback trước khi controller hoạt động.
 
 ---
 

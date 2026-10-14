@@ -8,7 +8,7 @@ import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CornerDownRight, ListTree, MapPin, Upload } from 'lucide-react';
 import { useCan } from '@/components/ViewerContext';
-import { RemarkCell, UsageTag } from '@/components/ui/tags';
+import { RemarkCell, TagChips, UsageTag } from '@/components/ui/tags';
 import { ModuleWorkspace, useList } from '@/components/ui/workspace/ModuleWorkspace';
 import { ImportModal } from '@/components/ui/ImportModal';
 import type { Column } from '@/components/ui/masterlist/Masterlist';
@@ -55,9 +55,9 @@ export function EquipmentWorkspace() {
         <span className="rc-asset-location" title={r.location ?? undefined}><MapPin size={14} aria-hidden="true" /><span>{r.location ?? '—'}</span></span>
         <span className="rc-asset-serial" title={r.serial_number}>{r.serial_number}</span>
       </span>
-      <span className="sr-only">{t('fields.usage')}: {t(`values.${r.usage}`)}</span>
+      <span className="rc-statuses"><UsageTag usage={r.usage} /><TagChips items={r.tags} /></span>
     </>
-  ), [t]);
+  ), []);
 
   const leading = useMemo(() => (
     { label: t('eq.relation'), header: <ListTree size={14} aria-hidden="true" />, render: relation }

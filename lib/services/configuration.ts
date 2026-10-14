@@ -33,9 +33,9 @@ function toRow(list: ConfigListDef, r: DbRow, lookups: Lookups): ConfigRow {
     ...auditOf(lookups, r),
   };
   // Types: kind cho biết loại hệ thống (tester / base / fixture — khóa) hay loại sub-equipment do Admin thêm; group = nhóm (kind theo nhóm).
-  if (list.hasDescription) {
+  if (list.hasGroup) {
     return {
-      ...base, description: (r.description as string | null) ?? null, kind: r.kind as TypeKind,
+      ...base, kind: r.kind as TypeKind,
       group_id: r.group_id as string, group: nameOf(lookups.type_groups, r.group_id as string),
     };
   }
@@ -46,6 +46,7 @@ function toRow(list: ConfigListDef, r: DbRow, lookups: Lookups): ConfigRow {
     return {
       ...base, type_id: r.type_id as string, type: nameOf(lookups.types, r.type_id as string),
       level_id: levelId, level: nameOf(lookups.levels, levelId),
+      description: (r.description as string | null | undefined) ?? null,
     };
   }
   if (list.isTag) return { ...base, color: (r.color as ConfigRow['color']) ?? 'gray' };

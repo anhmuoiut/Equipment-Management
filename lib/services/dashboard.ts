@@ -12,11 +12,12 @@ import { mapRpcError } from '@/lib/errors';
 import { CALIBRATION_STATUSES, CALIBRATION_STATUS_COLOR, USAGE_STATUSES, USAGE_STATUS_COLOR } from '@/lib/status';
 import type { Role } from '@/lib/permissions';
 import type {
-  AssetType, CalibrationAlert, CalibrationStatus, CountItem, DashboardData, HistoryModule, RecentActivity, StatusColor,
+  ActionRecord, AssetType, CalibrationAlert, CalibrationStatus, CountItem, DashboardData, HistoryModule, RecentAction, StatusColor,
   StatusCountItem, Usage,
 } from '@/lib/types';
 
-type Basic = { usage: Usage; location_id: string; tag_ids: string[] | null };
+/** `type_id` chỉ có ở equipment / sub-equipment — golden board không có Type. */
+type Basic = { usage: Usage; location_id: string; tag_ids: string[] | null; type_id?: string | null };
 type DbSub = Basic & {
   id: string; serial_number: string; part_number_id: string; type_id: string; tester_id: string | null; tester: { serial_number: string } | null;
 };
@@ -50,6 +51,9 @@ export async function getDashboard(): Promise<DashboardData> {
   ]);
 
   const statusOf = new Map(statuses.map((s) => [s.sub_equipment_id, s]));
+  // MỘT nguồn cho mọi con số hiệu chuẩn: Calibration Status của từng sub-equipment được tính đúng một lần ở đây, rồi cả số đếm theo
+  // Status lẫn hai danh sách Quá hạn / Sắp đến hạn (và các KPI) đều lấy từ nó — không thể lệch nhau.
+  const statusFor = (s: DbSub): CalibrationStatus => statusOf.get(s.id)?.status ?? 'not_calibrated';
 
   const alert = (s: DbSub, status: CalibrationStatus, due: string | null): CalibrationAlert => ({
     id: s.id, serial_number: s.serial_number, part_number: nameOf(lookups.part_numbers, s.part_number_id),
@@ -57,25 +61,27 @@ export async function getDashboard(): Promise<DashboardData> {
     location: nameOf(lookups.locations, s.location_id), due_date: due, status,
   });
   const alerts = (which: CalibrationStatus) => subs
-    .filter((s) => statusOf.get(s.id)?.status === which)
+    .filter((s) => statusFor(s) === which)
     .map((s) => alert(s, which, statusOf.get(s.id)?.due_date ?? null))
     .sort(byDue);
 
   const usage = (rows: Basic[]) => countByStatus(USAGE_STATUSES, USAGE_STATUS_COLOR, rows.map((r) => r.usage));
-  const all = [...equipment, ...subs, ...golden];
-  const tagCounts = countBy(all.flatMap((r) => r.tag_ids ?? []), (id) => (id ? lookups.tags.get(id)?.display_name ?? null : null))
-    .filter((t) => t.label !== null);
+  // Location / Type / Tag cùng một phạm vi: TẤT CẢ tài sản (Equipment + Sub-equipment + Golden board), mỗi tài sản đếm một lần.
+  // Tài sản không có Type (golden board) và tài sản chưa gắn thẻ có dòng riêng (id = null) để tổng các dòng luôn bằng tổng tài sản.
+  const all: Basic[] = [...equipment, ...subs, ...golden];
+  const tagsOf = (r: Basic) => (r.tag_ids ?? []).filter((id) => lookups.tags.has(id));
+  const tagCounts = countBy(all.flatMap(tagsOf), (id) => (id ? lookups.tags.get(id)?.display_name ?? null : null));
+  const untagged = all.filter((r) => tagsOf(r).length === 0).length;
 
   return {
     equipment_total: equipment.length,
     sub_equipment_total: subs.length,
     golden_total: golden.length,
     by_usage: { equipment: usage(equipment), sub_equipment: usage(subs), golden_board: usage(golden) } satisfies Record<AssetType, StatusCountItem[]>,
-    by_calibration_status: countByStatus(
-      CALIBRATION_STATUSES, CALIBRATION_STATUS_COLOR, subs.map((s) => statusOf.get(s.id)?.status ?? 'not_calibrated')),
-    by_tag: tagCounts,
+    by_calibration_status: countByStatus(CALIBRATION_STATUSES, CALIBRATION_STATUS_COLOR, subs.map(statusFor)),
+    by_tag: (untagged > 0 ? [...tagCounts, { id: null, label: null, count: untagged }] : tagCounts).sort((a, b) => b.count - a.count),
     by_location: countBy(all.map((r) => r.location_id), (id) => nameOf(lookups.locations, id)),
-    by_type: countBy([...equipment, ...subs].map((r) => r.type_id), (id) => nameOf(lookups.types, id)),
+    by_type: countBy(all.map((r) => r.type_id ?? null), (id) => nameOf(lookups.types, id)),
     overdue: alerts('overdue'),
     due_soon: alerts('due_soon'),
   };
@@ -83,21 +89,54 @@ export async function getDashboard(): Promise<DashboardData> {
 
 export type ActivityFilter = { module?: HistoryModule; userId?: string; search?: string; from?: string; to?: string; limit?: number };
 
-/** Thay đổi gần đây (view recent_activities; một lần import = một dòng). Configuration / User chỉ Admin thấy. */
-export async function recentActivities(role: Role, filter: ActivityFilter): Promise<RecentActivity[]> {
+const ASSET_MODULES: HistoryModule[] = ['equipment', 'sub_equipment', 'golden_board'];
+/** % _ \ trong chữ gõ vào là ký tự thường (ilike). */
+const likePattern = (text: string) => `%${text.replace(/[\\%_]/g, '\\$&')}%`;
+
+/**
+ * Thay đổi gần đây, MỘT thao tác của người dùng = MỘT dòng (view recent_actions, gộp theo action_id). Mọi bộ lọc và giới hạn tính trên
+ * THAO TÁC đã gộp, không phải dòng nhật ký: module = thao tác có chạm bản ghi của module đó; tìm chữ = khớp tên / serial của BẤT KỲ bản
+ * ghi nào trong thao tác. Configuration / User chỉ Admin thấy.
+ */
+export async function recentActivities(role: Role, filter: ActivityFilter): Promise<RecentAction[]> {
+  const limit = Math.min(Math.max(filter.limit ?? 50, 1), 500);
+  let query = db().from('recent_actions')
+    .select('id, module, modules, action, source, created_by, created_at, item_count, records')
+    .order('created_at', { ascending: false }).order('id')
+    .limit(limit);
+  if (role !== 'admin') query = query.containedBy('modules', ASSET_MODULES);
+  if (filter.module) query = query.contains('modules', [filter.module]);
+  if (filter.userId) query = query.eq('created_by', filter.userId);
+  if (filter.search) query = query.ilike('search_text', likePattern(filter.search));
+  if (filter.from) query = query.gte('created_at', filter.from);
+  if (filter.to) query = query.lte('created_at', filter.to);
+  const { data, error } = await query;
+  // View recent_actions chưa có (chưa chạy 04_functions.sql mới): dùng view cũ, mỗi dòng nhật ký là một thao tác.
+  if (error && (error.code === '42P01' || error.code === 'PGRST205')) return legacyActivities(role, filter, limit);
+  if (error) throw mapRpcError(error);
+  return withActorNames((data ?? []) as Omit<RecentAction, 'created_by_name'>[]);
+}
+
+/** Cách cũ (view recent_activities: mỗi nhật ký một dòng, import gộp một dòng) — chỉ để app chạy được trước khi database có view mới. */
+async function legacyActivities(role: Role, filter: ActivityFilter, limit: number): Promise<RecentAction[]> {
   let query = db().from('recent_activities')
     .select('module, object_id, label, action, changes, created_by, created_at, note, source, item_count')
     .order('created_at', { ascending: false })
-    .limit(Math.min(Math.max(filter.limit ?? 50, 1), 500));
-  if (role !== 'admin') query = query.in('module', ['equipment', 'sub_equipment', 'golden_board']);
+    .limit(limit);
+  if (role !== 'admin') query = query.in('module', ASSET_MODULES);
   if (filter.module) query = query.eq('module', filter.module);
   if (filter.userId) query = query.eq('created_by', filter.userId);
-  // Tìm theo tên / serial (label), không phân biệt hoa thường; % _ trong chữ gõ vào là ký tự thường.
-  if (filter.search) query = query.ilike('label', `%${filter.search.replace(/[\\%_]/g, '\\$&')}%`);
+  if (filter.search) query = query.ilike('label', likePattern(filter.search));
   if (filter.from) query = query.gte('created_at', filter.from);
   if (filter.to) query = query.lte('created_at', filter.to);
   const { data, error } = await query;
   if (error) throw mapRpcError(error);
-  const rows = await withActorNames((data ?? []) as Omit<RecentActivity, 'created_by_name' | 'id'>[]);
-  return rows.map((r, i) => ({ ...r, id: `${r.object_id}-${r.created_at}-${i}` }));
+  type Legacy = Omit<ActionRecord, 'from_location' | 'to_location'> & { created_by: string | null; created_at: string; source: string; item_count: number };
+  const rows = await withActorNames((data ?? []) as Legacy[]);
+  return rows.map((r, i) => ({
+    id: `${r.object_id}-${r.created_at}-${i}`, module: r.module, modules: [r.module], action: r.action, source: r.source,
+    created_by: r.created_by, created_by_name: r.created_by_name, created_at: r.created_at, item_count: r.item_count,
+    // Một lần import cũ chỉ có một dòng đại diện: không liệt kê (như trước).
+    records: r.item_count > 1 ? [] : [{ module: r.module, object_id: r.object_id, label: r.label, action: r.action, changes: r.changes, note: r.note }],
+  }));
 }
