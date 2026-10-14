@@ -403,6 +403,26 @@ check('swap fixtures: the golden boards follow their fixture (location + usage)'
   && (await gold(gB)).location_id === L.L1 && (await gold(gB)).usage === 'in_use');
 check('swap is logged SWAP on both sides with swap_with, and usage_changes lists the 4 assets that changed Status',
   (await lastLog('equipment', fA)).reason === 'swap_with:SW-FB' && (await lastLog('equipment', fB)).reason === 'swap_with:SW-FA' && sw.usage_changes.length === 4, JSON.stringify(sw.usage_changes));
+// Dashboard "Recent changes": ONE swap — both SWAP rows AND what travelled with them (the golden boards) — is ONE recent_actions line.
+{
+  const lineHolding = (label) => q(`select a.item_count, a.modules, jsonb_array_length(a.records) as shown from public.recent_actions a
+    where exists (select 1 from jsonb_array_elements(a.records) r where r ->> 'label' = $1 and r ->> 'action' = 'SWAP')`, [label]);
+  const [lineA, lineB] = [await lineHolding('SW-FA'), await lineHolding('SW-FB')];
+  const written = Number((await one(`select count(*) as n from public.asset_logs where action_id = (
+    select action_id from public.asset_logs where asset_id = $1 and action = 'SWAP' order by created_at desc limit 1)`, [fA])).n);
+  check('one swap = ONE Dashboard line that holds both SWAP records (not one line per log row)',
+    lineA.length === 1 && lineB.length === 1 && JSON.stringify(lineA) === JSON.stringify(lineB), JSON.stringify([lineA, lineB]));
+  check('…its item_count is every log row the swap wrote, and it lists them all (golden boards included)',
+    written >= 4 && Number(lineA[0].item_count) === written && lineA[0].shown === written && lineA[0].modules.includes('equipment') && lineA[0].modules.includes('golden_board'),
+    `written ${written} · ${JSON.stringify(lineA)}`);
+
+  // Several database calls of ONE user action (a form save = update + move …) share the id the app passes down.
+  const actionId = (await one(`select gen_random_uuid() as id`)).id;
+  const edit = (id, remark) => one(`select public.app_write('equipment', 'update', $1, $2::jsonb, $3, null, null, 'ui', $4) as r`, [id, JSON.stringify({ remark }), actor, actionId]);
+  await edit(fA, 'saved together'); await edit(fB, 'saved together');
+  const shared = await q(`select item_count, jsonb_array_length(records) as shown from public.recent_actions where id = $1::uuid`, [actionId]);
+  check('two writes carrying the same p_action_id are ONE Dashboard line with two records', shared.length === 1 && Number(shared[0].item_count) === 2 && shared[0].shown === 2, JSON.stringify(shared));
+}
 await expectError('swap fixture with base → SWAP_TYPE_MISMATCH', rpc('asset_swap', ['equipment', fA, bA, actor]), 'SWAP_TYPE_MISMATCH');
 await expectError('swap with itself → VALIDATION_ERROR', rpc('asset_swap', ['equipment', fA, fA, actor]), 'VALIDATION_ERROR');
 await expectError('swap with an unknown asset → NOT_FOUND', rpc('asset_swap', ['equipment', fA, '00000000-0000-0000-0000-000000000000', actor]), 'NOT_FOUND');
