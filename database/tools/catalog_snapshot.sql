@@ -25,7 +25,7 @@ select jsonb_build_object(
   'functions', (
     select jsonb_agg(jsonb_build_object('signature', p.oid::regprocedure::text, 'returns', pg_get_function_result(p.oid),
                                         'security_definer', p.prosecdef, 'config', p.proconfig, 'acl', p.proacl::text,
-                                        'owner', pg_get_userbyid(p.proowner), 'body_md5', md5(pg_get_functiondef(p.oid)))
+                                        'owner', pg_get_userbyid(p.proowner), 'body_md5', md5(replace(pg_get_functiondef(p.oid), chr(13), '')))
                      order by p.oid::regprocedure::text)
     from pg_proc p
     where p.pronamespace = 'public'::regnamespace
