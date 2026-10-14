@@ -127,8 +127,8 @@ describe('Swap screen', () => {
     vi.mocked(api.post).mockResolvedValue({ data: result({ count: 2 }), meta: {} });
     const ctx = await pick();
     expect(api.post).toHaveBeenCalledWith('/api/assets/equipment/e1/swap', { other_id: 'e2', dry_run: true });
-    await waitFor(() => expect((button('eq.swap') as HTMLButtonElement).disabled).toBe(false));
-    await click(button('eq.swap'));
+    await waitFor(() => expect((button('swap.title') as HTMLButtonElement).disabled).toBe(false));
+    await click(button('swap.title'));
     expect(api.post).toHaveBeenLastCalledWith('/api/assets/equipment/e1/swap', { other_id: 'e2' });
     expect(ctx.done).toHaveBeenCalledWith(undefined, 'eq.swapped');
   });
@@ -137,7 +137,7 @@ describe('Swap screen', () => {
     vi.mocked(api.post).mockResolvedValue({ data: result(), meta: {} });
     await pick({ same_place: true });
     expect(screen.getByText('eq.swapNoChange')).toBeTruthy();
-    expect((button('eq.swap') as HTMLButtonElement).disabled).toBe(true);
+    expect((button('swap.title') as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

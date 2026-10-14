@@ -17,3 +17,11 @@ if (typeof window !== 'undefined') {
     disconnect() {}
   });
 }
+
+// jsdom does no layout, so every element measures 0×0. useAnchoredPopover (ActionMenu, SearchableSelect, …) reads that as
+// "the anchor is hidden" and closes its popover at once. Give every element a visible box inside the default 1024×768 window.
+if (typeof Element !== 'undefined') {
+  Element.prototype.getBoundingClientRect = () => ({
+    x: 10, y: 10, left: 10, top: 10, width: 120, height: 32, right: 130, bottom: 42, toJSON: () => ({}),
+  });
+}

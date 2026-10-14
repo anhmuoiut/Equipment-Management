@@ -62,10 +62,11 @@ describe('Masterlist — docs/DETAIL_MODEL.md mục 2', () => {
   it('filters by a column value, including empty', () => {
     const { onViewChange } = setup();
     fireEvent.click(screen.getByRole('button', { name: /ml.filters/ }));
-    const select = screen.getByRole('combobox');
-    fireEvent.change(select, { target: { value: 'Base' } });
+    fireEvent.click(screen.getByLabelText('Type'));
+    fireEvent.click(screen.getByRole('option', { name: 'Base' }));
     expect(lastView(onViewChange)).toEqual(['b']);
-    fireEvent.change(select, { target: { value: '' } });
+    fireEvent.click(screen.getByLabelText('Type'));
+    fireEvent.click(screen.getByRole('option', { name: 'ml.empty' }));
     expect(lastView(onViewChange)).toEqual(['d']);
   });
 
@@ -184,29 +185,43 @@ describe('Phone layout — a card per row instead of a squeezed table', () => {
     expect(onViewChange).toHaveBeenLastCalledWith(['a', 'c']);
   });
 
-  it('Filter & sort opens as a sheet: filter by a column, sort, see the result count, clear', () => {
+  // The sheet edits a DRAFT: nothing changes in the list until Apply.
+  const openSheet = () => { fireEvent.click(screen.getByRole('button', { name: 'ml.filters' })); return within(screen.getByRole('dialog')); };
+  const choose = (field: string, option: string) => {
+    fireEvent.click(within(screen.getByRole('dialog')).getByLabelText(field));
+    fireEvent.click(screen.getByRole('option', { name: option }));
+  };
+  const apply = () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /ml.applyFilters/ }));
+
+  it('Filter & sort opens as a sheet: filter by a column, sort, apply, reset', () => {
     const { onViewChange } = setupPhone();
-    fireEvent.click(screen.getByRole('button', { name: 'ml.filtersAndSort' }));
-    const sheet = within(screen.getByRole('dialog'));
-    fireEvent.change(sheet.getByRole('combobox', { name: /Type/ }), { target: { value: 'Tester' } });
-    expect(onViewChange).toHaveBeenLastCalledWith(['a', 'c']);
-    fireEvent.change(sheet.getByRole('combobox', { name: 'ml.sortBy' }), { target: { value: 'serial' } });
-    expect(onViewChange).toHaveBeenLastCalledWith(['c', 'a']);
-    fireEvent.click(sheet.getByRole('button', { name: /ml.sortDesc/ }));
-    expect(onViewChange).toHaveBeenLastCalledWith(['a', 'c']);
-    expect(sheet.getByRole('button', { name: /ml.showResults/ })).toBeTruthy();
-    fireEvent.click(sheet.getByRole('button', { name: 'ml.clearFilters' }));
-    expect(onViewChange).toHaveBeenLastCalledWith(['a', 'b', 'c', 'd']);
-    fireEvent.click(sheet.getByRole('button', { name: /ml.showResults/ }));
+    const callsBefore = onViewChange.mock.calls.length;
+    openSheet();
+    choose('Type', 'Tester');
+    expect(onViewChange.mock.calls.length).toBe(callsBefore); // draft only
+    choose('ml.sortBy', 'Serial');
+    apply();
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onViewChange).toHaveBeenLastCalledWith(['c', 'a']); // Tester only, Serial ascending (SN-1 before SN-10)
+
+    openSheet();
+    choose('ml.sortDirection', 'ml.sortDesc');
+    apply();
+    expect(onViewChange).toHaveBeenLastCalledWith(['a', 'c']);
+
+    const sheet = openSheet();
+    fireEvent.click(sheet.getByRole('button', { name: 'ml.reset' }));
+    apply();
+    expect(onViewChange).toHaveBeenLastCalledWith(['a', 'b', 'c', 'd']);
   });
 
   it('active filter and sort show as removable chips when the sheet is closed', () => {
     const { onViewChange } = setupPhone();
-    fireEvent.click(screen.getByRole('button', { name: 'ml.filtersAndSort' }));
-    fireEvent.change(within(screen.getByRole('dialog')).getByRole('combobox', { name: /Type/ }), { target: { value: 'Base' } });
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /ml.showResults/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Type: Base/ }));
+    openSheet();
+    choose('Type', 'Base');
+    apply();
+    expect(onViewChange).toHaveBeenLastCalledWith(['b']);
+    fireEvent.click(screen.getByRole('button', { name: 'ml.removeFilter' }));
     expect(onViewChange).toHaveBeenLastCalledWith(['a', 'b', 'c', 'd']);
   });
 

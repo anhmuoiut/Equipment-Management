@@ -76,7 +76,7 @@ describe('equipment import template — theo Configuration lúc tải', () => {
     // Status: danh sách cố định In use / Not in use.
     expect(ws.getCell('G2').dataValidation).toMatchObject({ type: 'list', formulae: ["'Giá trị hợp lệ'!$D$2:$D$3"], errorStyle: 'stop' });
     // Tags nhận nhiều giá trị trong một ô ("Repair; Spare"): một ô thả xuống chỉ nhận một giá trị nên không có kiểm tra danh sách.
-    expect(ws.getCell('K2').dataValidation.type).toBe('any');
+    expect(ws.getCell('K2').dataValidation?.type).toBeUndefined();
     // Part number của cha dùng chung danh sách Part number, chỉ cảnh báo (mã đã ẩn vẫn tìm được).
     expect(ws.getCell('J2').dataValidation).toMatchObject({ type: 'list', formulae: ["'Giá trị hợp lệ'!$A$2:$A$4"], errorStyle: 'warning' });
 

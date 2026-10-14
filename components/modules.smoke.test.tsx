@@ -221,11 +221,12 @@ describe('User Management — Admin tạo tài khoản, bốn thao tác', () => 
     expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toBe('Dan');
   });
 
-  it('Edit: the username is locked with the reason', async () => {
+  it('Edit: the username is locked — shown as a plain value, with no input', async () => {
     await mount(<UsersWorkspace />);
     await openRow('Bob');
     await clickEdit();
-    expect(screen.getByText('usr.usernameLocked')).toBeTruthy();
+    expect(document.getElementById('f-username')).toBeNull();
+    expect(within(dialog()).getAllByText('bob').length).toBeGreaterThan(0);
   });
 
   it('Edit with an unsaved change: Esc asks "discard?" inside the modal; Stay keeps the form, Discard closes the modal', async () => {
@@ -264,8 +265,8 @@ describe('Configuration', () => {
     await mount(<ConfigWorkspace listKey={list} />);
     await openRow(list === 'tags' ? 'Repair' : list === 'calibration-setup' ? 'DMM-100' : list === 'types' ? 'DMM' : 'P12316');
     await clickEdit();
-    // Setup hiệu chuẩn: part number khóa khi sửa (đổi PN = xóa rồi thêm lại).
-    if (list === 'calibration-setup') expect(screen.getByText('cfg.partNumberFixed')).toBeTruthy();
+    // Setup hiệu chuẩn: part number khóa khi sửa (đổi PN = xóa rồi thêm lại) — chỉ hiện giá trị, không có ô chọn.
+    if (list === 'calibration-setup') expect(screen.queryByLabelText(/fields.part_number/)).toBeNull();
   });
 
   it('part numbers: Type column and required Type, and no "needs a parent" setting any more', async () => {
@@ -275,7 +276,6 @@ describe('Configuration', () => {
     expect(screen.getAllByText('Tester').length).toBeGreaterThan(0);
 
     await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
-    expect(screen.getByText('cfg.partTypeHint')).toBeTruthy();
     expect(screen.queryByText(/usageNeedsParent/)).toBeNull();
     await act(async () => { fireEvent.change(screen.getByLabelText(/fields.display_name/), { target: { value: 'P99999' } }); });
     await click(within(footer()).getByRole('button', { name: 'common.save' }));
@@ -306,7 +306,6 @@ describe('Configuration', () => {
     await mount(<ConfigWorkspace listKey="types" />);
     await openRow('Tester');
     await clickEdit();
-    expect(screen.getByText('cfg.groupLocked')).toBeTruthy();
     expect(screen.queryByLabelText(/fields.group/)).toBeNull();
     await click(within(dialog()).getByRole('button', { name: 'common.close' }));
     await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
@@ -343,7 +342,7 @@ describe('Configuration', () => {
     expect(screen.getByText('Meters')).toBeTruthy();
     await openRow('Tester');
     await clickEdit();
-    expect(screen.getByText('cfg.systemGroupLocked')).toBeTruthy();
+    expect(document.getElementById('f-is_active')).toBeNull(); // a system Group cannot be hidden: no switch
     await click(within(dialog()).getByRole('button', { name: 'common.close' }));
     await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
     await openRow('Meters');
@@ -386,7 +385,6 @@ describe('Configuration', () => {
   it('calibration setup: only sub-equipment part numbers that are not set up yet can be chosen', async () => {
     await mount(<ConfigWorkspace listKey="calibration-setup" />);
     await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
-    expect(screen.getByText('cfg.calibrationPartHint')).toBeTruthy();
     await click(screen.getByLabelText(/fields.part_number/));
     const labels = screen.getAllByRole('option').map((o) => o.textContent);
     expect(labels).toEqual(['DMM-200']); // DMM-100 đã có Setup; P12316 là part number của tester

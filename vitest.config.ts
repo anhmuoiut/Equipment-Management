@@ -5,7 +5,7 @@ export default defineConfig({
   esbuild: { jsx: 'automatic' },
   test: {
     environment: 'node',
-    include: ['lib/**/*.test.{ts,tsx}', 'components/**/*.test.tsx'],
+    include: ['lib/**/*.test.{ts,tsx}', 'app/**/*.test.ts', 'components/**/*.test.tsx'],
     setupFiles: ['./vitest.setup.ts'],
   },
 });

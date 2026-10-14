@@ -50,6 +50,13 @@ const openRow = async (serial: string) => {
   await waitFor(() => expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toBe(serial));
 };
 const title = () => within(dialog()).getByRole('heading', { level: 2 }).textContent;
+/** The relation list shows its first row only; open every "show N more" toggle so all rows are reachable. */
+const expandRelations = async () => {
+  await waitFor(() => expect(within(dialog()).queryAllByRole('button', { name: /asset.showMoreRelations/ }).length).toBeGreaterThan(0));
+  for (const toggle of within(dialog()).queryAllByRole('button', { name: /asset.showMoreRelations/ })) await click(toggle);
+};
+/** "Thêm thiết bị con" form is open (the parent is fixed: it is shown as a value, not an editor). */
+const childFormReady = () => waitFor(() => expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toContain('eq.addChildTitle'));
 
 const phone = (matches: boolean) => {
   vi.mocked(window.matchMedia).mockReturnValue({ matches, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
@@ -58,7 +65,7 @@ const phone = (matches: boolean) => {
 beforeEach(() => { resetUrl(); phone(false); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); });
 
 describe('Equipment — masterlist', () => {
-  it('shows the parent/child column, Status first, and the default columns; Chưa gắn is a quick filter', async () => {
+  it('shows the parent/child column, Status first, and the default columns', async () => {
     await mount();
     expect(screen.getByText('TESTER-01')).toBeTruthy();
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '');
@@ -66,9 +73,6 @@ describe('Equipment — masterlist', () => {
     expect(headers.some((h) => /fields.serial_number/.test(h))).toBe(true);
     expect(headers.some((h) => /fields.remark/.test(h))).toBe(false); // cột phụ ẩn mặc định
     expect(document.querySelectorAll('.rel').length).toBe(3); // tester (có con), base (có con), fixture (có con) — spare không có gì
-    await click(screen.getByRole('button', { name: /asset.quickUnattached/ }));
-    expect(screen.queryByText('TESTER-01')).toBeNull(); // Tester không có cha và không tính là "chưa gắn"
-    expect(screen.getByText('BASE-02')).toBeTruthy();
   });
 });
 
@@ -142,8 +146,10 @@ describe('Equipment — modal', () => {
   it('a Tester lists its sub-equipment (with Calibration Status); clicking one goes to that module with ?id=', async () => {
     await mount();
     await openRow('TESTER-01');
+    await expandRelations();
     await waitFor(() => expect(within(dialog()).getByRole('button', { name: /DMM-2/ })).toBeTruthy());
-    expect(within(dialog()).getAllByRole('button', { name: /DMM-100/ })).toHaveLength(2);
+    // Each sub-equipment is a "SN · Type" chip.
+    expect(within(dialog()).getByRole('button', { name: /^DMM-1/ })).toBeTruthy();
     expect(within(dialog()).getByText('cal.status.overdue')).toBeTruthy();
     await click(within(dialog()).getByRole('button', { name: /DMM-2/ }));
     expect(push).toHaveBeenCalledWith('/calibration?id=s2');
@@ -169,6 +175,7 @@ describe('Equipment — modal', () => {
       await waitFor(() => expect(within(dialog()).queryAllByRole('button', { name: 'common.retry' }).length).toBeGreaterThan(0));
       expect(within(dialog()).queryByText('common.loadingEllipsis')).toBeNull();
       await click(within(dialog()).getAllByRole('button', { name: 'common.retry' })[0]!);
+      await expandRelations();
       await waitFor(() => expect(within(dialog()).getByRole('button', { name: /DMM-2/ })).toBeTruthy());
       expect(within(dialog()).queryByRole('button', { name: 'common.retry' })).toBeNull();
     } finally {
@@ -180,6 +187,7 @@ describe('Equipment — modal', () => {
     vi.mocked(api.get).mockClear();
     await mount();
     await openRow('TESTER-01');
+    await expandRelations();
     await waitFor(() => expect(within(dialog()).getByRole('button', { name: /DMM-2/ })).toBeTruthy());
     expect(within(dialog()).queryByRole('tab', { name: 'eq.tabTree' })).toBeNull();
     await waitFor(() => expect(within(dialog()).getByRole('tree')).toBeTruthy());
@@ -243,14 +251,14 @@ describe('Equipment — add', () => {
     await click(screen.getAllByRole('button', { name: /eq.add/ })[0]!);
     expect(dialog().classList.contains('modal-dialog--m')).toBe(true);
     expect(currentSearch()).toBe('new=1');
-    expect(within(dialog()).getByText('asset.pickPartFirst')).toBeTruthy();
+    expect(within(dialog()).queryAllByLabelText(/fields.parent/)).toHaveLength(0); // locked (value only) until a part number is chosen
     await act(async () => { fireEvent.change(screen.getByLabelText(/fields.serial_number/), { target: { value: 'BASE-NEW' } }); });
     await click(screen.getByLabelText(/fields.part_number/));
     await click(screen.getByRole('option', { name: 'P20001' }));
     await act(async () => { fireEvent.click(screen.getByLabelText(/fields.location/)); });
     await click(screen.getByRole('option', { name: 'B3F1' }));
     // Part number đã chọn: ô cha không còn bị khóa, và Level của part number (EOL) được điền sẵn.
-    expect(within(dialog()).queryByText('asset.pickPartFirst')).toBeNull();
+    expect(within(dialog()).queryAllByLabelText(/fields.parent/).length).toBeGreaterThan(0);
     expect(screen.getByLabelText(/fields.level/).textContent).toBe('EOL');
     await click(within(footer()).getByRole('button', { name: 'common.save' }));
     expect(api.post).not.toHaveBeenCalled();
@@ -267,8 +275,9 @@ describe('Equipment — add', () => {
     await openRow('TESTER-01');
     await click(within(footer()).getByRole('button', { name: 'dp.actionsMenu' }));
     await click(screen.getByRole('menuitem', { name: 'eq.addChild' }));
-    await waitFor(() => expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toContain('eq.addChildTitle'));
-    expect(within(dialog()).getByText(/eq.parentFixed/)).toBeTruthy();
+    await childFormReady();
+    expect(within(dialog()).queryAllByLabelText(/fields.parent/)).toHaveLength(0); // fixed: a value, not an editor
+    expect(within(dialog()).getAllByText('TESTER-01').length).toBeGreaterThan(0);
     await click(screen.getByLabelText(/fields.part_number/));
     // Tester ⊃ Base, Fixture (không có Tester, không có sub-equipment).
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['P20001', 'P30005']);
@@ -308,9 +317,9 @@ describe('Equipment — Type, Level and Location are filled for every device', (
     await openRow('TESTER-01');
     await click(within(footer()).getByRole('button', { name: 'dp.actionsMenu' }));
     await click(screen.getByRole('menuitem', { name: 'eq.addChild' }));
-    await waitFor(() => expect(within(dialog()).getByText(/eq.parentFixed/)).toBeTruthy());
+    await childFormReady();
     await pick(/fields.part_number/, 'P20001');
-    expect(within(dialog()).getAllByText('eq.followsFixedParent')).toHaveLength(2); // Location and Level
+    expect(within(dialog()).queryByLabelText(/fields.location/)).toBeNull(); // locked: follows the parent
     expect(within(dialog()).queryByLabelText(/fields.level/)).toBeNull();
   });
 
@@ -332,7 +341,7 @@ describe('Equipment — Type, Level and Location are filled for every device', (
       await openRow('TESTER-01');
       await click(within(footer()).getByRole('button', { name: 'dp.actionsMenu' }));
       await click(screen.getByRole('menuitem', { name: 'eq.addChild' }));
-      await waitFor(() => expect(within(dialog()).getByText(/eq.parentFixed/)).toBeTruthy());
+      await childFormReady();
       await waitFor(() => expect(levelShown()).toBe('EOL'));
       await pick(/fields.part_number/, 'P20001'); // choosing a part number must not change it
       expect(levelShown()).toBe('EOL');
@@ -359,13 +368,14 @@ describe('Equipment — Type, Level and Location are filled for every device', (
 });
 
 describe('Equipment — editing', () => {
-  it('a device with a parent: Location and Level are locked with the reason; the type is read-only', async () => {
+  it('a device with a parent: Location and Level are locked; the type is read-only', async () => {
     await mount();
     await openRow('BASE-01');
     await click(within(footer()).getByRole('button', { name: 'common.edit' }));
-    expect(within(dialog()).getByText('eq.locationFromParent')).toBeTruthy();
-    expect(within(dialog()).getByText('eq.levelFromParent')).toBeTruthy();
-    expect(within(dialog()).getByText('eq.typeFromPartNumber')).toBeTruthy();
+    // Locked fields are shown as plain values (no editor); the reason is not rendered.
+    expect(within(dialog()).queryByLabelText(/fields.location/)).toBeNull();
+    expect(within(dialog()).queryByLabelText(/fields.level/)).toBeNull();
+    expect(within(dialog()).queryByLabelText(/fields.type/)).toBeNull();
     // Chưa đổi gì: Lưu bị khóa.
     expect((within(footer()).getByRole('button', { name: 'common.save' }) as HTMLButtonElement).disabled).toBe(true);
   });
@@ -374,7 +384,7 @@ describe('Equipment — editing', () => {
     await mount();
     await openRow('TESTER-01');
     await click(within(footer()).getByRole('button', { name: 'common.edit' }));
-    expect(within(dialog()).getByText('asset.testerNoParent')).toBeTruthy();
+    expect(within(dialog()).queryAllByLabelText(/fields.parent/)).toHaveLength(0); // a Tester has no parent: a value, not an editor
   });
 
   it('saving sends only the changed fields and returns to the detail view', async () => {

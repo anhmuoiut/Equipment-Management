@@ -12,7 +12,7 @@ import { mapRpcError } from '@/lib/errors';
 import { CALIBRATION_STATUSES, CALIBRATION_STATUS_COLOR, USAGE_STATUSES, USAGE_STATUS_COLOR } from '@/lib/status';
 import type { Role } from '@/lib/permissions';
 import type {
-  ActionRecord, AssetType, CalibrationAlert, CalibrationStatus, CountItem, DashboardData, HistoryModule, RecentAction, StatusColor,
+  AssetType, CalibrationAlert, CalibrationStatus, CountItem, DashboardData, HistoryModule, RecentAction, StatusColor,
   StatusCountItem, Usage,
 } from '@/lib/types';
 
@@ -111,32 +111,6 @@ export async function recentActivities(role: Role, filter: ActivityFilter): Prom
   if (filter.from) query = query.gte('created_at', filter.from);
   if (filter.to) query = query.lte('created_at', filter.to);
   const { data, error } = await query;
-  // View recent_actions chưa có (chưa chạy 04_functions.sql mới): dùng view cũ, mỗi dòng nhật ký là một thao tác.
-  if (error && (error.code === '42P01' || error.code === 'PGRST205')) return legacyActivities(role, filter, limit);
   if (error) throw mapRpcError(error);
   return withActorNames((data ?? []) as Omit<RecentAction, 'created_by_name'>[]);
-}
-
-/** Cách cũ (view recent_activities: mỗi nhật ký một dòng, import gộp một dòng) — chỉ để app chạy được trước khi database có view mới. */
-async function legacyActivities(role: Role, filter: ActivityFilter, limit: number): Promise<RecentAction[]> {
-  let query = db().from('recent_activities')
-    .select('module, object_id, label, action, changes, created_by, created_at, note, source, item_count')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (role !== 'admin') query = query.in('module', ASSET_MODULES);
-  if (filter.module) query = query.eq('module', filter.module);
-  if (filter.userId) query = query.eq('created_by', filter.userId);
-  if (filter.search) query = query.ilike('label', likePattern(filter.search));
-  if (filter.from) query = query.gte('created_at', filter.from);
-  if (filter.to) query = query.lte('created_at', filter.to);
-  const { data, error } = await query;
-  if (error) throw mapRpcError(error);
-  type Legacy = Omit<ActionRecord, 'from_location' | 'to_location'> & { created_by: string | null; created_at: string; source: string; item_count: number };
-  const rows = await withActorNames((data ?? []) as Legacy[]);
-  return rows.map((r, i) => ({
-    id: `${r.object_id}-${r.created_at}-${i}`, module: r.module, modules: [r.module], action: r.action, source: r.source,
-    created_by: r.created_by, created_by_name: r.created_by_name, created_at: r.created_at, item_count: r.item_count,
-    // Một lần import cũ chỉ có một dòng đại diện: không liệt kê (như trước).
-    records: r.item_count > 1 ? [] : [{ module: r.module, object_id: r.object_id, label: r.label, action: r.action, changes: r.changes, note: r.note }],
-  }));
 }

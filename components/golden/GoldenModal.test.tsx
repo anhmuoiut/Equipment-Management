@@ -51,11 +51,9 @@ const openRow = async (serial: string) => {
 beforeEach(() => { resetUrl(); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); });
 
 describe('Golden', () => {
-  it('lists golden boards with Status first; "Chưa gắn" is a quick filter', async () => {
+  it('lists golden boards with Status first', async () => {
     await mount();
     expect(screen.getByText('GB-1')).toBeTruthy();
-    await click(screen.getByRole('button', { name: /asset.quickUnattached/ }));
-    expect(screen.queryByText('GB-1')).toBeNull();
     expect(screen.getByText('GB-2')).toBeTruthy();
   });
 
@@ -63,7 +61,7 @@ describe('Golden', () => {
     await mount();
     await openRow('GB-1');
     expect(within(footer()).getAllByRole('button').map((b) => b.textContent)).toEqual(['dp.actionsMenu', 'common.edit', 'eq.checkIn']);
-    await click(within(dialog()).getByRole('button', { name: 'FIXTURE-01' }));
+    await click(within(dialog()).getByRole('button', { name: /FIXTURE-01/ })); // the chip reads "SN · Type"
     expect(push).toHaveBeenCalledWith('/equipment?id=e-fixture');
   });
 

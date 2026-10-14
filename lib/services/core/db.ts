@@ -4,7 +4,7 @@ import 'server-only';
  * Truy cập database dùng chung cho mọi module.
  *
  * - selectAll: đọc hết một bảng (Supabase trả tối đa 1000 dòng mỗi lần).
- * - appWrite: mọi thêm / sửa / xóa đi qua RPC app_write (database/04_functions.sql)
+ * - appWrite: mọi thêm / sửa / xóa đi qua RPC app_write (database/migrations, file baseline)
  *   để lịch sử được ghi trong cùng giao dịch, kèm người thao tác.
  * - rpc: gọi các thao tác nhiều bước (Move, Swap…).
  */
@@ -15,27 +15,16 @@ import { invalidateLookups, LOOKUP_TABLES } from './lookupCache';
 
 export const db = supabaseAdmin;
 
-/** Hàm GHI dữ liệu của database có tham số `p_action_id` (04_functions.sql). Hàm tra cứu (valid_parents, asset_tree…) không có. */
+/** Hàm GHI dữ liệu của database có tham số `p_action_id` (migration baseline). Hàm tra cứu (valid_parents, asset_tree…) không có. */
 const ACTION_RPCS = new Set([
   'app_write', 'asset_change_location', 'asset_move', 'asset_detach', 'asset_swap', 'asset_delete', 'asset_set_usage',
   'equipment_import', 'sub_equipment_import', 'golden_import',
 ]);
 
-/**
- * Database chưa chạy migrations/2026-10-15_action_id.sql + 04_functions.sql thì hàm chưa nhận `p_action_id` (PostgREST: PGRST202).
- * Khi đó gọi lại KHÔNG kèm id — thao tác vẫn chạy như trước (mỗi dòng nhật ký một dòng ở Thay đổi gần đây) — và nhớ 60 giây để không
- * thử lại mỗi lần. Chạy xong migration, tối đa 60 giây sau app tự dùng id.
- */
-let actionIdUnsupportedUntil = 0;
-
-async function callRpc(fn: string, args: Record<string, unknown>) {
-  const actionId = ACTION_RPCS.has(fn) && Date.now() >= actionIdUnsupportedUntil ? currentActionId() : undefined;
-  if (actionId) {
-    const res = await db().rpc(fn, { ...args, p_action_id: actionId });
-    if (res.error?.code !== 'PGRST202') return res;
-    actionIdUnsupportedUntil = Date.now() + 60_000;
-  }
-  return db().rpc(fn, args);
+/** Mọi dòng nhật ký do cùng một request ghi ra dùng chung một `p_action_id` (xem actionContext.ts). */
+function callRpc(fn: string, args: Record<string, unknown>) {
+  const actionId = ACTION_RPCS.has(fn) ? currentActionId() : undefined;
+  return db().rpc(fn, actionId ? { ...args, p_action_id: actionId } : args);
 }
 
 const PAGE = 1000;

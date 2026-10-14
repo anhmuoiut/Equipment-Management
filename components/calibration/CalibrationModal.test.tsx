@@ -97,11 +97,11 @@ describe('Calibration — modal', () => {
     await mount();
     await openRow('DMM-1');
     expect(within(dialog()).getAllByText('cal.status.valid').length).toBeGreaterThan(0);
-    expect(within(dialog()).getByRole('button', { name: 'TESTER-01' })).toBeTruthy();
+    expect(within(dialog()).getByRole('button', { name: /TESTER-01/ })).toBeTruthy(); // the chip reads "SN · Type"
     expect(within(dialog()).getByText('cal.groupCurrent')).toBeTruthy();
     expect(within(dialog()).getByText('C-1')).toBeTruthy();
     expect(within(dialog()).getByText('cal.months{"count":12}')).toBeTruthy();
-    await click(within(dialog()).getByRole('button', { name: 'TESTER-01' }));
+    await click(within(dialog()).getByRole('button', { name: /TESTER-01/ }));
     expect(push).toHaveBeenCalledWith('/equipment?id=e-tester');
   });
 

@@ -93,14 +93,4 @@ describe('recentActivities', () => {
     await recentActivities('admin', {});
     expect(admin.names()).not.toContain('containedBy');
   });
-
-  it('falls back to the old one-row-per-log view while the database has no recent_actions view yet', async () => {
-    const missing = chain({ data: null, error: { code: '42P01', message: 'relation "public.recent_actions" does not exist' } });
-    const legacy = chain({ data: [{ module: 'equipment', object_id: 'e1', label: 'SN-1', action: 'UPDATE', changes: {}, created_by: 'u1', created_at: '2026-10-01T00:00:00Z', note: null, source: 'ui', item_count: 1 }] });
-    m.from.mockReturnValueOnce(missing.proxy).mockReturnValueOnce(legacy.proxy);
-    const rows = await recentActivities('admin', {});
-    expect(m.from).toHaveBeenLastCalledWith('recent_activities');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ module: 'equipment', action: 'UPDATE', item_count: 1, records: [expect.objectContaining({ label: 'SN-1' })] });
-  });
 });
