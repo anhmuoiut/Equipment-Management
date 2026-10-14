@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Modal của Overview (docs/DETAIL_MODEL.md 4.6): chi tiết ở bên trái, cây thiết bị ở bên phải, cho cả ba loại tài sản —
+ * Modal của Overview (docs/UI.md): chi tiết ở bên trái, cây thiết bị ở bên phải, cho cả ba loại tài sản —
  * equipment → Equipment, sub_equipment → Calibration, golden_board → Golden. Không có footer riêng.
  *
  * Chọn một nút / chip thuộc loại KHÁC (ví dụ từ Tester sang một Sub) vẫn là cùng một modal: ba hook của ba module được gọi ở đây

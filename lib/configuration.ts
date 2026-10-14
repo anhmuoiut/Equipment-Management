@@ -1,6 +1,6 @@
 /**
  * Các danh sách của menu Configuration — dùng chung server (bảng, quy tắc)
- * và client (danh sách con, cột, trường). docs/APP_SHELL.md mục 3.
+ * và client (danh sách con, cột, trường). docs/UI.md.
  */
 import type { ConfigList, StatusColor } from '@/lib/types';
 

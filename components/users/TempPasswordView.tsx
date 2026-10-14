@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Màn hình "Mật khẩu tạm" (docs/DETAIL_MODEL.md 4.5): hiện mật khẩu hệ thống sinh MỘT lần sau khi Admin
+ * Màn hình "Mật khẩu tạm" (docs/UI.md): hiện mật khẩu hệ thống sinh MỘT lần sau khi Admin
  * Thêm tài khoản hoặc Đặt lại mật khẩu, kèm nút Sao chép. Mật khẩu không được lưu ở đâu và không hiện lại.
  * Là một màn hình trong chính modal (không phải hộp thoại thứ hai). Đóng / [Xong] khi chưa bấm Sao chép thì
  * khung hỏi lại (Admin vẫn Đặt lại mật khẩu được nếu lỡ mất).

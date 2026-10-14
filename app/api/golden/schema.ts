@@ -1,6 +1,6 @@
 import { z, optText, optId, reqText, reqId } from '@/lib/services/core/validate';
 
-/** Trường golden board — docs/DATABASE_MODIFIED.md mục 5. */
+/** Trường golden board — docs/DATABASE.md. */
 const fields = {
   part_number: reqText(200),
   serial_number: reqText(200),

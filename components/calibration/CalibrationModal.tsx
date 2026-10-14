@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Modal Calibration — sub-equipment và các lần hiệu chuẩn của chúng (docs/DETAIL_MODEL.md 4.2). Footer chung của
+ * Modal Calibration — sub-equipment và các lần hiệu chuẩn của chúng (docs/UI.md). Footer chung của
  * ba module tài sản; riêng nút [Ghi nhận hiệu chuẩn] (đứng trước Check-out) và tab Hiệu chuẩn. Overview dùng lại
  * đúng component này cho `type=sub_equipment`.
  */

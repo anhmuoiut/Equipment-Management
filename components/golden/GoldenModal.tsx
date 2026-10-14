@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Modal Golden — golden board (docs/DETAIL_MODEL.md 4.3). Footer chung của ba module tài sản. Golden board chỉ In use
+ * Modal Golden — golden board (docs/UI.md). Footer chung của ba module tài sản. Golden board chỉ In use
  * khi đã gắn vào tester / fixture đang In use: Check-out báo lỗi ngay ở mục Kết quả (USAGE_NEEDS_PARENT / PARENT_NOT_IN_USE).
  * Overview dùng lại đúng component này cho `type=golden_board`.
  */

@@ -8,9 +8,9 @@
  *   (mạng công ty có proxy SSL).
  * - Tài khoản là người dùng Supabase Auth với email nội bộ <username>@jabil.local, email_confirm: true
  *   (không gửi email, người dùng không thấy email này). Server phải dùng cùng cách đổi username → email.
- * - Hồ sơ ghi qua app_write (database/04_functions.sql) với source 'script' → lịch sử tài khoản ghi CREATE.
+ * - Hồ sơ ghi qua app_write (database/migrations, baseline) với source 'script' → lịch sử tài khoản ghi CREATE.
  * - Mật khẩu tạm dạng Jabil-4827 in ra MỘT lần; đăng nhập lần đầu bắt buộc đổi (must_change_password).
- * - Cần database/02, 03, 04 đã chạy, và Supabase Dashboard đã tắt public sign-up (database/README.md).
+ * - Cần baseline migration và seed.sql đã chạy (docs/DEPLOY.md §3), và Supabase Dashboard đã tắt public sign-up (docs/DEPLOY.md).
  */
 import { existsSync } from 'node:fs';
 import tls from 'node:tls';
@@ -61,7 +61,7 @@ async function main() {
   const db = createClient(url, key, { auth: { persistSession: false } });
 
   const { data: existing, error: lookupError } = await db.from('user_profiles').select('id').eq('username', username).limit(1);
-  if (lookupError) throw new Error(`Không đọc được user_profiles — đã chạy database/02, 03, 04 chưa? (${lookupError.message})`);
+  if (lookupError) throw new Error(`Không đọc được user_profiles — đã chạy baseline migration và seed.sql chưa? (${lookupError.message})`);
   if (existing?.length) throw new Error(`Username "${username}" đã tồn tại.`);
 
   // Mật khẩu tạm dễ đọc, ví dụ Jabil-4827. Chỉ để vào lần đầu: đăng nhập xong bắt buộc đổi.
@@ -106,7 +106,7 @@ async function main() {
   });
   if (profErr) {
     if (createdAuthUser) await db.auth.admin.deleteUser(authUserId);
-    const hint = profErr.code === 'PGRST202' ? ' — chưa chạy database/04_functions.sql?' : '';
+    const hint = profErr.code === 'PGRST202' ? ' — chưa chạy baseline migration?' : '';
     throw new Error(`Tạo user_profiles thất bại: ${profErr.message}${hint}`);
   }
   if (!createdAuthUser) {
@@ -119,7 +119,7 @@ async function main() {
   console.log(`  Username     : ${username}`);
   console.log(`  Mật khẩu tạm : ${password}`);
   console.log('\n  Đăng nhập bằng USERNAME ở trên; app sẽ bắt đổi mật khẩu ngay lần đầu. Mật khẩu này không hiển thị lại.');
-  console.log('  Nhớ tắt public sign-up và email confirmation trong Supabase Dashboard (database/README.md).\n');
+  console.log('  Nhớ tắt public sign-up và email confirmation trong Supabase Dashboard (docs/DEPLOY.md).\n');
 }
 
 main().catch((e: unknown) => {

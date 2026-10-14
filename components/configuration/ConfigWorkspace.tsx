@@ -2,7 +2,7 @@
 
 /**
  * Một danh sách của Configuration (Part Number, Location, …): Masterlist +
- * modal bản ghi như mọi module (docs/DETAIL_MODEL.md 4.4). Chỉ Admin.
+ * modal bản ghi như mọi module (docs/UI.md). Chỉ Admin.
  * Bảng có is_active: "Xóa" = Ẩn / Hiện lại. Tag (thẻ chọn trong Remark), Hiệu chuẩn › Setup: xóa thật.
  * Part Number: Type bắt buộc — thiết bị mang part number tự lấy Type đó (database); đổi Type chỉ được khi chưa thiết bị nào
  * dùng part number (PART_NUMBER_IN_USE). Level không bắt buộc (chọn trong Configuration › Level; form Thêm thiết bị điền sẵn).

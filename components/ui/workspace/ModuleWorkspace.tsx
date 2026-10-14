@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Trang của một module: Masterlist full chiều rộng + modal của bản ghi (docs/DETAIL_MODEL.md).
+ * Trang của một module: Masterlist full chiều rộng + modal của bản ghi (docs/UI.md).
  * URL là nguồn sự thật: `?id=` (chi tiết, mở lại / chia sẻ được), `?new=1` (thêm mới), `?tool=` (công cụ
  * như Import). Mở từ danh sách → `push` (nút Back của trình duyệt đóng modal); chuyển bản ghi (‹ ›, thêm
  * mới → chi tiết) → `replace`. Module chỉ truyền cột và cách vẽ modal; bản ghi được tải theo id.

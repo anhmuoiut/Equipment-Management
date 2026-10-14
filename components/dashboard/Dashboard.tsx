@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Dashboard (docs/DATABASE_MODIFIED.md mục 1): số liệu tổng, Status (In use / Not in use) của Equipment, Sub-equipment và
+ * Dashboard (docs/DATABASE.md): số liệu tổng, Status (In use / Not in use) của Equipment, Sub-equipment và
  * Golden board, Calibration Status (tự tính), sub-equipment quá hạn / sắp đến hạn hiệu chuẩn, phân bố theo thẻ / vị trí /
  * loại, và "Thay đổi gần đây" (view recent_actions: một thao tác của người dùng = một dòng) có bộ lọc.
  */

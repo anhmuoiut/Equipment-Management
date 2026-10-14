@@ -2186,7 +2186,7 @@ $$;
 -- =============================================================================
 -- 5b. CÂY TÀI SẢN — asset_tree(p_type, p_id)
 --    Cây chứa một tài sản: từ tài sản GỐC của nó (đi ngược theo cha) xuống mọi con cháu, ở cả 3 bảng, trong MỘT lần gọi.
---    Dùng cho tab "Cây thiết bị" và cho chip thiết bị con / tóm tắt hiệu chuẩn của modal Equipment (docs/DETAIL_MODEL.md 4.1).
+--    Dùng cho tab "Cây thiết bị" và cho chip thiết bị con / tóm tắt hiệu chuẩn của modal Equipment (docs/UI.md).
 --    Mỗi dòng: asset_type, id, kind (tester / base / fixture / sub_equipment / golden_board), type_name (golden board: null),
 --    part_number, serial_number, usage, cal_status (sub-equipment: Calibration Status; còn lại null), parent_id (gốc: null),
 --    depth (gốc = 0), pos (vị trí theo thứ tự cây: anh em Base, Fixture, Golden, Sub rồi serial — giống overview_board).

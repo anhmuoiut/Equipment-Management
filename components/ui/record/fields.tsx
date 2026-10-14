@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Trường và nhóm trường của một bản ghi (docs/DETAIL_MODEL.md 3.5): module khai báo
+ * Trường và nhóm trường của một bản ghi (docs/UI.md): module khai báo
  * FieldDef / SectionDef, khung RecordModal vẽ chúng ở chế độ xem (FieldView) và sửa
  * (FieldEditor). Nhóm cuối "Thông tin hệ thống" (SystemInfoSection) là của khung.
  */

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Bảng thẻ của Overview (docs/DETAIL_MODEL.md 4.6, docs/JABIL_UI.md "Overview board"): Location → cột → thẻ.
+ * Bảng thẻ của Overview (docs/UI.md "Overview board"): Location → cột → thẻ.
  * Một cột = một tài sản gốc (thẻ đậm) + tối đa 2 thẻ khác (3 thẻ kể cả thẻ gốc) nối bằng đường cây + "+N thiết bị". Thẻ không có icon:
  * dòng 1 Type, dòng 2 PN, dòng 3 SN, rồi tag vận hành + hạn hiệu chuẩn; viền trái là trạng thái vận hành.
  * Thuần hiển thị — dữ liệu và URL do OverviewPage giữ.

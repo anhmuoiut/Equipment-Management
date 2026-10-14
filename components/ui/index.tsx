@@ -66,7 +66,7 @@ export function Notice({
 /** Open dialogs, oldest first — Escape and Tab only act on the newest (a picker sheet over a dialog). */
 const openModals: object[] = [];
 
-/** Cỡ cố định theo màn hình mở đầu (docs/DETAIL_MODEL.md 3.1): S ~440px, M ~640px, L ~960px; dưới 768px luôn toàn màn hình. */
+/** Cỡ cố định theo màn hình mở đầu (docs/UI.md): S ~440px, M ~640px, L ~960px; dưới 768px luôn toàn màn hình. */
 export type ModalSize = 's' | 'm' | 'l';
 
 type ModalContextValue = { footerEl: HTMLElement | null; size: ModalSize };

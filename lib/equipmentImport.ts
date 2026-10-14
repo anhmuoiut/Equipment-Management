@@ -1,6 +1,6 @@
 /**
  * Import Excel cho Equipment — phần dùng chung server (đọc / kiểm tra file,
- * sinh file mẫu) và giao diện (báo lỗi theo cột). docs/DETAIL_MODEL.md mục 2.
+ * sinh file mẫu) và giao diện (báo lỗi theo cột). docs/ARCHITECTURE.md §7.
  * Golden dùng lại giới hạn, báo cáo và loại lỗi (lib/goldenImport.ts).
  */
 
@@ -35,7 +35,7 @@ export type ImportColumn<K extends string = ImportColumnKey> = {
 };
 
 /**
- * Các cột của file, theo thứ tự form Thêm thiết bị (docs/DATABASE_MODIFIED.md mục 2).
+ * Các cột của file, theo thứ tự form Thêm thiết bị (docs/DATABASE.md).
  * Thiết bị cha: tìm theo serial (thiết bị đã có hoặc dòng khác trong file);
  * part number cha chỉ cần khi serial đó trùng ở nhiều thiết bị. Status và Tags không bắt buộc: file mẫu cũ không có hai
  * cột này vẫn import được (Status = Not in use, không có thẻ).

@@ -1,7 +1,7 @@
 import 'server-only';
 
 /**
- * Dashboard — không có bảng riêng, chỉ đọc từ các module (docs/DATABASE_MODIFIED.md mục 1): số lượng theo Status
+ * Dashboard — không có bảng riêng, chỉ đọc từ các module (docs/DATABASE.md): số lượng theo Status
  * (Equipment, Sub-equipment, Golden board) và Calibration Status, theo thẻ / vị trí / loại, sub-equipment quá hạn và sắp
  * đến hạn hiệu chuẩn, thay đổi gần đây.
  */

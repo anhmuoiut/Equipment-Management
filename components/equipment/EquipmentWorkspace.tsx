@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Trang Equipment: Masterlist full chiều rộng + modal bản ghi (docs/DETAIL_MODEL.md 4.1). Điện thoại hiện mỗi thiết bị
+ * Trang Equipment: Masterlist full chiều rộng + modal bản ghi (docs/UI.md). Điện thoại hiện mỗi thiết bị
  * một thẻ (serial, Status, vị trí).
  */
 import { useCallback, useMemo } from 'react';

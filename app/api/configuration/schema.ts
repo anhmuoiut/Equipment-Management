@@ -10,7 +10,7 @@ export function listFromParams(params: Record<string, string>): ConfigListDef {
 
 const order = z.number().int().min(0).max(100000);
 
-/** Trường được sửa của từng danh sách — docs/DATABASE_MODIFIED.md mục 5. */
+/** Trường được sửa của từng danh sách — docs/DATABASE.md. */
 export function schemaFor(list: ConfigListDef, mode: 'create' | 'update') {
   if (list.isCalibration) {
     // Part number chỉ chọn khi thêm (đổi PN = xóa dòng rồi thêm lại).

@@ -1,7 +1,7 @@
 import 'server-only';
 
 /**
- * Import Excel cho Equipment (docs/DETAIL_MODEL.md mục 6, DATABASE_MODIFIED.md mục 3).
+ * Import Excel cho Equipment (docs/ARCHITECTURE.md §7, docs/DATABASE.md).
  *
  * - File mẫu sinh lúc tải: danh sách chọn (Part number, Type, Level, Location) lấy từ Configuration ngay lúc đó nên
  *   luôn khớp với app; part number chỉ liệt kê loại tester / base / fixture.

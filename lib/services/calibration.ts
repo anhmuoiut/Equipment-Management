@@ -2,7 +2,7 @@ import 'server-only';
 
 /**
  * Module Calibration — bảng sub_equipment (thiết bị cần hiệu chuẩn, nằm trong tester) và calibrations (mỗi lần hiệu
- * chuẩn một dòng). docs/DATABASE_MODIFIED.md mục 4.
+ * chuẩn một dòng). docs/DATABASE.md.
  *
  * Phụ thuộc một chiều vào Equipment (tên tester). Calibration Status KHÔNG lưu và không tính ở đây: đọc từ view
  * sub_equipment_calibration (lần hiệu chuẩn mới nhất + Setup của part number). due_date của một lần hiệu chuẩn do

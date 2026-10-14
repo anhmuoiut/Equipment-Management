@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Thao tác chung của ba module tài sản — footer chung (docs/DETAIL_MODEL.md 3.2): trái `[Thao tác ▾]` (thao tác riêng của
+ * Thao tác chung của ba module tài sản — footer chung (docs/UI.md): trái `[Thao tác ▾]` (thao tác riêng của
  * module đứng đầu, rồi Swap · Gắn vào / Đổi cha · Tách khỏi cha · Đổi vị trí · Xóa), phải `[Sửa]` rồi nút riêng của module
  * (Ghi nhận hiệu chuẩn) và `[Check-out]` / `[Check-in]` ngoài cùng.
  */

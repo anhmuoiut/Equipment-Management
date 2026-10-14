@@ -2,7 +2,7 @@ import 'server-only';
 
 /**
  * Bộ dùng chung của ba lần import Excel (Equipment, Calibration/sub-equipment, Golden): đọc file, tiêu đề cột,
- * giới hạn, và dựng file mẫu theo Configuration lúc tải (docs/DETAIL_MODEL.md mục 6).
+ * giới hạn, và dựng file mẫu theo Configuration lúc tải (docs/ARCHITECTURE.md §7).
  *
  * File mẫu chỉ có hai sheet: sheet nhập (dòng 1 là tiêu đề, `*` = bắt buộc, nhập từ dòng 2; cột chọn có ô thả xuống lấy từ sheet
  * "Giá trị hợp lệ") và sheet "Giá trị hợp lệ" (nguồn của các ô thả xuống). Không có dòng ghi chú, không có sheet hướng dẫn.

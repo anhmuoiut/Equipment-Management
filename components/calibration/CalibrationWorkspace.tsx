@@ -2,7 +2,7 @@
 
 /**
  * Trang Calibration: Masterlist (mỗi sub-equipment một dòng, kèm lần hiệu chuẩn mới nhất) + modal bản ghi
- * (docs/DETAIL_MODEL.md 4.2). `?q=` điền sẵn ô tìm (từ nhóm Hiệu chuẩn của một Tester).
+ * (docs/UI.md). `?q=` điền sẵn ô tìm (từ nhóm Hiệu chuẩn của một Tester).
  */
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';

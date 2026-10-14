@@ -22,7 +22,7 @@ const links = () => within(screen.getByRole('navigation', { name: 'nav.mainNavig
 
 beforeEach(() => { nav.pathname = '/'; });
 
-describe('AppSidebar — docs/APP_SHELL.md', () => {
+describe('AppSidebar — docs/UI.md', () => {
   it('offers an accessible footer control with right chevrons to expand and left chevrons to collapse', () => {
     const onToggle = vi.fn();
     const view = render(<AppSidebar role="admin" expanded={false} onToggleCollapse={onToggle} onNavigate={() => {}} />);

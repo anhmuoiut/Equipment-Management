@@ -1,6 +1,6 @@
 'use client';
 
-/** Trang Golden: Masterlist full chiều rộng + modal bản ghi (docs/DETAIL_MODEL.md 4.3). */
+/** Trang Golden: Masterlist full chiều rộng + modal bản ghi (docs/UI.md). */
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapPin, Upload } from 'lucide-react';

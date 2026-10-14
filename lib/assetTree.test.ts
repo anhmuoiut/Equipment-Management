@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parentAllowed, type AssetKind } from './assetTree';
 
-/** docs/DATABASE_MODIFIED.md "Cây tài sản": ai được nằm dưới ai. */
+/** docs/DATABASE.md "Cây tài sản": ai được nằm dưới ai. */
 describe('parentAllowed — cùng bảng quy tắc với database (asset_parent_allowed)', () => {
   const kinds: AssetKind[] = ['tester', 'base', 'fixture', 'sub_equipment', 'golden_board'];
   const allowed: Record<string, AssetKind[]> = {

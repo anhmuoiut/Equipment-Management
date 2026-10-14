@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Tab "Cây thiết bị" (docs/DETAIL_MODEL.md 4.1): cây thụt lề từ Tester gốc của thiết bị đang xem, gồm cả
+ * Tab "Cây thiết bị" (docs/UI.md): cây thụt lề từ Tester gốc của thiết bị đang xem, gồm cả
  * sub-equipment và golden board. Mỗi dòng chỉ Part number + Serial (+ `Sub` / `Golden`). Bấm ▸/▾ chỉ mở / đóng
  * nhánh; bấm phần còn lại mở chi tiết (equipment: ngay trong modal; Sub / Golden: sang module của chúng).
  * Bàn phím: ↑ ↓ chọn dòng, → mở nhánh, ← đóng nhánh, Enter mở chi tiết.

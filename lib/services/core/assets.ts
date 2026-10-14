@@ -1,10 +1,10 @@
 import 'server-only';
 
 /**
- * Phần dùng chung của ba loại tài sản (equipment, sub_equipment, golden_board) — docs/DATABASE_MODIFIED.md
+ * Phần dùng chung của ba loại tài sản (equipment, sub_equipment, golden_board) — docs/DATABASE.md
  * "Cây tài sản", "Hàm thao tác", "Tra cứu cho màn hình thao tác", asset_logs.
  *
- * Quy tắc nằm ở database (04_functions.sql); chỗ này chỉ gọi hàm, kiểm tra giá trị chọn và đổi kết quả sang
+ * Quy tắc nằm ở database (the baseline migration); chỗ này chỉ gọi hàm, kiểm tra giá trị chọn và đổi kết quả sang
  * kiểu của ứng dụng. Mọi hàm thao tác nhận `dryRun`: true = chạy đúng như thật (cùng kiểm tra, cùng mã lỗi)
  * rồi hoàn tác — màn hình thao tác dùng cho mục "Kết quả".
  */

@@ -1,6 +1,6 @@
 /**
  * Kiểu dữ liệu trao đổi giữa server và client (theo
- * docs/DATABASE_MODIFIED.md). Chỉ có type, dùng được ở cả hai phía.
+ * docs/DATABASE.md). Chỉ có type, dùng được ở cả hai phía.
  * FK luôn đi kèm chữ hiển thị (display_name) để UI không phải tra lại.
  */
 import type { Role } from '@/lib/permissions';

@@ -1,8 +1,7 @@
 'use client';
 
 /**
- * Masterlist — trang danh sách dùng chung cho mọi module (docs/DETAIL_MODEL.md
- * mục 2). Mỗi module chỉ khai báo cột; khung lo tìm kiếm, bộ lọc, sắp xếp,
+ * Masterlist — trang danh sách dùng chung cho mọi module (docs/UI.md). Mỗi module chỉ khai báo cột; khung lo tìm kiếm, bộ lọc, sắp xếp,
  * tùy chọn hiển thị cột, xuất Excel, chọn dòng.
  *
  * Dữ liệu đã tải đủ ở client nên lọc / sắp xếp tức thì, và thứ tự đang hiện

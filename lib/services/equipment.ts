@@ -157,7 +157,7 @@ type DbTreeRow = {
 
 /**
  * Cây chứa thiết bị này, từ tài sản gốc (đi ngược theo cha) xuống mọi con cháu — cả sub-equipment và golden board
- * (docs/DETAIL_MODEL.md 4.1). Base / Fixture không có cha thì cây bắt đầu từ chính nó. MỘT lần gọi hàm asset_tree.
+ * (docs/UI.md). Base / Fixture không có cha thì cây bắt đầu từ chính nó. MỘT lần gọi hàm asset_tree.
  */
 export function equipmentTree(id: string): Promise<EquipmentTree> {
   return assetTree('equipment', id);

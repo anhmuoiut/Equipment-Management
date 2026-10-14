@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * RecordModal — modal của MỘT bản ghi (docs/DETAIL_MODEL.md mục 3): một màn hình hiện tại
+ * RecordModal — modal của MỘT bản ghi (docs/UI.md): một màn hình hiện tại
  * (chi tiết · sửa · thêm mới · thao tác · xóa), ngăn xếp quay lại bằng breadcrumb `← SN-001 › Sửa`,
  * footer chung, ‹ › và phím ← →, và "Hủy bỏ thay đổi?" ngay trong modal khi có thay đổi chưa lưu.
  *

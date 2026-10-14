@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Menu chính (docs/APP_SHELL.md mục 1–2): bảy mục, một cấp duy nhất.
+ * Menu chính (docs/UI.md): bảy mục, một cấp duy nhất.
  * Nền Prussian, mục đang chọn Picton, thu gọn hiện tên dưới icon, ngăn kéo trên
  * điện thoại. Configuration và User Management chỉ Admin
  * thấy, ngăn với năm mục trên bằng một đường kẻ. Không có số đếm cạnh menu,

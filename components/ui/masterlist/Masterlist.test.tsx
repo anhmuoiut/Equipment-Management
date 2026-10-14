@@ -34,7 +34,7 @@ function setup(onViewChange = vi.fn(), onSelect = vi.fn()) {
 const lastView = (fn: ReturnType<typeof vi.fn>) => fn.mock.calls.at(-1)?.[0];
 const bodyRows = () => within(screen.getByRole('table')).getAllByRole('row').slice(1);
 
-describe('Masterlist — docs/DETAIL_MODEL.md mục 2', () => {
+describe('Masterlist — docs/UI.md', () => {
   it('shows every row with a running No column', () => {
     const { onViewChange } = setup();
     expect(bodyRows()).toHaveLength(4);

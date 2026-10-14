@@ -1,5 +1,5 @@
 /**
- * Phân quyền theo nhóm — docs/DATABASE_MODIFIED.md "Phân quyền theo nhóm".
+ * Phân quyền theo nhóm — docs/DATABASE.md "Phân quyền theo nhóm".
  *
  * Mỗi tài khoản thuộc đúng một nhóm (user_profiles.role). Quyền của từng nhóm
  * cố định trong code; không có quyền lẻ cho từng người.

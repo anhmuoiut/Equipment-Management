@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Modal Equipment — Tester, Base, Fixture (docs/DETAIL_MODEL.md 4.1). Dùng khung RecordModal; riêng module này:
+ * Modal Equipment — Tester, Base, Fixture (docs/UI.md). Dùng khung RecordModal; riêng module này:
  * nhóm trường, quan hệ cha – con (dòng SN · Type bấm để mở), nhóm Hiệu chuẩn chỉ đọc của Tester (từ module Calibration),
  * tab Cây thiết bị, cảnh báo serial trùng trước khi lưu. Overview dùng lại đúng component này.
  */
@@ -208,7 +208,7 @@ export function useEquipmentModal(ctx: DetailCtx<EquipmentRow>, opts: {
         { key: 'remark', label: t('fields.remark'), kind: 'textarea', wide: true, maxLength: 1000 },
       ],
     },
-    // Nhóm chỉ đọc do module Calibration cung cấp (extension point, docs/DETAIL_MODEL.md 3.10): chỉ Tester.
+    // Nhóm chỉ đọc do module Calibration cung cấp (extension point, docs/UI.md): chỉ Tester.
     {
       key: 'calibration', title: t('cal.groupCalibration'), hideInCreate: true,
       render: (r) => {

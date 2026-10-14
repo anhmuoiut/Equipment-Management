@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Cây chứa tài sản đang xem, dùng chung cho modal Equipment / Calibration / Golden (docs/DETAIL_MODEL.md 4.1, 4.6).
+ * Cây chứa tài sản đang xem, dùng chung cho modal Equipment / Calibration / Golden (docs/UI.md).
  * MỘT lần tải cho cả cây: id gửi lên server (`anchor`) chỉ đổi khi tài sản đang xem nằm NGOÀI cây đã tải, nên chọn nút khác
  * trong cùng cây không tải lại; sang cây khác thì chờ cây mới. Overview gọi hook này MỘT lần ở trên cả ba modal để cây (và
  * "thiết bị hiện tại") sống qua lúc chuyển giữa các loại tài sản; trang riêng của Equipment tự gọi trong modal của nó.

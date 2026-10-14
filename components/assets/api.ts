@@ -3,7 +3,7 @@
 /**
  * Phần dùng chung của ba module tài sản (Equipment, Calibration, Golden): đường dẫn, quan hệ cha – con và
  * các lời gọi thao tác trên cây (Đổi vị trí, Move, Detach, Swap, Xóa, Check-out / Check-in) — luôn đi qua
- * `/api/assets/*` với `dry_run` để xem trước mục "Kết quả" (docs/API.md "Thao tác trên cây tài sản").
+ * `/api/assets/*` với `dry_run` để xem trước mục "Kết quả" (docs/ARCHITECTURE.md "Thao tác trên cây tài sản").
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';

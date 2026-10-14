@@ -2,7 +2,7 @@ import 'server-only';
 
 /**
  * Module User Management — bảng user_profiles, user_histories. Chỉ Admin.
- * docs/DATABASE_MODIFIED.md mục 8.
+ * docs/DATABASE.md.
  *
  * Tài khoản là người dùng Supabase Auth do Admin tạo; không tự đăng ký, không xóa, chỉ khóa.
  * Đúng bốn thao tác: Thêm, Sửa, Đặt lại mật khẩu, Khóa / Mở khóa. Mật khẩu tạm do hệ thống sinh

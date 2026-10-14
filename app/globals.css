@@ -47,7 +47,7 @@
   --tag-overdue-ink: #B42332;
   --tag-due-soon-bg: #FFF3D6;
   --tag-due-soon-ink: #976300;
-  /* 5 màu trạng thái (tags.color, docs/JABIL_UI.md "Status colors"): chấm,
+  /* 5 màu trạng thái (tags.color, docs/UI.md "Status colors"): chấm,
      thanh biểu đồ. Chữ trạng thái dùng --success / --warn / --alert / --info /
      --neutral trên nền -tint. Bộ màu đã kiểm tra mù màu đỏ-lục cho mọi cặp. */
   --status-green: #3DA535;
@@ -233,7 +233,7 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 .request-account-link:hover { background: var(--machine-tint); }
 /* Shared workspace: a quiet surface, a persistent brand rail, and aligned content. */
 .app-shell {
-  /* 240px expanded / 72px rail, 64px header minimum (docs/JABIL_UI.md › Current compact dimensions). */
+  /* 240px expanded / 72px rail, 64px header minimum (docs/UI.md › Current compact dimensions). */
   --sidebar-width: 240px; --sidebar-rail-width: 72px; --header-height: 64px;
   /* CSS fallback until the shared spring controller mounts. */
   --sidebar-duration: 320ms;
@@ -369,7 +369,7 @@ button.border, span.border, [role='dialog'] { border-radius: 7px; }
 .ui-button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; line-height: 1.4; border-radius: 8px; }
 .ui-button--md { min-height: 40px; }
 .ui-button--sm { min-height: 32px; }
-/* Modal system (docs/DETAIL_MODEL.md 3, docs/JABIL_UI.md): size is a prop (S ~440 / M ~640 / L ~960), fixed by the screen that opens it. */
+/* Modal system (docs/UI.md): size is a prop (S ~440 / M ~640 / L ~960), fixed by the screen that opens it. */
 .modal-overlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 16px; animation: modal-fade 140ms ease-out; }
 .modal-dialog { display: flex; flex-direction: column; width: 100%; max-height: 85dvh; min-width: 0; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; outline: none; box-shadow: 0 24px 80px color-mix(in srgb, var(--jabil-prussian) 18.82%, transparent); animation: modal-pop 160ms ease-out; }
 .modal-dialog--s { max-width: 440px; }

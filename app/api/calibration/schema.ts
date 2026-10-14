@@ -1,6 +1,6 @@
 import { z, optText, optId, optDate, reqId, reqText } from '@/lib/services/core/validate';
 
-/** Trường sub-equipment — docs/DATABASE_MODIFIED.md mục 4. Type không gửi: luôn theo part number. */
+/** Trường sub-equipment — docs/DATABASE.md. Type không gửi: luôn theo part number. */
 const sub = {
   serial_number: reqText(200),
   jabil_id: optText(200),

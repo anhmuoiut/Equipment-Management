@@ -1,7 +1,7 @@
 import 'server-only';
 
 /**
- * Module Golden board — bảng golden_boards. docs/DATABASE_MODIFIED.md mục 5.
+ * Module Golden board — bảng golden_boards. docs/DATABASE.md.
  * Gắn vào tester hoặc fixture (parent_id); có cha thì vị trí và Status theo cha (database). Nhật ký ghi vào asset_logs.
  * Xóa, Swap, Move, Detach, Đổi vị trí, Check-out / Check-in: route dùng chung /api/assets.
  */

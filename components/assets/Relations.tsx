@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Quan hệ cha – con trong chi tiết tài sản (docs/DETAIL_MODEL.md 4.1): dòng chữ `SN · Type` bấm để mở; thao tác
+ * Quan hệ cha – con trong chi tiết tài sản (docs/UI.md): dòng chữ `SN · Type` bấm để mở; thao tác
  * (Thêm thiết bị con, Gắn vào…) là liên kết chữ dẫn tới đúng màn hình thao tác của modal.
  */
 import { useId, useState, type ReactNode } from 'react';

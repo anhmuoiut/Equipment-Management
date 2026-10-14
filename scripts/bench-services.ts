@@ -7,7 +7,7 @@
  * In: thời gian một vòng mạng tới Supabase, chuỗi xác thực của MỘT request (lần lượt vs song song — xem lib/auth/session.ts) và
  * thời gian trung vị của các dịch vụ chính khi dữ liệu gốc đã được nhớ (trạng thái bình thường) và ngay sau một lần ghi
  * (lookupCache.ts đọc lại 9 bảng một lần). Mỗi số là trung vị của 7 lần chạy; "http" là số request gửi tới Supabase.
- * Giải thích số liệu: docs/PERFORMANCE.md.
+ * Giải thích số liệu: docs/ARCHITECTURE.md.
  */
 import { existsSync } from 'node:fs';
 

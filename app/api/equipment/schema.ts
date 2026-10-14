@@ -1,6 +1,6 @@
 import { z, optText, optId, reqText, reqId } from '@/lib/services/core/validate';
 
-/** Trường trên form thiết bị — docs/DATABASE_MODIFIED.md mục 3. */
+/** Trường trên form thiết bị — docs/DATABASE.md. */
 const fields = {
   serial_number: reqText(200),
   jabil_id: optText(200),
