@@ -1,34 +1,71 @@
-// Kiểm tra database/02 → 04 trên PGlite (Postgres chạy trong Node, không đụng Supabase thật).
+// Kiểm tra migration baseline (database/migrations/*_baseline.sql) + seed trên PGlite (Postgres chạy trong Node, không đụng Supabase thật).
 // Chạy: npm i --no-save @electric-sql/pglite && node database/tests/assets.test.mjs
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = process.argv[2] ?? fileURLToPath(new URL('../..', import.meta.url));
-const sql = (f) => readFileSync(join(root, 'database', f), 'utf8');
-const noExt = (s) => s.replace(/create extension if not exists pgcrypto;[^\n]*\n/, '');
+const lf = (text) => text.replace(/\r\n/g, '\n');
+const sql = (f) => lf(readFileSync(join(root, 'database', f), 'utf8'));
+const baselineFile = readdirSync(join(root, 'database', 'migrations')).filter((f) => f.endsWith('_baseline.sql'));
+if (baselineFile.length !== 1) throw new Error('expected exactly one *_baseline.sql in database/migrations');
+const baseline = sql(join('migrations', baselineFile[0]));
+// The harness below creates its own locations / part numbers / levels, so it starts from the SYSTEM rows only (section 1 of seed.sql).
+// The full seed (this site's Configuration lists) is exercised by database/tests/lifecycle.test.mjs.
+const seedFull = sql('seed.sql');
+const section2 = seedFull.indexOf('-- 2. DANH SÁCH CONFIGURATION');
+const systemSeed = seedFull.slice(0, seedFull.lastIndexOf('\n-- ------', section2)) + '\n' + seedFull.slice(seedFull.indexOf('alter table public.type_groups enable trigger'));
 let failures = 0;
+
+const VERIFY_ROW = `select
+  (select count(*) from pg_trigger where tgname ~ '_write_history$') as history_triggers,
+  (select count(*) from pg_trigger where tgname in ('equipment_01_type_from_part_number', 'sub_equipment_01_type_from_part_number', 'part_numbers_type_guard')) as type_triggers,
+  (select count(*) from pg_trigger where tgname = 'types_system_lock') as type_lock_triggers,
+  (select count(*) from pg_trigger where tgname in ('types_00_group_kind', 'type_groups_system_lock')) as type_group_triggers,
+  (select count(*) from pg_trigger where tgname in ('equipment_parent_rule', 'sub_equipment_02_from_parent', 'golden_boards_01_from_parent')) as tree_triggers,
+  (select count(*) from pg_trigger where tgname in ('equipment_02_level_from_parent', 'equipment_level_cascade')) as level_triggers,
+  (select count(*) from pg_trigger where tgname in ('equipment_04_usage_rule', 'sub_equipment_03_usage_rule', 'golden_boards_02_usage_rule')) as usage_rule_triggers,
+  (select count(*) from pg_trigger where tgname in ('equipment_05_tags_check', 'sub_equipment_04_tags_check', 'golden_boards_03_tags_check', 'tags_delete_check')) as tag_triggers,
+  (select count(*) from pg_trigger where tgname ~ '_00_serial_trim$') as serial_triggers,
+  (select count(*) from pg_trigger where tgname in ('calibrations_compute_due', 'calibration_configurations_kind')) as calibration_triggers,
+  (select count(*) from pg_trigger where tgname = 'user_profiles_admin_guard') as user_guard_triggers,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'
+     and p.proname in ('asset_change_location', 'asset_move', 'asset_detach', 'asset_swap', 'asset_delete', 'asset_set_usage')) as asset_ops,
+  (select string_agg(p.pronargs::text, ',') from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'asset_swap') as asset_swap_args,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'
+     and 'p_dry_run' = any (p.proargnames) and p.proname <> 'asset_op_result') as dry_run_functions,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'
+     and p.proname in ('valid_parents', 'swap_candidates', 'serial_matches')) as lookup_functions,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'overview_board') as overview_board,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'asset_tree') as asset_tree,
+  (select count(*) from pg_views where schemaname = 'public' and viewname in ('recent_actions', 'sub_equipment_calibration')) as views,
+  (select count(*) from information_schema.columns where table_schema = 'public' and column_name = 'action_id'
+     and table_name in ('asset_logs', 'configuration_histories', 'user_histories')) as action_id_columns,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'
+     and 'p_action_id' = any (p.proargnames)) as action_id_functions,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'app_write') as app_write,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'equipment_import') as equipment_import,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'sub_equipment_import') as sub_equipment_import,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'golden_import') as golden_import`;
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ` — ${extra}`}`); if (!ok) failures++; };
 const expectError = async (name, promise, text) => {
   try { await promise; check(name, false, 'no error'); } catch (e) { check(name, e.message.includes(text), e.message); }
 };
 
-// ============================================================ dựng mới 02 → 03 → 04 (schema auth của Supabase giả lập)
+// ============================================================ dựng mới: baseline → seed hệ thống (schema auth của Supabase giả lập)
 const db = new PGlite();
 await db.exec('create role anon; create role authenticated; create role service_role;');
 await db.exec('create schema auth; create table auth.users (id uuid primary key default gen_random_uuid());');
-const built = await db.exec(noExt(sql('02_schema.sql')));
-check('02 builds exactly 18 tables', built[built.length - 1].rows.filter((r) => r.table_type === 'BASE TABLE').length === 18);
-await db.exec(sql('03_seed.sql'));
-const res = await db.exec(sql('04_functions.sql'));
-const v = res[res.length - 1].rows[0];
-check('04 verify row', v.history_triggers == 14 && v.type_triggers == 3 && v.type_lock_triggers == 1 && v.type_group_triggers == 2 && v.tree_triggers == 3 && v.level_triggers == 2
+await db.exec(baseline);
+check('baseline builds exactly 18 tables', Number((await db.query(`select count(*) as n from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'`)).rows[0].n) === 18);
+await db.exec(systemSeed);
+const v = (await db.query(VERIFY_ROW)).rows[0];
+check('baseline verify row', v.history_triggers == 14 && v.type_triggers == 3 && v.type_lock_triggers == 1 && v.type_group_triggers == 2 && v.tree_triggers == 3 && v.level_triggers == 2
   && v.usage_rule_triggers == 3 && v.tag_triggers == 4 && v.serial_triggers == 3 && v.calibration_triggers == 2 && v.user_guard_triggers == 1
-  && v.asset_ops == 6 && v.asset_swap_args == '5' && v.dry_run_functions == 9 && v.lookup_functions == 3 && v.overview_board == 1 && v.asset_tree == 1 && v.views == 2
+  && v.asset_ops == 6 && v.asset_swap_args == '6' && v.dry_run_functions == 9 && v.lookup_functions == 3 && v.overview_board == 1 && v.asset_tree == 1 && v.views == 2
+  && v.action_id_columns == 3 && v.action_id_functions == 10
   && v.app_write == 1 && v.equipment_import == 1 && v.sub_equipment_import == 1 && v.golden_import == 1, JSON.stringify(v));
-await db.exec(sql('04_functions.sql'));
-check('04_functions.sql can be run again', true);
 
 const q = async (s, a = []) => (await db.query(s, a)).rows;
 const one = async (s, a = []) => (await q(s, a))[0];
@@ -497,7 +534,7 @@ await w('calibrations', 'update', oldCal, { calibrated_at: '2025-02-01' });
 check('editing calibrated_at recomputes that one due_date', (await due(oldCal)) === '2027-02-01');
 check('the Setup change itself is in configuration_histories', Number((await one(`select count(*) as n from public.configuration_histories where table_name = 'calibration_configurations' and action = 'UPDATE'`)).n) === 1);
 
-// ============================================================ M. nhật ký, import, recent_activities
+// ============================================================ M. nhật ký, import, recent_actions
 const cLog = (await logs('equipment', tt))[0];
 check('CREATE log: type, label, new_value with names, to_location, user', cLog.asset_type === 'equipment' && cLog.action === 'CREATE' && cLog.label === 'T1' && cLog.old_value === null
   && cLog.new_value.serial_number === 'T1' && cLog.new_value.location === 'L1' && cLog.new_value.part_number === 'PN-T' && cLog.to_location === 'L1' && cLog.user_id === actor);
@@ -545,13 +582,14 @@ const nGold = await rpc('golden_import', [JSON.stringify([
   { part_number: 'GB', serial_number: 'IMP-G2', location_id: L.L2 }]), actor]);
 check('sub_equipment_import / golden_import insert rows', nSub.count === 2 && nGold.count === 2);
 check('imported sub_equipment under a tester takes its location', (await one(`select location_id from public.sub_equipment where serial_number = 'IMP-S1'`)).location_id === L.L1);
-const act = await q(`select module, item_count from public.recent_activities where module = 'equipment' and action = 'CREATE' and note is null and item_count > 1`);
-check('recent_activities groups each import (two of 3 rows above) into one line', act.length === 2 && act.every((a) => Number(a.item_count) === 3), JSON.stringify(act));
-const mods = (await q(`select distinct module from public.recent_activities order by 1`)).map((x) => x.module);
-check('recent_activities modules', ['configuration', 'equipment', 'golden_board', 'sub_equipment', 'user'].every((m) => mods.includes(m)) && !mods.includes('calibration'), mods.join(','));
-const calAct = await one(`select changes from public.recent_activities where module = 'sub_equipment' and action = 'CALIBRATE' limit 1`);
-check('recent_activities rebuilds { field: { old, new } } from asset_logs', 'old' in calAct.changes.calibrated_at && 'new' in calAct.changes.calibrated_at);
-check('user histories are in recent_activities too', (await q(`select 1 from public.recent_activities where module = 'user' and action = 'DISABLE'`)).length >= 1);
+const act = await q(`select module, item_count from public.recent_actions where module = 'equipment' and action = 'CREATE' and source = 'import' and item_count > 1`);
+check('recent_actions groups each import (two of 3 rows above) into one line', act.length === 2 && act.every((a) => Number(a.item_count) === 3), JSON.stringify(act));
+const mods = (await q(`select distinct module from public.recent_actions order by 1`)).map((x) => x.module);
+check('recent_actions modules', ['configuration', 'equipment', 'golden_board', 'sub_equipment', 'user'].every((m) => mods.includes(m)) && !mods.includes('calibration'), mods.join(','));
+const calAct = await one(`select r.value -> 'changes' as changes from public.recent_actions a cross join lateral jsonb_array_elements(a.records) r
+  where a.module = 'sub_equipment' and a.action = 'CALIBRATE' limit 1`);
+check('recent_actions rebuilds { field: { old, new } } from asset_logs', 'old' in calAct.changes.calibrated_at && 'new' in calAct.changes.calibrated_at);
+check('user histories are in recent_actions too', (await q(`select 1 from public.recent_actions where module = 'user' and action = 'DISABLE'`)).length >= 1);
 
 // ============================================================ N. Overview
 const tO = await mkEq('TO', 'PN-T');
@@ -1002,37 +1040,13 @@ check(`every database function with p_dry_run is covered by this harness (${with
   JSON.stringify(withDryRun) === JSON.stringify([...covered].sort()), `db: ${withDryRun.join(',')} · tested: ${[...covered].sort().join(',')}`);
 check('there are exactly 9 such functions', withDryRun.length === 9);
 
-// ============================================================ Q. migration bỏ hai hàm Overview cũ
-const oldFns = async () => (await q(`select proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname in ('overview_children', 'overview_unattached_count') order by 1`)).map((r) => r.proname);
-await db.exec(`create function public.overview_children(p_parent_type text, p_parent_id uuid default null) returns integer language sql as 'select 1';
-  create function public.overview_unattached_count() returns integer language sql as 'select 1';`);
-check('(setup) a database upgraded from the tree Overview still has the two old functions', same(await oldFns(), ['overview_children', 'overview_unattached_count']));
-await db.exec(sql('04_functions.sql'));
-check('04_functions.sql run on that database leaves the old functions alone (the old Overview page keeps working until the app is switched)', (await oldFns()).length === 2);
-const migOv = readFileSync(join(root, 'database', 'migrations', '2026-10-09_overview_board.sql'), 'utf8');
-// the migration refuses to drop anything while the new functions the new app needs are missing
-for (const [fn, drop] of [['asset_tree', 'drop function public.asset_tree(text, uuid)'], ['overview_board', 'drop function public.overview_board(text, text, text)']]) {
-  await db.exec(drop);
-  let refused = false;
-  try { await db.exec(migOv); } catch (e) { refused = /04_functions/.test(String(e.message ?? e)); }
-  await db.exec('rollback').catch(() => {});
-  check(`migration refuses to run, dropping nothing, while ${fn} is missing`, refused && (await oldFns()).length === 2);
-  await db.exec(sql('04_functions.sql'));
-}
-const migRes = await db.exec(migOv);
-const migRow = migRes[migRes.length - 1].rows[0];
-check('migration 2026-10-09_overview_board drops them; its check row says 0 old functions, 1 overview_board, 1 asset_tree', (await oldFns()).length === 0 && Number(migRow.old_overview_functions) === 0 && Number(migRow.overview_board) === 1 && Number(migRow.asset_tree) === 1, JSON.stringify(migRow));
-await db.exec(migOv);
-check('…and running it again is harmless', (await oldFns()).length === 0);
-
 // ============================================================ R. quy mô — 820 tài sản, database riêng
 {
   const big = new PGlite();
   await big.exec('create role anon; create role authenticated; create role service_role;');
   await big.exec('create schema auth; create table auth.users (id uuid primary key default gen_random_uuid());');
-  await big.exec(noExt(sql('02_schema.sql')));
-  await big.exec(sql('03_seed.sql'));
-  await big.exec(sql('04_functions.sql'));
+  await big.exec(baseline);
+  await big.exec(systemSeed);
   await big.exec(`
     insert into public.locations (display_name, sort_order) select 'S' || g, g from generate_series(1, 5) g;
     insert into public.types (display_name, kind) values ('DMM', 'sub_equipment');
