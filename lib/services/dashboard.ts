@@ -118,29 +118,61 @@ export async function recentActivities(role: Role, filter: ActivityFilter): Prom
 }
 
 /**
- * TẠM THỜI — cách cũ (view recent_activities: mỗi nhật ký một dòng, import gộp một dòng) chỉ để app chạy được trên database dựng
- * TRƯỚC baseline. Database baseline không có view này và không bao giờ vào đây; bỏ hàm này cùng `callRpc` retry trong db.ts khi
- * không còn môi trường nào dùng schema cũ.
+ * TẠM THỜI — chỉ để app chạy được trên database dựng TRƯỚC baseline (project cũ), nơi chưa có cột action_id. Database baseline không
+ * có view recent_activities và không bao giờ vào đây; bỏ hàm này cùng `callRpc` retry trong db.ts khi không còn môi trường nào dùng
+ * schema cũ (docs/DEPLOY.md §8).
+ *
+ * Không có action_id thì dùng cái thay thế được: mọi dòng nhật ký của MỘT thao tác nằm trong MỘT giao dịch, nên `created_at`
+ * (= now() của giao dịch) giống hệt nhau, cùng người, cùng nguồn. Gộp theo bộ ba đó cho ra đúng một dòng cho một Swap / Move / Check-out
+ * kèm con cháu. Chỉ chưa gộp được: một lần lưu form gồm NHIỀU lời gọi database (nhiều giao dịch) — cần action_id của baseline.
  */
+const LEGACY_ROWS = 1000;
+const FOLLOWER = /^(via_parent|parent_deleted):/;
+
 async function legacyActivities(role: Role, filter: ActivityFilter, limit: number): Promise<RecentAction[]> {
+  // Bộ lọc cùng một giá trị cho mọi dòng của một thao tác (người, thời gian) lọc ở database; module / chữ tìm lọc sau khi gộp.
   let query = db().from('recent_activities')
     .select('module, object_id, label, action, changes, created_by, created_at, note, source, item_count')
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .limit(LEGACY_ROWS);
   if (role !== 'admin') query = query.in('module', ASSET_MODULES);
-  if (filter.module) query = query.eq('module', filter.module);
   if (filter.userId) query = query.eq('created_by', filter.userId);
-  if (filter.search) query = query.ilike('label', likePattern(filter.search));
   if (filter.from) query = query.gte('created_at', filter.from);
   if (filter.to) query = query.lte('created_at', filter.to);
   const { data, error } = await query;
   if (error) throw mapRpcError(error);
-  type Legacy = Omit<ActionRecord, 'from_location' | 'to_location'> & { created_by: string | null; created_at: string; source: string; item_count: number };
-  const rows = await withActorNames((data ?? []) as Legacy[]);
-  return rows.map((r, i) => ({
-    id: `${r.object_id}-${r.created_at}-${i}`, module: r.module, modules: [r.module], action: r.action, source: r.source,
-    created_by: r.created_by, created_by_name: r.created_by_name, created_at: r.created_at, item_count: r.item_count,
-    // Một lần import cũ chỉ có một dòng đại diện: không liệt kê (như trước).
-    records: r.item_count > 1 ? [] : [{ module: r.module, object_id: r.object_id, label: r.label, action: r.action, changes: r.changes, note: r.note }],
-  }));
+
+  type Row = Omit<ActionRecord, 'from_location' | 'to_location'> & { created_by: string | null; created_at: string; source: string; item_count: number };
+  const rows = (data ?? []) as Row[];
+  const groups = new Map<string, Row[]>();
+  for (const r of rows) {
+    const key = `${r.created_at}|${r.created_by ?? ''}|${r.source}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);
+  }
+  let ordered = [...groups.entries()];
+  // Đọc kín LEGACY_ROWS dòng thì thao tác cũ nhất có thể bị cắt dở: bỏ nó thay vì hiện một thao tác thiếu bản ghi.
+  if (rows.length >= LEGACY_ROWS && ordered.length > 1) ordered = ordered.slice(0, -1);
+
+  const actions = ordered.map(([key, group]) => {
+    // Bản ghi chính (do người dùng chọn) trước, bản ghi đi theo (via_parent / parent_deleted) sau; trong mỗi nhóm theo tên cho ổn định.
+    const sorted = [...group].sort((a, b) => Number(FOLLOWER.test(a.note ?? '')) - Number(FOLLOWER.test(b.note ?? '')) || a.label.localeCompare(b.label));
+    const lead = sorted[0]!;
+    return {
+      id: `legacy:${key}`, module: lead.module, modules: [...new Set(sorted.map((r) => r.module))], action: lead.action, source: lead.source,
+      created_by: lead.created_by, created_at: lead.created_at,
+      item_count: sorted.reduce((sum, r) => sum + r.item_count, 0),
+      // Một lần import cũ chỉ có một dòng đại diện (item_count > 1): không liệt kê (như trước).
+      records: sorted.filter((r) => r.item_count === 1).slice(0, 50)
+        .map((r): ActionRecord => ({ module: r.module, object_id: r.object_id, label: r.label, action: r.action, changes: r.changes, note: r.note })),
+      labels: sorted.map((r) => r.label.toLowerCase()),
+    };
+  });
+
+  const needle = filter.search?.trim().toLowerCase();
+  const visible = actions
+    .filter((a) => !filter.module || a.modules.includes(filter.module))
+    .filter((a) => !needle || a.labels.some((label) => label.includes(needle)))
+    .filter((a) => role === 'admin' || a.modules.every((m) => ASSET_MODULES.includes(m)))
+    .slice(0, limit);
+  return withActorNames(visible.map(({ labels: _labels, ...action }) => action));
 }

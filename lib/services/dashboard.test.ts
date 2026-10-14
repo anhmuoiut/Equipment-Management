@@ -95,14 +95,69 @@ describe('recentActivities', () => {
   });
 
   // TEMPORARY compatibility with a database built before the baseline (the old project). Delete with legacyActivities().
-  it('falls back to the old one-row-per-log view while the database has no recent_actions view yet', async () => {
-    const missing = chain({ data: null, error: { code: 'PGRST205', message: "Could not find the table 'public.recent_actions' in the schema cache" } });
-    const legacy = chain({ data: [{ module: 'equipment', object_id: 'e1', label: 'SN-1', action: 'UPDATE', changes: {}, created_by: 'u1', created_at: '2026-10-01T00:00:00Z', note: null, source: 'ui', item_count: 1 }] });
-    m.from.mockReturnValueOnce(missing.proxy).mockReturnValueOnce(legacy.proxy);
-    const rows = await recentActivities('admin', {});
-    expect(m.from).toHaveBeenLastCalledWith('recent_activities');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ module: 'equipment', action: 'UPDATE', item_count: 1, records: [expect.objectContaining({ label: 'SN-1' })] });
+  describe('on a database without recent_actions (no action_id): rows written in ONE transaction are ONE line', () => {
+    const missing = () => chain({ data: null, error: { code: 'PGRST205', message: "Could not find the table 'public.recent_actions' in the schema cache" } });
+    const T1 = '2026-10-14T15:55:53.928634+00:00'; // one swap: every row has the same transaction time, user and source
+    const T2 = '2026-10-14T11:20:16.262200+00:00';
+    const T3 = '2026-10-13T09:00:00.000000+00:00';
+    const row = (over: Record<string, unknown>) => ({ module: 'equipment', object_id: 'o', label: 'X', action: 'UPDATE', changes: {}, created_by: 'u1', created_at: T1, note: null, source: 'ui', item_count: 1, ...over });
+    const rows = [
+      row({ object_id: 'f2', label: 'FIXTURE-2', action: 'CHANGE_LOCATION', note: 'via_parent:BASE-2' }), // followers come in any order …
+      row({ object_id: 'b3', label: 'BASE-3', action: 'SWAP', note: 'swap_with:BASE-2' }),
+      row({ object_id: 'f3', label: 'FIXTURE-3', action: 'UPDATE', note: 'via_parent:BASE-3' }),
+      row({ object_id: 'b2', label: 'BASE-2', action: 'SWAP', note: 'swap_with:BASE-3' }),
+      row({ module: 'sub_equipment', object_id: 's1', label: 'DMM-1', action: 'TAGS', created_at: T2 }),
+      row({ object_id: 'imp', label: 'IMP-1', action: 'CREATE', created_at: T3, source: 'import', item_count: 3, created_by: 'u2' }),
+    ];
+    const run = async (role: 'admin' | 'user', filter = {}, data: unknown[] = rows) => {
+      const legacy = chain({ data });
+      m.from.mockReturnValueOnce(missing().proxy).mockReturnValueOnce(legacy.proxy);
+      return { out: await recentActivities(role, filter), legacy };
+    };
+
+    it('one swap with the fixtures that travelled with it is ONE line: primary records first, followers after, item_count = every row', async () => {
+      const { out, legacy } = await run('admin');
+      expect(m.from).toHaveBeenLastCalledWith('recent_activities');
+      expect(out).toHaveLength(3); // the swap, the tag change, the import — not 6 lines
+      expect(out[0]).toMatchObject({ module: 'equipment', modules: ['equipment'], action: 'SWAP', source: 'ui', created_by: 'u1', created_by_name: 'Ann', created_at: T1, item_count: 4 });
+      expect(out[0]!.records.map((r) => [r.label, r.action])).toEqual([['BASE-2', 'SWAP'], ['BASE-3', 'SWAP'], ['FIXTURE-2', 'CHANGE_LOCATION'], ['FIXTURE-3', 'UPDATE']]);
+      expect(legacy.call('limit')).toEqual([1000]);
+    });
+
+    it('rows of different transactions stay separate lines, newest first; an old import keeps its single representative row', async () => {
+      const { out } = await run('admin');
+      expect(out.map((a) => [a.action, a.item_count, a.records.length])).toEqual([['SWAP', 4, 4], ['TAGS', 1, 1], ['CREATE', 3, 0]]);
+      expect(new Set(out.map((a) => a.id)).size).toBe(3); // unique ids (React keys)
+    });
+
+    it('the same time but another user (or source) is another line', async () => {
+      const { out } = await run('admin', {}, [row({ label: 'A' }), row({ label: 'B', created_by: 'u2' }), row({ label: 'C', source: 'script' })]);
+      expect(out).toHaveLength(3);
+    });
+
+    it('filters apply to the whole action: module, any record\'s serial, limit; user and dates go to the database', async () => {
+      expect((await run('admin', { module: 'sub_equipment' })).out.map((a) => a.action)).toEqual(['TAGS']);
+      expect((await run('admin', { search: 'fixture-3' })).out.map((a) => a.action)).toEqual(['SWAP']); // a follower record matches
+      expect((await run('admin', { limit: 1 })).out).toHaveLength(1);
+      const { legacy } = await run('admin', { userId: 'u1', from: '2026-10-01', to: '2026-10-31' });
+      expect(legacy.call('eq')).toEqual(['created_by', 'u1']);
+      expect(legacy.call('gte')).toEqual(['created_at', '2026-10-01']);
+      expect(legacy.call('lte')).toEqual(['created_at', '2026-10-31']);
+    });
+
+    it('a User never sees an action that touches Configuration or Users', async () => {
+      const { out, legacy } = await run('user', {}, [...rows, row({ module: 'configuration', label: 'Locations', created_at: '2026-10-12T00:00:00+00:00' })]);
+      expect(legacy.call('in')).toEqual(['module', ['equipment', 'sub_equipment', 'golden_board']]);
+      expect(out.every((a) => a.modules.every((x) => ['equipment', 'sub_equipment', 'golden_board'].includes(x)))).toBe(true);
+      expect(out.some((a) => a.modules.includes('configuration' as never))).toBe(false);
+    });
+
+    it('when the read is cut at 1000 rows the oldest action (possibly cut in half) is dropped, not shown incomplete', async () => {
+      const many = Array.from({ length: 1000 }, (_, i) => row({ label: `S-${i}`, created_at: `2026-10-01T00:00:00.${String(Math.floor(i / 2)).padStart(6, '0')}+00:00` }));
+      const { out } = await run('admin', { limit: 500 }, many);
+      expect(out).toHaveLength(499); // 500 actions of 2 rows were read; the 500th may be incomplete
+      expect(out.every((a) => a.item_count === 2)).toBe(true);
+    });
   });
 
   it('any other error from recent_actions is NOT swallowed by the fallback', async () => {
