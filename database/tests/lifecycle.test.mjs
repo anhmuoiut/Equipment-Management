@@ -44,7 +44,7 @@ const newProject = async () => { const db = new PGlite(); await db.exec(AUTH); a
 const q = async (db, s, a = []) => (await db.query(s, a)).rows;
 const n = async (db, s) => Number(Object.values((await q(db, s))[0])[0]);
 
-const HASH = '$2a$10$abcdefghijklmnopqrstuuMOCKMOCKMOCKMOCKMOCKMOCKMOCKMOCKa';  // not a real hash
+const HASH = 'mock-password-hash-not-a-real-bcrypt-value';  // any non-empty string: the scripts copy it verbatim
 async function addUser(db, { username, role, password = HASH, active = true, mustChange = false }) {
   const [u] = await q(db, `insert into auth.users (instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
     values ('00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $1, $2, now(), '{"provider":"email"}', '{}', now(), now()) returning id`, [`${username}@jabil.local`, password]);
