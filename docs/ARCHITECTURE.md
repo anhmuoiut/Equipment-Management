@@ -36,7 +36,7 @@ The browser never talks to Supabase directly. Every read and write goes through 
 | `components/ui` | Shared building blocks: `Masterlist`, `record/RecordModal`, `workspace/ModuleWorkspace`, `SearchableSelect`, `ActionMenu`, tags, `ImportModal`. |
 | `components/{equipment,calibration,golden,configuration,users,overview,dashboard,assets}` | Module screens built from the shared blocks. |
 | `src/i18n` | Client i18n setup and `locales/en.json`, `vi.json`. |
-| `database/` | Baseline migration, seed, tools, tests, archive ([DATABASE.md](DATABASE.md), [DEPLOY.md](DEPLOY.md)). |
+| `database/` | Baseline migration, seed (system rows), tools: Admin export / import and the reset script ([DATABASE.md](DATABASE.md), [DEPLOY.md](DEPLOY.md)). |
 | `scripts/` | `seed-first-admin.ts` (first admin) and `bench-services.ts` (read-only timing against a real project). |
 | `.github/workflows` | Daily database backup; keepalive ping. |
 
@@ -138,8 +138,6 @@ Latency is dominated by **sequential network round trips** to Supabase (≈ 0.25
 | --- | --- |
 | `npm run typecheck` · `npm run lint` | TypeScript and ESLint. |
 | `npm test` | Vitest: services, auth, API client, import, schemas, and jsdom UI tests. `vitest.setup.ts` gives jsdom elements a layout box, because popovers close when their anchor measures 0×0. |
-| `node database/tests/assets.test.mjs` | The baseline on PGlite: every trigger and function, dry-run equals real run, scale test. |
-| `node database/tests/lifecycle.test.mjs` | Seed, admin move, reset and verify scripts. |
 | `npm run build` | Production build. |
 
-The two database tests need `npm i --no-save @electric-sql/pglite`; they never connect to Supabase.
+The database scripts have no automated tests in the repository; the earlier PGlite tests (`database/tests/`) are in git history.

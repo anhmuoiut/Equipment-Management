@@ -50,7 +50,6 @@ Open the address Next.js prints. A new Supabase project must be built first — 
 | `npm run typecheck` · `lint` · `test` | TypeScript, ESLint, Vitest. |
 | `npm run seed:admin -- <username> "<Full name>"` | Create the first Admin in a fresh project. |
 | `npm run bench` | Read-only timing of the server layer against a real project. |
-| `node database/tests/assets.test.mjs` · `lifecycle.test.mjs` | Database tests on a scratch Postgres (`npm i --no-save @electric-sql/pglite` first). |
 
 ## Documentation
 
@@ -63,4 +62,4 @@ Open the address Next.js prints. A new Supabase project must be built first — 
 
 ## Repository map
 
-`app/` pages and API routes · `components/` UI · `lib/` server, client and shared code · `src/i18n/` translations · `database/` baseline migration, seed, tools, tests · `scripts/` CLI scripts · `docs/`.
+`app/` pages and API routes · `components/` UI · `lib/` server, client and shared code · `src/i18n/` translations · `database/` baseline migration, seed, Admin move and reset scripts · `scripts/` CLI scripts · `docs/`.

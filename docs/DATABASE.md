@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL on Supabase. The whole schema is one file, [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql); required data is in [`database/seed.sql`](../database/seed.sql). To build a project from zero see [DEPLOY.md](DEPLOY.md).
+PostgreSQL on Supabase. The whole schema is one file, [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql); the system rows (Types Tester / Base / Fixture and their Groups) are in [`database/seed.sql`](../database/seed.sql); every other Configuration list is entered by the Admin. To build a project from zero see [DEPLOY.md](DEPLOY.md).
 
 **18 tables, 2 views, 54 functions, 57 triggers, 76 indexes. No enums, no RLS policies, no storage buckets, no cron jobs.** The comments inside the SQL are in Vietnamese; this document is the English reference.
 
@@ -14,7 +14,7 @@ PostgreSQL on Supabase. The whole schema is one file, [`database/migrations/2026
 | No privilege escalation through views | Both views are `security_invoker = true`. |
 | No search-path tricks | Every function sets `search_path = ''` and uses fully qualified names. |
 
-`database/tools/verify_new_project.sql` checks all of the above on a live project.
+[DEPLOY.md](DEPLOY.md) §3 has a read-only query that checks table, view, function and RLS counts on a live project.
 
 ## 2. Conventions
 
@@ -212,4 +212,4 @@ Raised as `raise exception 'CODE'`; the server maps them to a translated message
 
 ## 9. Changing the database later
 
-Add a new file `database/migrations/YYYYMMDDHHMMSS_name.sql` (one transaction, safe to read top to bottom). **Never edit the baseline** once a project has been built from it. Keep the security pattern: new functions are `security invoker`, `set search_path = ''`, followed by `revoke ... from public, anon, authenticated` and `grant execute ... to service_role` (the baseline ends with a blanket version of this; a migration that creates a function must repeat it). After changing seed data run `node database/tools/build-reset.mjs` so the reset script stays in step, then run the tests ([DEPLOY.md](DEPLOY.md) §9). The pre-baseline files are kept in `database/archive/` for history only.
+Add a new file `database/migrations/YYYYMMDDHHMMSS_name.sql` (one transaction, safe to read top to bottom). **Never edit the baseline** once a project has been built from it. Keep the security pattern: new functions are `security invoker`, `set search_path = ''`, followed by `revoke ... from public, anon, authenticated` and `grant execute ... to service_role` (the baseline ends with a blanket version of this; a migration that creates a function must repeat it). If the system rows in `database/seed.sql` change, change the matching block of `database/tools/reset_after_testing.sql` too. The pre-baseline schema files and the database tests are in git history, not in the working tree.
