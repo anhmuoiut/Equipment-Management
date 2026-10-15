@@ -84,7 +84,7 @@ The Admin move keeps the account's department only if it is in the new project (
 | `backup.yml` — daily dump | secret **`SUPABASE_DB_URL`** = the Postgres connection string of the **current production** project (Supabase → Connect → **Session pooler** string with the database password filled in; GitHub-hosted runners are IPv4-only and the *direct* connection string is IPv6 unless you buy Supabase's IPv4 add-on. Run the workflow once by hand after changing it and check the artifact is not empty) | `pg_dump` to an artifact kept 30 days. |
 | `keepalive.yml` — daily ping | variable **`APP_URL`** = the production URL, no trailing slash | `GET /api/health`. Only useful on a project that can pause (free tier); remove it on Pro. |
 
-Update `SUPABASE_DB_URL` at go-live, otherwise the backup keeps dumping the old project. GitHub disables scheduled workflows after ~60 days without repository activity.
+**Keep the repository private.** The dump holds all your data (and probably the Auth accounts with their password hashes), and artifacts of a public repository can be downloaded by anyone with a GitHub account; the workflow refuses to run in a public repository. On the Free plan this dump is the **only** backup, so restore it into a scratch project once ([§10.7](#107-backup-and-restore)). Update `SUPABASE_DB_URL` at go-live, otherwise the backup keeps dumping the old project. GitHub disables scheduled workflows after ~60 days without repository activity.
 
 ## 6. Test on a Vercel preview
 
@@ -97,7 +97,7 @@ Goal: exercise the new database with the real code **while production keeps usin
 4. Work through the [checklist](#7-manual-test-checklist) on that URL.
 5. When done, run [`database/tools/reset_after_testing.sql`](../database/tools/reset_after_testing.sql) in the new project (§8 step 2) so no test data survives. It also puts the Configuration lists back exactly as in `seed.sql`.
 
-> The repository may be **public**. `database/seed.sql` holds your real Configuration lists (bay names, part numbers). Decide before pushing: make the repository private, or keep that file out of the push. Never commit `.env.local` or an Admin export (`admin_export*.json`, `*.filled.sql`).
+> Make the repository **private** before relying on the backup workflow (§5). `database/seed.sql` also holds your real Configuration lists (bay names, part numbers). Never commit `.env.local` or an Admin export (`admin_export*.json`, `*.filled.sql`).
 
 ## 7. Manual test checklist
 
@@ -232,7 +232,7 @@ Configuration (Admin). Items are hidden, not deleted (except Tags and Calibratio
 The daily workflow stores `eq-YYYY-MM-DD.sql.gz` as an artifact (30 days). Restore into a **scratch** project first: `gunzip -c eq-….sql.gz | psql "<connection string>"`. The dump uses `--no-acl`, so on a fresh project re-apply the grants at the end of the baseline migration (the `revoke … grant … service_role` blocks) and run `verify_new_project.sql`. Accounts live in the `auth` schema, which is not part of a `public`-only restore: recreate the Auth users for each `user_profiles` row with the same ids. **A backup that has never been restored is not a backup — test a restore at least once.** (Not yet tested for this project.)
 
 ### 10.8 Project paused
-The free tier pauses after a week without activity; data is kept. Supabase dashboard → Restore (a few minutes). `keepalive.yml` pings `/api/health` daily to prevent it.
+The free tier pauses after a week without activity; data is kept. Supabase dashboard → Restore (a few minutes). `keepalive.yml` pings `/api/health` daily to prevent it; the endpoint reads one row from the database (at most once a minute), because Supabase counts only database / API activity, not a call that stops at Vercel. A red run of that workflow means the app cannot reach the database.
 
 ### 10.9 Monthly check
 Look once a month; crossing a threshold means *optimise*, not necessarily upgrade.
