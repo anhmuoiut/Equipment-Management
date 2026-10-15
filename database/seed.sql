@@ -1,5 +1,5 @@
 -- =============================================================================
--- seed.sql — DỮ LIỆU CÓ SẴN của project mới (chạy sau migration baseline và TRƯỚC khi có người dùng).
+-- seed.sql — DỮ LIỆU CÓ SẴN của project mới (chạy sau MỌI migration và TRƯỚC khi có người dùng).
 --
 --   1. Dòng hệ thống BẮT BUỘC: ba loại Tester / Base / Fixture và các nhóm của chúng. App dựa vào chúng để biết thiết bị
 --      thuộc bảng nào và nằm dưới ai (Tester ⊃ Base ⊃ Fixture): không xóa, không ẩn, không đổi kind được.
@@ -8,24 +8,13 @@
 --      ở Configuration sau này. Nếu dùng cho một site khác: giữ phần 1, thay phần 2.
 --
 -- Không có dữ liệu thiết bị, không có tài khoản, không có nhật ký. Id giữ nguyên như project cũ để khóa ngoại khớp.
--- created_by để trống (không có người tạo trong project mới). Không ghi nhật ký (trigger write_history tắt trong lúc chèn).
+-- created_by để trống (không có người tạo trong project mới).
 -- Chạy lại nhiều lần được: dòng đã có thì bỏ qua (on conflict do nothing).
 --
 -- reset_after_testing.sql chứa cùng các dòng này (bước 3): sửa file này thì sửa cả bước đó.
 -- =============================================================================
 
 begin;
-
--- Không ghi nhật ký cho dữ liệu có sẵn.
-alter table public.type_groups disable trigger type_groups_write_history;
-alter table public.types disable trigger types_write_history;
-alter table public.levels disable trigger levels_write_history;
-alter table public.departments disable trigger departments_write_history;
-alter table public.locations disable trigger locations_write_history;
-alter table public.tags disable trigger tags_write_history;
-alter table public.calibration_vendors disable trigger calibration_vendors_write_history;
-alter table public.part_numbers disable trigger part_numbers_write_history;
-alter table public.calibration_configurations disable trigger calibration_configurations_write_history;
 
 -- -----------------------------------------------------------------------------
 -- 1. DÒNG HỆ THỐNG (bắt buộc)
@@ -110,14 +99,5 @@ insert into public.calibration_configurations (id, part_number_id, interval_mont
   ('823da19f-a8a2-438d-a5bf-77d47e2b2b8e', 'c564b903-a50c-4af8-bdce-d3df03a627e5', 6, 15)
 on conflict do nothing;
 
-alter table public.type_groups enable trigger type_groups_write_history;
-alter table public.types enable trigger types_write_history;
-alter table public.levels enable trigger levels_write_history;
-alter table public.departments enable trigger departments_write_history;
-alter table public.locations enable trigger locations_write_history;
-alter table public.tags enable trigger tags_write_history;
-alter table public.calibration_vendors enable trigger calibration_vendors_write_history;
-alter table public.part_numbers enable trigger part_numbers_write_history;
-alter table public.calibration_configurations enable trigger calibration_configurations_write_history;
 
 commit;

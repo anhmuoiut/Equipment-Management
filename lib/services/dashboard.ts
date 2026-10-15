@@ -108,7 +108,8 @@ const MAX_ACTIVITY_OFFSET = 10_000;
 const ASSET_MODULES: HistoryModule[] = ['equipment', 'sub_equipment', 'golden_board'];
 /**
  * Module mà "Thay đổi gần đây" của Dashboard liệt kê: ba module tài sản cho mọi người, thêm User Management (tạo / sửa / khóa tài khoản) cho Admin.
- * Thay đổi Configuration KHÔNG hiện ở đây cho ai cả — vẫn được ghi lại và vẫn xem được ở tab History của từng mục Configuration.
+ * Thay đổi Configuration không hiện ở đây cho ai cả (từ migration 20261017000000 chúng cũng không còn được ghi); lọc cả ở đây để một database chưa
+ * chạy migration đó vẫn không lộ chúng.
  */
 const visibleModules = (role: Role): HistoryModule[] => (role === 'admin' ? [...ASSET_MODULES, 'user'] : ASSET_MODULES);
 /** % _ \ trong chữ gõ vào là ký tự thường (ilike). */

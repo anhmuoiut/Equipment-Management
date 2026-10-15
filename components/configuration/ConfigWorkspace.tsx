@@ -149,8 +149,6 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
           })}
           sections={sections}
           defaults={defaults}
-          historyUrl={(r) => `/api/configuration/${listKey}/${r.id}/history`}
-          historyLabels={{ part_number: t('fields.part_number') }}
           canEdit
           onSave={async (payload, record) => {
             if (def.isTag) payload = { ...payload, color: manualTagColor(payload.display_name as string, payload.color as StatusColor) };

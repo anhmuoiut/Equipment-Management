@@ -1,15 +1,15 @@
 import 'server-only';
 
 /**
- * Module Configuration — 8 danh sách: dữ liệu gốc + hiệu chuẩn (Setup, Vendor),
- * bảng configuration_histories. Chỉ Admin.
+ * Module Configuration — 8 danh sách: dữ liệu gốc + hiệu chuẩn (Setup, Vendor). Chỉ Admin.
+ * Sửa cấu hình không ghi nhật ký (migration 20261017000000).
  */
 import { appWrite, db, selectAll, selectOne } from './core/db';
-import { readHistory, withActorNames } from './core/history';
+import { withActorNames } from './core/history';
 import { assertActive, auditOf, loadLookups, nameOf } from './core/lookups';
 import { AppError, mapRpcError } from '@/lib/errors';
 import type { ConfigListDef } from '@/lib/configuration';
-import type { ConfigRow, ErrorLogRow, HistoryEntry, TypeKind } from '@/lib/types';
+import type { ConfigRow, ErrorLogRow, TypeKind } from '@/lib/types';
 
 type DbRow = Record<string, unknown> & {
   id: string; created_at: string; created_by: string | null; updated_at: string; updated_by: string | null;
@@ -121,13 +121,6 @@ async function assertPartNumberActive(id: string | undefined) {
   const pn = await selectOne<{ is_active: boolean }>('part_numbers', id, 'is_active');
   if (!pn) throw new AppError('VALIDATION_ERROR', { fields: { part_number_id: 'not_found' } });
   if (!pn.is_active) throw new AppError('INACTIVE_OPTION', { fields: { part_number_id: 'inactive' } });
-}
-
-export function configHistory(list: ConfigListDef, id: string): Promise<HistoryEntry[]> {
-  return readHistory('configuration_histories', [
-    { column: 'table_name', value: list.table },
-    { column: 'record_id', value: id },
-  ]);
 }
 
 /** Configuration › HỆ THỐNG › Error log — chỉ xem, 1000 lỗi mới nhất. */

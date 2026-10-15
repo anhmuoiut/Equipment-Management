@@ -269,6 +269,14 @@ describe('Configuration', () => {
     if (list === 'calibration-setup') expect(screen.queryByLabelText(/fields.part_number/)).toBeNull();
   });
 
+  it('a Configuration record has no History tab and nothing asks the server for one (changes to the lists are not recorded)', async () => {
+    await mount(<ConfigWorkspace listKey="tags" />);
+    await openRow('Repair');
+    expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toBe('Repair');
+    expect(screen.queryByRole('tab', { name: 'dp.tabHistory' })).toBeNull();
+    expect(vi.mocked(api.get).mock.calls.some(([url]) => String(url).endsWith('/history'))).toBe(false);
+  });
+
   it('part numbers: the Manufacturer column is there — also for someone whose saved column choices were made before it existed', async () => {
     localStorage.setItem('masterlist-columns:configuration-part-numbers', JSON.stringify({ order: ['display_name', 'type', 'level', 'sort_order', 'is_active'], hidden: ['sort_order'] }));
     await mount(<ConfigWorkspace listKey="part-numbers" />);

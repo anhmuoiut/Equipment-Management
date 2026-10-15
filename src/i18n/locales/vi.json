@@ -641,7 +641,6 @@
     "moduleName": {
       "equipment": "Equipment",
       "calibration": "Calibration status",
-      "configuration": "Configuration",
       "user": "User",
       "sub_equipment": "Sub-equipment",
       "golden_board": "Golden board"

@@ -3,7 +3,7 @@ import { recentActivities } from '@/lib/services/dashboard';
 import { UUID_RE } from '@/lib/services/core/validate';
 import type { HistoryModule } from '@/lib/types';
 
-/** Configuration is not a Recent-changes module (kept in each Configuration record's own History). */
+/** Configuration is not a Recent-changes module (its changes are no longer recorded at all). */
 const MODULES: HistoryModule[] = ['equipment', 'sub_equipment', 'golden_board', 'user'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 

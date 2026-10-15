@@ -3,7 +3,7 @@ vi.mock('server-only', () => ({}));
 
 const m = vi.hoisted(() => ({ appWrite: vi.fn(), selectAll: vi.fn(), selectOne: vi.fn(), from: vi.fn() }));
 vi.mock('./core/db', () => ({ appWrite: m.appWrite, selectAll: m.selectAll, selectOne: m.selectOne, db: () => ({ from: m.from }) }));
-vi.mock('./core/history', () => ({ readHistory: vi.fn(), withActorNames: async (rows: unknown[]) => rows }));
+vi.mock('./core/history', () => ({ withActorNames: async (rows: unknown[]) => rows }));
 vi.mock('./core/lookups', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./core/lookups')>()),
   loadLookups: async () => (await import('./testing/fixtures')).makeLookups(),

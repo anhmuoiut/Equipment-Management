@@ -5,7 +5,7 @@
 --   1. Đổi 'ADMIN_USERNAME' (một chỗ, ngay bên dưới) thành username Admin cần giữ.
 --   2. Run. Cả file là một giao dịch: lỗi ở đâu thì không đổi gì cả.
 --
--- XÓA HẾT: mọi thiết bị (Equipment / Sub-equipment / Golden), lần hiệu chuẩn, mọi nhật ký (asset_logs, configuration_histories,
+-- XÓA HẾT: mọi thiết bị (Equipment / Sub-equipment / Golden), lần hiệu chuẩn, mọi nhật ký (asset_logs,
 --          user_histories, error_log), mọi tài khoản trừ Admin (cả dòng đăng nhập Supabase Auth và phiên đăng nhập của họ).
 -- LÀM LẠI: các danh sách Configuration đúng như seed.sql (sửa / thêm / ẩn trong lúc test đều bị hoàn lại).
 -- GIỮ:     tài khoản Admin (cùng id, mật khẩu, quyền) — vẫn đăng nhập được.
@@ -38,27 +38,17 @@ create temp table _keep_admin on commit drop as
 update _keep_admin set created_by = null, updated_by = null;
 
 -- 1. Xóa mọi dòng của mọi bảng trong public. TRUNCATE không chạy trigger từng dòng, nên bảng nhật ký (chỉ thêm) cũng xóa được
---    và việc xóa không tự ghi thêm nhật ký. Liệt kê đủ 18 bảng trong MỘT lệnh vì chúng tham chiếu lẫn nhau.
+--    và việc xóa không tự ghi thêm nhật ký. Liệt kê đủ 17 bảng trong MỘT lệnh vì chúng tham chiếu lẫn nhau.
 truncate table
   public.asset_logs, public.calibrations, public.golden_boards, public.sub_equipment, public.equipment,
   public.calibration_configurations, public.part_numbers, public.types, public.type_groups, public.tags,
   public.levels, public.locations, public.calibration_vendors, public.departments,
-  public.configuration_histories, public.user_histories, public.error_log, public.user_profiles;
+  public.user_histories, public.error_log, public.user_profiles;
 
 -- 2. Mọi người dùng Supabase Auth trừ Admin (identities, sessions, refresh tokens xóa theo).
 delete from auth.users where id <> (select id from _keep_admin);
 
 -- 3. Danh sách Configuration như seed.sql.
--- Không ghi nhật ký cho dữ liệu có sẵn.
-alter table public.type_groups disable trigger type_groups_write_history;
-alter table public.types disable trigger types_write_history;
-alter table public.levels disable trigger levels_write_history;
-alter table public.departments disable trigger departments_write_history;
-alter table public.locations disable trigger locations_write_history;
-alter table public.tags disable trigger tags_write_history;
-alter table public.calibration_vendors disable trigger calibration_vendors_write_history;
-alter table public.part_numbers disable trigger part_numbers_write_history;
-alter table public.calibration_configurations disable trigger calibration_configurations_write_history;
 
 -- -----------------------------------------------------------------------------
 -- 1. DÒNG HỆ THỐNG (bắt buộc)
@@ -143,15 +133,6 @@ insert into public.calibration_configurations (id, part_number_id, interval_mont
   ('823da19f-a8a2-438d-a5bf-77d47e2b2b8e', 'c564b903-a50c-4af8-bdce-d3df03a627e5', 6, 15)
 on conflict do nothing;
 
-alter table public.type_groups enable trigger type_groups_write_history;
-alter table public.types enable trigger types_write_history;
-alter table public.levels enable trigger levels_write_history;
-alter table public.departments enable trigger departments_write_history;
-alter table public.locations enable trigger locations_write_history;
-alter table public.tags enable trigger tags_write_history;
-alter table public.calibration_vendors enable trigger calibration_vendors_write_history;
-alter table public.part_numbers enable trigger part_numbers_write_history;
-alter table public.calibration_configurations enable trigger calibration_configurations_write_history;
 
 -- 4. Hồ sơ Admin trở lại (phòng ban đã có lại ở bước 3). Tắt ghi nhật ký của bảng này trong lúc chèn: nhật ký không được phụ thuộc
 --    vào "người thao tác" còn sót lại trong phiên làm việc (người đó có thể vừa bị xóa ở bước 2).
@@ -162,7 +143,7 @@ insert into public.user_profiles select * from _keep_admin;
 alter table public.user_profiles enable trigger user_profiles_write_history;
 
 -- 5. Xóa mọi nhật ký còn sót để nhật ký trống hẳn.
-truncate table public.asset_logs, public.configuration_histories, public.user_histories, public.error_log;
+truncate table public.asset_logs, public.user_histories, public.error_log;
 
 commit;
 
@@ -172,8 +153,7 @@ select
   (select count(*) from auth.users) as auth_users,
   (select count(*) from public.equipment) + (select count(*) from public.sub_equipment) + (select count(*) from public.golden_boards)
     + (select count(*) from public.calibrations) as assets_and_calibrations,
-  (select count(*) from public.asset_logs) + (select count(*) from public.configuration_histories)
-    + (select count(*) from public.user_histories) + (select count(*) from public.error_log) as log_rows,
+  (select count(*) from public.asset_logs) + (select count(*) from public.user_histories) + (select count(*) from public.error_log) as log_rows,
   (select count(*) from public.locations) as locations,
   (select count(*) from public.part_numbers) as part_numbers,
   (select count(*) from public.types) as types,

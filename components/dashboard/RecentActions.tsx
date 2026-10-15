@@ -14,8 +14,8 @@ import { ReadonlyValue } from '@/components/ui/record/fields';
 import { historyFieldLabel, rowChanges, useFormatHistoryValue, useFormatNote } from '@/components/ui/detail/DetailHistory';
 import type { ActionRecord, HistoryChange, HistoryModule, RecentAction } from '@/lib/types';
 
-const MODULE_PATH: Record<HistoryModule, string | null> = {
-  equipment: '/equipment', sub_equipment: '/calibration', golden_board: '/golden', configuration: null, user: '/users',
+const MODULE_PATH: Record<HistoryModule, string> = {
+  equipment: '/equipment', sub_equipment: '/calibration', golden_board: '/golden', user: '/users',
 };
 /** Bản ghi đi theo thao tác chính (con cháu đổi theo cha, con của cha bị xóa) — database đánh dấu bằng ghi chú. */
 const FOLLOWER = /^(via_parent|parent_deleted):/;

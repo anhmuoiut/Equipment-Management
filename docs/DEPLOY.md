@@ -38,7 +38,7 @@ All SQL is pasted into **SQL Editor** of the new project and run with **Run**. E
 
 | Step | File | Result |
 | --- | --- | --- |
-| 1 | every file of [`database/migrations/`](../database/migrations/) **in file-name order**: [`20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql), then [`20261016000000_list_views_and_dashboard_summary.sql`](../database/migrations/20261016000000_list_views_and_dashboard_summary.sql) (run each once, paste the whole file → Run) | Together: 18 tables, 5 views, 56 functions, triggers, RLS, grants. A project built from the baseline alone only needs the second file. |
+| 1 | every file of [`database/migrations/`](../database/migrations/) **in file-name order**: [`20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql), then [`20261016000000_list_views_and_dashboard_summary.sql`](../database/migrations/20261016000000_list_views_and_dashboard_summary.sql), then [`20261017000000_stop_configuration_history.sql`](../database/migrations/20261017000000_stop_configuration_history.sql) (run each once, paste the whole file → Run) | Together: 17 tables, 5 views, 56 functions, triggers, RLS, grants. A project built from the baseline alone only needs the second and third files. |
 | 2 | [`database/seed.sql`](../database/seed.sql) | The three system Types (Tester / Base / Fixture) and their Groups, plus this site's Configuration lists (Locations, Levels, Departments, Tags, Vendor, Part numbers, calibration setup, the sub-equipment Type), exported from the old project on 2026-10-15. Safe to re-run. **Edit it first if the lists should differ**; it contains no devices, users or logs. |
 | 3 | the first Admin (below) | One Admin who can sign in. |
 | 4 | the check query below | One row of numbers that must match. |
@@ -56,7 +56,7 @@ Do not do both for the same username (the internal email would collide).
 
 ```sql
 select
-  (select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE') as tables,   -- 18
+  (select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE') as tables,   -- 17
   (select count(*) from pg_views where schemaname = 'public') as views,                                                    -- 5
   (select count(*) from pg_proc where pronamespace = 'public'::regnamespace) as functions,                                -- 56
   (select count(*) from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and not c.relrowsecurity) as tables_without_rls, -- 0
@@ -104,7 +104,7 @@ Goal: exercise the new database with the real code **while production keeps usin
 Run on the preview URL as an Admin unless stated. Use any three test serials. Tick everything; note the browser and screen size. Seeded lists to expect: Types `Station` (the Tester type, renamed in the old project), `Base`, `Fixture`, `Device` (sub-equipment); Locations `B3F5 - Bay 8A/8B/9A/9B`; Part numbers `ST-UNI-M10` (Tester), `FI-UNI-M20` (Base), `FX-2292-M12` (Fixture), `KEYTHLEI` (sub-equipment, 6-month calibration setup, 15-day warning), `33210A` (sub-equipment); 9 Levels; Departments QE/TE/ME; Vendor `Internal vendor`; Tags Normal, Upcoming receive, Wait for registration, Deactivated.
 
 **A. Database and access**
-- [ ] The check query in §3 returns 18 / 5 / 56 / 0 / 4 / 4 / 1.
+- [ ] The check query in §3 returns 17 / 5 / 56 / 0 / 4 / 4 / 1.
 - [ ] `GET <preview>/api/health` → 200 without signing in.
 - [ ] `GET <preview>/api/equipment` signed out → 401. Opening `/equipment` signed out → redirected to `/login`.
 - [ ] Publishable key straight at Supabase gives nothing: `curl "<SUPABASE_URL>/rest/v1/equipment?select=*" -H "apikey: <publishable key>"` → empty list or permission error, and `…/rest/v1/rpc/app_write` (POST) is refused.
@@ -175,8 +175,8 @@ Run on the preview URL as an Admin unless stated. Use any three test serials. Ti
 **J. Recent changes: one entry per user action**
 - [ ] Each of these gives exactly **one** line on the Dashboard: a Swap (two records inside), a Move with children, a Check-out of a tree, an Excel import of 3 rows (shows "3"), a form edit that changes both a field and the parent, a Create, a calibration record.
 - [ ] Expanding a line lists the affected records and their changes. Filters by module, user, date and search by **any** serial in the action work; "Show more" counts actions.
-- [ ] As Admin, creating / editing / locking a user shows in Recent changes (module *User*); changing a Configuration list does **not** appear there (it is still in that record's History tab). `qa.user` sees neither, and the module filter offers no Configuration.
-- [ ] A record's own History tab still shows one row per change to that record.
+- [ ] As Admin, creating / editing / locking a user shows in Recent changes (module *User*); changing a Configuration list does **not** appear there. `qa.user` sees neither, and the module filter offers no Configuration.
+- [ ] A record's own History tab (Equipment, Sub-equipment, Golden, User) still shows one row per change to that record. A Configuration record has **no** History tab.
 
 **K. Languages and layout**
 - [ ] Switch EN ↔ VI on login, Dashboard, a list, a modal, a validation error, the import template: no raw keys such as `eq.add` appear; long Vietnamese text wraps. The choice survives a reload. Light and dark theme both readable.
@@ -253,7 +253,7 @@ Look once a month; crossing a threshold means *optimise*, not necessarily upgrad
 | Metric | Where | Watch at | If exceeded |
 | --- | --- | --- | --- |
 | Vercel Active CPU | Vercel → Usage | 3 of 4 h | Look for repeated or unindexed queries |
-| Supabase DB size | Supabase → Reports | 300 of 500 MB | Check `asset_logs` and `*_histories` growth |
+| Supabase DB size | Supabase → Reports | 300 of 500 MB | Check `asset_logs` and `user_histories` growth |
 | Supabase egress | Supabase → Reports | 3 of 5 GB | Lists are paged (≈ 27 KB a page) and the Dashboard is one ≈ 10 KB call, so this should stay low; if it climbs, run `npm run bench` and look for a screen that reads a whole table |
 | Vercel invocations | Vercel → Usage | 500k of 1M | Every API call and page open authenticates once; look for new polling |
 

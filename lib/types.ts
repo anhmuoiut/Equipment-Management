@@ -310,7 +310,7 @@ export type HistoryEntry = {
   to_location?: string | null;
 };
 
-export type HistoryModule = AssetType | 'configuration' | 'user';
+export type HistoryModule = AssetType | 'user';
 /** Một bản ghi bị ảnh hưởng bởi một thao tác (nhật ký của chính bản ghi đó). */
 export type ActionRecord = {
   module: HistoryModule; object_id: string; label: string; action: string;

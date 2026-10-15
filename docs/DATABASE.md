@@ -1,14 +1,14 @@
 # Database
 
-PostgreSQL on Supabase. The schema is the baseline, [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql), plus the migrations after it (today [`20261016000000_list_views_and_dashboard_summary.sql`](../database/migrations/20261016000000_list_views_and_dashboard_summary.sql): the list views and `dashboard_summary`), run in file-name order; required data (the system Types and this site's Configuration lists) is in [`database/seed.sql`](../database/seed.sql). To build a project from zero see [DEPLOY.md](DEPLOY.md).
+PostgreSQL on Supabase. The schema is the baseline, [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql), plus the migrations after it (today [`20261016000000_list_views_and_dashboard_summary.sql`](../database/migrations/20261016000000_list_views_and_dashboard_summary.sql): the list views and `dashboard_summary`; and [`20261017000000_stop_configuration_history.sql`](../database/migrations/20261017000000_stop_configuration_history.sql): Configuration changes are no longer recorded), run in file-name order; required data (the system Types and this site's Configuration lists) is in [`database/seed.sql`](../database/seed.sql). To build a project from zero see [DEPLOY.md](DEPLOY.md).
 
-**18 tables, 5 views, 56 functions, 57 triggers, 76 indexes. No enums, no RLS policies, no storage buckets, no cron jobs.** The comments inside the SQL are in Vietnamese; this document is the English reference.
+**17 tables, 5 views, 56 functions, 47 triggers, 72 indexes. No enums, no RLS policies, no storage buckets, no cron jobs.** The comments inside the SQL are in Vietnamese; this document is the English reference.
 
 ## 1. Security model
 
 | Rule | How it is enforced |
 | --- | --- |
-| Only the server touches data | Row level security is **on for all 18 tables with no policies** (deny all). The browser only ever holds the publishable key, which can read nothing. |
+| Only the server touches data | Row level security is **on for all 17 tables with no policies** (deny all). The browser only ever holds the publishable key, which can read nothing. |
 | The server uses the service key | `service_role` bypasses RLS. Permissions therefore live in the app (`withAuth`, see [ARCHITECTURE.md](ARCHITECTURE.md)), not in the database. |
 | Nobody else can call anything | `revoke ... from public, anon, authenticated` on every table, sequence, function and view, then `grant ... to service_role`. Both blocks are at the end of Part A (tables) and Part B (functions) of the baseline. **Never remove them**: without them anyone with the publishable key could call `app_write` / `asset_*` directly. |
 | No privilege escalation through views | All five views are `security_invoker = true`; only `service_role` can read them. |
@@ -46,7 +46,6 @@ PostgreSQL on Supabase. The schema is the baseline, [`database/migrations/202610
 | `locations`, `levels`, `departments`, `calibration_vendors` | Plain lists. | `display_name`, `sort_order`, `is_active` |
 | `tags` | Condition tags with a pastel colour. | `display_name`, `sort_order`, `color` (`green`/`yellow`/`red`/`blue`/`gray`/`purple`) |
 | `calibration_configurations` | Calibration setup, one per sub-equipment part number. | `part_number_id` (unique), `interval_months`, `warning_days` |
-| `configuration_histories` | Log for the 9 lists above (append-only). | `table_name`, `record_id`, `label`, `action` (`CREATE`/`UPDATE`/`DELETE`), `changes`, `note`, `source`, `created_by`, `action_id` |
 
 ### 3.3 Assets
 
@@ -138,7 +137,7 @@ Computed from the **latest** calibration (largest `calibrated_at`) and the part 
 | View | Purpose |
 | --- | --- |
 | `sub_equipment_calibration` | One row per sub-equipment: latest calibration, setup (`interval_months`, `warning_days`) and the computed `status`. The single source for the Calibration list, Overview and Dashboard. |
-| `recent_actions` | **Dashboard "Recent changes", one row per user action.** Groups `asset_logs`, `configuration_histories` and `user_histories` rows that share an `action_id`. Columns: `id`, `module` (of the lead record), `modules[]` (every module touched), `action`, `source`, `created_by`, `created_at` (start of the action), `item_count`, `records` (jsonb, at most 50, lead record first), `search_text` (names/serials of all records, for search). Rows without an `action_id` (written by hand in SQL) each count as their own action; old import rows still group by (module, user, time). |
+| `recent_actions` | **Dashboard "Recent changes", one row per user action.** Groups `asset_logs` and `user_histories` rows that share an `action_id`. Columns: `id`, `module` (of the lead record), `modules[]` (every module touched), `action`, `source`, `created_by`, `created_at` (start of the action), `item_count`, `records` (jsonb, at most 50, lead record first), `search_text` (names/serials of all records, for search). Rows without an `action_id` (written by hand in SQL) each count as their own action; old import rows still group by (module, user, time). |
 
 ### List views (Masterlist: paging, search, filter, sort in the database)
 
@@ -160,7 +159,7 @@ No table changed and no data moved. With 2,000 assets a page, a search and a cou
 
 ## 6. Activity log and `action_id`
 
-1. Every audited table has a `<table>_write_history` trigger (14 tables) that writes the log row **in the same transaction** as the change. The server never inserts log rows itself.
+1. Every audited table has a `<table>_write_history` trigger (5 tables: `equipment`, `sub_equipment`, `golden_boards`, `calibrations`, `user_profiles`) that writes the log row **in the same transaction** as the change. The server never inserts log rows itself. **Configuration lists are not audited** (migration `20261017000000`): changing a Location, Part number, Tag and so on leaves no log row.
 2. Who/why comes from transaction-local settings (`set_ctx` → `set_config(..., true)`): actor, action, note, source, `action_id`. They cannot leak between requests.
 3. `withAuth` creates **one `action_id` per API request** (AsyncLocalStorage, `lib/services/core/actionContext.ts`). `appWrite` / `rpc` pass it as `p_action_id` to the ten write functions: `app_write`, `asset_change_location`, `asset_move`, `asset_detach`, `asset_swap`, `asset_delete`, `asset_set_usage`, `equipment_import`, `sub_equipment_import`, `golden_import`. Without one (scripts, SQL) the function makes its own.
 4. So Swap (two rows), Move with children, Check-out of a tree, an Excel import or a multi-step form edit each show as **one** line in Recent changes, while each record's History tab still shows its own rows.
@@ -193,9 +192,9 @@ No table changed and no data moved. With 2,000 assets a page, a search and a cou
 | Function | Used by | Purpose |
 | --- | --- | --- |
 | `set_updated_at` | 14 tables | Keep `updated_at` current. |
-| `prevent_history_change` | 3 log tables | Refuse update/delete (`HISTORY_IS_APPEND_ONLY`). |
+| `prevent_history_change` | 2 log tables | Refuse update/delete (`HISTORY_IS_APPEND_ONLY`). |
 | `purge_old_error_log` | `error_log` | Delete rows older than 90 days after each insert. |
-| `write_history` | 14 tables | Write the log row (see §6). |
+| `write_history` | 5 tables | Write the log row (see §6). |
 | `user_admin_guard` | `user_profiles` | An admin cannot lock/demote themselves (`ADMIN_SELF_CHANGE`) or the last active admin (`LAST_ADMIN`). |
 | `serial_trim` | 3 asset tables | Trim serial whitespace. |
 | `asset_type_from_part_number` | equipment, sub_equipment | Force `type_id` from the part number; check the Type kind fits the table. |

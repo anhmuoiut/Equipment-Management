@@ -107,7 +107,7 @@ Browser side: `usePagedList` (`lib/client`) holds page, page size and query; typ
 
 ## 5. Activity log and Recent changes
 
-Log rows are written **by database triggers in the same transaction** as the change. `withAuth` wraps each API request in `runInAction`, which creates one **`action_id`** (AsyncLocalStorage, `lib/services/core/actionContext.ts`); `db.ts` passes it as `p_action_id` to the ten write functions, which store it in the transaction context so every log row of that request carries it. The view `recent_actions` groups by `action_id`, so **one user action = one line** on the Dashboard (a swap, a move with children, a check-out of a tree, an Excel import, a multi-step form save). A record's History tab still lists its own rows. Details: [DATABASE.md](DATABASE.md) §6.
+Log rows are written **by database triggers in the same transaction** as the change. `withAuth` wraps each API request in `runInAction`, which creates one **`action_id`** (AsyncLocalStorage, `lib/services/core/actionContext.ts`); `db.ts` passes it as `p_action_id` to the ten write functions, which store it in the transaction context so every log row of that request carries it. The view `recent_actions` groups by `action_id`, so **one user action = one line** on the Dashboard (a swap, a move with children, a check-out of a tree, an Excel import, a multi-step form save). A record's History tab still lists its own rows. Only Equipment, Sub-equipment, Golden board (with its calibrations) and User Management are logged: **changes to the Configuration lists are not recorded at all**, so there is no Configuration history and Recent changes never shows them. Details: [DATABASE.md](DATABASE.md) §6.
 
 ## 6. API
 
@@ -123,7 +123,7 @@ Every route is under `app/api/**/route.ts` and goes through `withAuth`. Success:
 | Golden | `GET·POST /golden`, `GET·PUT /golden/{id}`, `GET …/history`, `POST /golden/import`, `GET …/import/template` | read: all; write: Editors |
 | Asset tree (all 3 types, `{type}` = `equipment`/`sub_equipment`/`golden_board`) | `GET /assets/{type}/valid-parents`, `GET /assets/{type}/{id}/swap-candidates`, `GET /assets/serial-matches`, `POST /assets/{type}/{id}/change-location\|move\|detach\|swap`, `POST /assets/usage` (Check-out/in), `DELETE /assets/{type}/{id}` | read: all; operations: Editors; delete: Admin |
 | Overview / Dashboard | `GET /overview?usage=&kind=&q=`, `GET /dashboard`, `GET /dashboard/activities?module=&user=&q=&from=&to=&limit=` | everyone (User Management activity only for Admin; Configuration changes are never listed) |
-| Configuration | `GET·POST /configuration/{list}`, `GET·PUT·DELETE /configuration/{list}/{id}`, `GET …/history`, `GET /configuration/error-log` | Admin. `list` = `part-numbers`, `locations`, `types`, `type-groups`, `tags`, `levels`, `departments`, `calibration-setup`, `calibration-vendors` |
+| Configuration | `GET·POST /configuration/{list}`, `GET·PUT·DELETE /configuration/{list}/{id}`, `GET /configuration/error-log` | Admin. `list` = `part-numbers`, `locations`, `types`, `type-groups`, `tags`, `levels`, `departments`, `calibration-setup`, `calibration-vendors` |
 
 ## 7. Excel import
 
