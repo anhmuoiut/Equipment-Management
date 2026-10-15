@@ -1,8 +1,8 @@
 # Database
 
-PostgreSQL on Supabase. The whole schema is one file, [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql); required data (the system Types and this site's Configuration lists) is in [`database/seed.sql`](../database/seed.sql). To build a project from zero see [DEPLOY.md](DEPLOY.md).
+PostgreSQL on Supabase. The schema is the baseline, [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql), plus the migrations after it (today [`20261016000000_list_views_and_dashboard_summary.sql`](../database/migrations/20261016000000_list_views_and_dashboard_summary.sql): the list views and `dashboard_summary`), run in file-name order; required data (the system Types and this site's Configuration lists) is in [`database/seed.sql`](../database/seed.sql). To build a project from zero see [DEPLOY.md](DEPLOY.md).
 
-**18 tables, 2 views, 54 functions, 57 triggers, 76 indexes. No enums, no RLS policies, no storage buckets, no cron jobs.** The comments inside the SQL are in Vietnamese; this document is the English reference.
+**18 tables, 5 views, 56 functions, 57 triggers, 76 indexes. No enums, no RLS policies, no storage buckets, no cron jobs.** The comments inside the SQL are in Vietnamese; this document is the English reference.
 
 ## 1. Security model
 
@@ -11,7 +11,7 @@ PostgreSQL on Supabase. The whole schema is one file, [`database/migrations/2026
 | Only the server touches data | Row level security is **on for all 18 tables with no policies** (deny all). The browser only ever holds the publishable key, which can read nothing. |
 | The server uses the service key | `service_role` bypasses RLS. Permissions therefore live in the app (`withAuth`, see [ARCHITECTURE.md](ARCHITECTURE.md)), not in the database. |
 | Nobody else can call anything | `revoke ... from public, anon, authenticated` on every table, sequence, function and view, then `grant ... to service_role`. Both blocks are at the end of Part A (tables) and Part B (functions) of the baseline. **Never remove them**: without them anyone with the publishable key could call `app_write` / `asset_*` directly. |
-| No privilege escalation through views | Both views are `security_invoker = true`. |
+| No privilege escalation through views | All five views are `security_invoker = true`; only `service_role` can read them. |
 | No search-path tricks | Every function sets `search_path = ''` and uses fully qualified names. |
 
 [DEPLOY.md](DEPLOY.md) §3 has a read-only query that checks table, view, function and RLS counts on a live project.
@@ -140,6 +140,24 @@ Computed from the **latest** calibration (largest `calibrated_at`) and the part 
 | `sub_equipment_calibration` | One row per sub-equipment: latest calibration, setup (`interval_months`, `warning_days`) and the computed `status`. The single source for the Calibration list, Overview and Dashboard. |
 | `recent_actions` | **Dashboard "Recent changes", one row per user action.** Groups `asset_logs`, `configuration_histories` and `user_histories` rows that share an `action_id`. Columns: `id`, `module` (of the lead record), `modules[]` (every module touched), `action`, `source`, `created_by`, `created_at` (start of the action), `item_count`, `records` (jsonb, at most 50, lead record first), `search_text` (names/serials of all records, for search). Rows without an `action_id` (written by hand in SQL) each count as their own action; old import rows still group by (module, user, time). |
 
+### List views (Masterlist: paging, search, filter, sort in the database)
+
+Created by migration `20261016000000` (not part of the baseline).
+
+`equipment_list`, `sub_equipment_list` and `golden_list` are what the three list screens read, **one page at a time** (PostgREST `range` + exact `count`). They add to the table's own columns what the screen needs to filter, sort and search without downloading the table:
+
+| Column | Meaning |
+| --- | --- |
+| `part_number`, `type`, `level`, `location`, `vendor` | Display names of the foreign keys (the screen still shows names from its cached Configuration; these exist for filtering and sorting). |
+| `parent_serial` / `tester_serial` | Serial of the parent equipment / tester. |
+| `tags_text` | Tag names joined with `, ` in Configuration order — exactly the text of the Tags column. |
+| `has_children` (equipment) | Has a child in any of the three asset tables. |
+| `status`, `calibration_id`, `calibrated_at`, `due_date`, `result`, … (sub-equipment) | Latest calibration and Calibration Status from `sub_equipment_calibration`. |
+| `search_text` | Every text column of the row, lower-cased, separated by `chr(31)`: one `ilike` searches all columns, as the old in-browser search did (dates as ISO text). Status words are matched by the browser, which knows the translated labels, and sent as `qe=`. |
+| `*_nk` (`serial_nk`, `part_nk`, …) | "Natural" sort key from `natural_key()` (SN2 before SN10, case-insensitive, empty last when ascending). Computed only when the list is sorted by that column. |
+
+No table changed and no data moved. With 2,000 assets a page, a search and a count each take a few milliseconds; no extra index was needed (the `ilike '%text%'` scan covers a few thousand rows).
+
 ## 6. Activity log and `action_id`
 
 1. Every audited table has a `<table>_write_history` trigger (14 tables) that writes the log row **in the same transaction** as the change. The server never inserts log rows itself.
@@ -150,7 +168,7 @@ Computed from the **latest** calibration (largest `calibrated_at`) and the part 
 
 ## 7. Functions
 
-### 7.1 Called by the app (15)
+### 7.1 Called by the app (16)
 
 | Function | Purpose |
 | --- | --- |
@@ -161,13 +179,14 @@ Computed from the **latest** calibration (largest `calibrated_at`) and the part 
 | `swap_candidates(type, id, q, limit)` | Assets that can be swapped with this one, with `same_place`. |
 | `serial_matches(serial, exclude_type, exclude_id)` | Duplicate serial check across all three tables (trimmed, case-insensitive). |
 | `overview_board(usage, kind, q)` | The whole Overview board in one call: one column per root asset grouped by location, at most 3 cards per column, filters done in the database. Keeps `enable_nestloop = off` and `materialized` CTEs for speed (820 assets ≈ 50 ms); `assets.test.mjs` has a scale test. |
+| `dashboard_summary(p_list_limit)` | **Every Dashboard number in one call** (jsonb, about 10 KB): totals and In use / Not in use per asset type, counts by Calibration Status, by Location, by Type (golden boards = "No type") and by Tag (plus `untagged`), and the `p_list_limit` (15) most overdue and most due-soon sub-equipment (oldest due date first). Replaces reading every asset row to count in JavaScript. Names are added by the server from the cached Configuration. |
 | `asset_tree(type, id)` | The tree containing an asset: from its root down, all three tables, one call (equipment modal tree tab, child chips, calibration summary). |
 
 **Dry run.** Every operation function accepts `p_dry_run`. It runs the full logic with every trigger and the real error codes, then rolls back, and returns the same shape as a real run: `{ dry_run, count, deleted, usage_changes[], changes[] }`. The UI uses it for the preview and to show errors before the main button is pressed; import uses it to validate a whole file.
 
-### 7.2 Internal helpers (18)
+### 7.2 Internal helpers (19)
 
-`ctx`, `set_ctx` (transaction context) · `history_ref_label`, `history_tag_names`, `history_diff`, `asset_log_changes` (turn row diffs into `{field: {old, new}}`) · `asset_log_marks`, `asset_op_result` (collect what an operation logged, for the result) · `equipment_kind`, `asset_parent_allowed`, `asset_parent`, `asset_children`, `asset_subtree`, `asset_usage`, `asset_serial`, `asset_lock` (tree lookups and row locking) · `equipment_cascade_location`, `asset_cascade_usage` (push location/status down a subtree).
+`ctx`, `set_ctx` (transaction context) · `natural_key` (natural sort key for the list views) · `history_ref_label`, `history_tag_names`, `history_diff`, `asset_log_changes` (turn row diffs into `{field: {old, new}}`) · `asset_log_marks`, `asset_op_result` (collect what an operation logged, for the result) · `equipment_kind`, `asset_parent_allowed`, `asset_parent`, `asset_children`, `asset_subtree`, `asset_usage`, `asset_serial`, `asset_lock` (tree lookups and row locking) · `equipment_cascade_location`, `asset_cascade_usage` (push location/status down a subtree).
 
 ### 7.3 Trigger functions (21)
 

@@ -77,7 +77,8 @@ All database code is in `lib/services`, through `lib/services/core/db.ts`:
 
 | Function | Use |
 | --- | --- |
-| `selectAll(table, columns, order)` | Read a table (1000-row pages; extra pages fetched in parallel). Related names are **embedded in the same PostgREST query** (`parent:parent_id(serial_number)`), never fetched afterwards. |
+| `selectAll(table, columns, order)` | Read a small table fully (1000-row pages; extra pages in parallel) — Configuration, Users, the Error log. Related names are **embedded in the same PostgREST query** (`parent:parent_id(serial_number)`), never fetched afterwards. Never used for the asset tables. |
+| `runList(spec, params)` (`core/listQuery.ts`) | One **page** of a list view: filters, search and sort applied in the database before `range`, exact `count` in the same request, page past the end → last page. Used by the Equipment, Calibration and Golden lists. |
 | `selectOne` | One row by id. |
 | `appWrite(table, op, id, data, actor, options)` | Insert/update/delete through the `app_write` function, with actor, action, note, source. Invalidates the lookup cache. |
 | `rpc(fn, args)` | Calls the multi-step functions (`asset_*`, imports, `overview_board`, …). Adds `p_action_id` to the write functions. |
@@ -87,6 +88,22 @@ All database code is in `lib/services`, through `lib/services/core/db.ts`:
 **Errors.** Services throw `AppError(code)`; database exceptions are mapped by `mapRpcError`. The API returns `{ success:false, error:{ code, message, details, request_id } }` with a matching HTTP status; **text is translated in the browser** from the code (`errorMessage()`). 5xx errors are also written to `error_log` with the `request_id` shown to the user; 4xx are not.
 
 **Dry run.** Tree operations and imports accept `dry_run`: the database runs everything and rolls back, returning the same result shape. The UI shows it as a preview and the import check uses it before committing.
+
+### Lists: one page at a time
+
+The three asset lists (Equipment, Calibration, Golden) do **not** download their table. `GET /api/equipment|calibration|golden` reads one page of the matching view (migration `20261016000000_list_views_and_dashboard_summary.sql`) and answers `data` = the rows, `meta` = `{ total, page, pageSize }`.
+
+| Query parameter | Meaning |
+| --- | --- |
+| `page`, `pageSize` | Page number (a page past the end returns the last page) and 25 / 50 / 100 (default 50). `pageSize=all` returns every matching row, 1000 per read — used only by **Export Excel**. |
+| `q` | Search text (≤ 100 characters) over every column of the row. `qe=usage:in_use,status:overdue`: values whose translated label the text matches (the browser knows the labels). |
+| `sort`, `dir` | Column key and `asc` / `desc`; always followed by `id` so pages never overlap. Default: newest first. |
+| `f.<column>` | Column filter: an enum code, a Configuration id, a serial, or `__empty`. |
+| `quick` | Calibration only: `overdue`, `due_soon`, `attention`. |
+
+Unknown or malformed values are a `VALIDATION_ERROR` (400), never silently ignored. `/api/filter-values/{equipment|calibration|golden}` returns the values the filters cannot get from Configuration (serials of parents / testers, golden part numbers and origins).
+
+Browser side: `usePagedList` (`lib/client`) holds page, page size and query; typing is debounced 350 ms (`Masterlist`); changing the query or page size goes to page 1; the previous page stays on screen (dimmed) until the new one arrives, and an answer to an outdated request is ignored. Each page is remembered by its URL (`pagedCache`, max 60 pages): a page **younger than 30 s is used without asking the server**, an older one is shown at once and refreshed. Every save by this user (and sign-in / sign-out) clears the remembered pages, and an answer that was requested before a save but arrives after it is not remembered. Other people's changes show up within 30 s or on reload. Users, Configuration lists and the Error log are small and still load fully and filter in the browser. Prev / Next in the record modal moves within the page on screen.
 
 ## 5. Activity log and Recent changes
 
@@ -128,9 +145,10 @@ Latency is dominated by **sequential network round trips** to Supabase (≈ 0.25
 - Keep auth and profile read parallel (§3) and the lookup cache (§4). One typical API request ≈ 0.5 s.
 - Deploy the Vercel functions in the **same region** as Supabase.
 - `instrumentation.ts` keeps connections to Supabase open 30 s (undici); keep its exact `if (process.env.NEXT_RUNTIME === 'nodejs') { await import(…) }` form or the Edge bundle fails.
-- Browser: identical GETs share one request; lists are cached in memory while navigating (cleared on login/logout); a row opens instantly from list data; `Masterlist` rows are memoised and search is deferred; the Dashboard returns its first 50 recent changes in the same request; the Inter font is loaded without blocking render.
+- Browser: identical GETs share one request; the asset lists load one page (50 rows) at a time and remember pages for 30 s (see "Lists: one page at a time"); the small lists are cached in memory while navigating (cleared on login/logout); a row opens instantly from list data; `Masterlist` rows are memoised and search is deferred; the Dashboard returns its first 50 recent changes in the same request; the Inter font is loaded without blocking render.
 - Measure with `npm run build && npm run start` (not `dev`), and `npm run bench` for the server layer.
-- Known scaling limits: lists load fully and filter in the browser (fine to a few thousand devices); the Dashboard counts in the server. Revisit both before tens of thousands of rows.
+- Data volume per request (measured on 1,914 sample assets): one list page ≈ 27 KB (was ≈ 490 KB for the whole table); the Dashboard numbers ≈ 10 KB in one database call (was ≈ 520 KB read to count in JavaScript). `npm run bench` prints the KB each server call pulls from Supabase.
+- Known scaling limits: the Error log still loads up to 1,000 rows; "Recent changes" reads its view in full to group (the view groups every log row — fine for tens of thousands of log rows, revisit beyond that); the Overview board is one database call but returns every card.
 
 ## 10. Testing
 

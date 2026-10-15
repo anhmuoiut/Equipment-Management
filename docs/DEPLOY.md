@@ -38,7 +38,7 @@ All SQL is pasted into **SQL Editor** of the new project and run with **Run**. E
 
 | Step | File | Result |
 | --- | --- | --- |
-| 1 | [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql) | 18 tables, 2 views, 54 functions, triggers, RLS, grants. |
+| 1 | every file of [`database/migrations/`](../database/migrations/) **in file-name order**: [`20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql), then [`20261016000000_list_views_and_dashboard_summary.sql`](../database/migrations/20261016000000_list_views_and_dashboard_summary.sql) (run each once, paste the whole file → Run) | Together: 18 tables, 5 views, 56 functions, triggers, RLS, grants. A project built from the baseline alone only needs the second file. |
 | 2 | [`database/seed.sql`](../database/seed.sql) | The three system Types (Tester / Base / Fixture) and their Groups, plus this site's Configuration lists (Locations, Levels, Departments, Tags, Vendor, Part numbers, calibration setup, the sub-equipment Type), exported from the old project on 2026-10-15. Safe to re-run. **Edit it first if the lists should differ**; it contains no devices, users or logs. |
 | 3 | the first Admin (below) | One Admin who can sign in. |
 | 4 | the check query below | One row of numbers that must match. |
@@ -57,8 +57,8 @@ Do not do both for the same username (the internal email would collide).
 ```sql
 select
   (select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE') as tables,   -- 18
-  (select count(*) from pg_views where schemaname = 'public') as views,                                                    -- 2
-  (select count(*) from pg_proc where pronamespace = 'public'::regnamespace) as functions,                                -- 54
+  (select count(*) from pg_views where schemaname = 'public') as views,                                                    -- 5
+  (select count(*) from pg_proc where pronamespace = 'public'::regnamespace) as functions,                                -- 56
   (select count(*) from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and not c.relrowsecurity) as tables_without_rls, -- 0
   (select count(*) from public.type_groups) as type_groups,                                                               -- 4
   (select count(*) from public.types) as types,                                                                           -- 4
@@ -104,7 +104,7 @@ Goal: exercise the new database with the real code **while production keeps usin
 Run on the preview URL as an Admin unless stated. Use any three test serials. Tick everything; note the browser and screen size. Seeded lists to expect: Types `Station` (the Tester type, renamed in the old project), `Base`, `Fixture`, `Device` (sub-equipment); Locations `B3F5 - Bay 8A/8B/9A/9B`; Part numbers `ST-UNI-M10` (Tester), `FI-UNI-M20` (Base), `FX-2292-M12` (Fixture), `KEYTHLEI` (sub-equipment, 6-month calibration setup, 15-day warning), `33210A` (sub-equipment); 9 Levels; Departments QE/TE/ME; Vendor `Internal vendor`; Tags Normal, Upcoming receive, Wait for registration, Deactivated.
 
 **A. Database and access**
-- [ ] The check query in §3 returns 18 / 2 / 54 / 0 / 4 / 4 / 1.
+- [ ] The check query in §3 returns 18 / 5 / 56 / 0 / 4 / 4 / 1.
 - [ ] `GET <preview>/api/health` → 200 without signing in.
 - [ ] `GET <preview>/api/equipment` signed out → 401. Opening `/equipment` signed out → redirected to `/login`.
 - [ ] Publishable key straight at Supabase gives nothing: `curl "<SUPABASE_URL>/rest/v1/equipment?select=*" -H "apikey: <publishable key>"` → empty list or permission error, and `…/rest/v1/rpc/app_write` (POST) is refused.
@@ -122,6 +122,19 @@ Run on the preview URL as an Admin unless stated. Use any three test serials. Ti
 - [ ] Add, edit and hide one item per list; a hidden item is no longer selectable in forms but existing records still show it. A duplicate name (different case) is refused.
 - [ ] Tester / Base / Fixture Types and Groups cannot be hidden. A Part number needs a Type; Manufacturer and description save; Level optional.
 - [ ] Tags offer six colours; deleting a tag in use is refused.
+
+**D0. Paged lists** (Equipment, Calibration, Golden — needs more than 50 records; add test records or import a file)
+- [ ] The list opens on page 1 with 50 rows; the footer shows the range and the total ("1–50 of N"); the heading shows "50 of N records". Network tab: **one** request `/api/equipment?page=1&pageSize=50` (+ `/api/filter-values/equipment` once), not the whole table.
+- [ ] Next / Previous move between pages; going back to a page opened in the last 30 seconds makes **no** request. The **No** column continues (51…).
+- [ ] 25 / 50 / 100 per page changes the page, returns to page 1, and is remembered after a reload.
+- [ ] Search for a serial that is on page 3: found without moving to page 3. Typing quickly sends one request after the pause, not one per key. Clearing the search returns the list.
+- [ ] A column filter (Part number, Location, Type, Level, Parent / Tester, Tags, Status) and a sort apply to **all** records and return to page 1; a filter value that is on no row of the current page is still in the list; "(empty)" works where offered; the chips name the values.
+- [ ] Calibration: the quick filters Overdue / Due soon / Attention match the Dashboard numbers; typing "overdue" in the search also finds Overdue rows.
+- [ ] Export Excel contains **all** rows matching the search and filters, not only the page.
+- [ ] Delete the last row of the last page (as Admin): the list lands on the new last page, not an empty one. A page number past the end (edit `page=99` in the URL) shows the last page.
+- [ ] Save an edit: the row updates at once and the page refreshes once in the background. After a Swap or Move the list shows the new places without a manual reload.
+- [ ] Open a record by link (`?id=`) that is not on the first page: the record opens; closing it leaves the list on its page.
+- [ ] Dashboard → Recent changes: "Load more" adds the next 50 actions without re-reading the earlier ones (Network: `…/activities?limit=50&offset=50`); changing a filter starts again from the first page.
 
 **D. Equipment**
 - [ ] Add a Tester (`ST-UNI-M10`): Type fills from the part number, Level is pre-filled, Location is required. Adding another with the **same serial** warns before saving (save anyway works).
@@ -241,13 +254,13 @@ Look once a month; crossing a threshold means *optimise*, not necessarily upgrad
 | --- | --- | --- | --- |
 | Vercel Active CPU | Vercel → Usage | 3 of 4 h | Look for repeated or unindexed queries |
 | Supabase DB size | Supabase → Reports | 300 of 500 MB | Check `asset_logs` and `*_histories` growth |
-| Supabase egress | Supabase → Reports | 3 of 5 GB | Lists load fully on each open; move to server paging |
+| Supabase egress | Supabase → Reports | 3 of 5 GB | Lists are paged (≈ 27 KB a page) and the Dashboard is one ≈ 10 KB call, so this should stay low; if it climbs, run `npm run bench` and look for a screen that reads a whole table |
 | Vercel invocations | Vercel → Usage | 500k of 1M | Every API call and page open authenticates once; look for new polling |
 
 ### 10.10 Rebuild a development database
 Create a new project (or use a scratch one) and repeat §3, or wipe the existing one with `reset_schema.sql` (below). To empty a *test* project keeping the Admin and the seeded lists use `database/tools/reset_after_testing.sql`.
 
-**Start over on a project that already has tables** (the baseline refuses to run twice): run [`database/tools/reset_schema.sql`](../database/tools/reset_schema.sql) in the SQL Editor after changing `'NO'` to `'WIPE'`. Only in the NEW or a scratch project, never production: it deletes every table, view and function in `public` with all their data, and leaves Supabase Auth users alone. Afterwards run the baseline, the seed, the Admin import and the §3 check again (the import is safe to repeat; to remove the Auth users too, run `delete from auth.users;` after the script).
+**Start over on a project that already has tables** (the baseline refuses to run twice; the migrations after it can be repeated): run [`database/tools/reset_schema.sql`](../database/tools/reset_schema.sql) in the SQL Editor after changing `'NO'` to `'WIPE'`. Only in the NEW or a scratch project, never production: it deletes every table, view and function in `public` with all their data, and leaves Supabase Auth users alone. Afterwards run the baseline, the seed, the Admin import and the §3 check again (the import is safe to repeat; to remove the Auth users too, run `delete from auth.users;` after the script).
 
 ## 11. Local development
 

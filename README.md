@@ -62,4 +62,4 @@ Open the address Next.js prints. A new Supabase project must be built first — 
 
 ## Repository map
 
-`app/` pages and API routes · `components/` UI · `lib/` server, client and shared code · `src/i18n/` translations · `database/` baseline migration, seed, Admin move and reset scripts · `scripts/` CLI scripts · `docs/`.
+`app/` pages and API routes · `components/` UI · `lib/` server, client and shared code · `src/i18n/` translations · `database/` migrations (baseline + list views), seed, Admin move and reset scripts · `scripts/` CLI scripts · `docs/`.

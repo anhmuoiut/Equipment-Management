@@ -2,7 +2,7 @@
 -- reset_schema.sql — XÓA SẠCH toàn bộ schema `public` (bảng, view, hàm, trigger, chỉ mục) và MỌI DỮ LIỆU trong đó.
 --
 -- Dùng khi cần dựng lại project MỚI / project thử từ đầu (ví dụ chạy baseline dở dang, hoặc baseline báo "already exists").
--- Chạy trong SQL Editor của project MỚI rồi chạy lại theo thứ tự: baseline → seed.sql → import_admin_to_new.sql.
+-- Chạy trong SQL Editor của project MỚI rồi chạy lại theo thứ tự: mọi file trong database/migrations (theo tên file) → seed.sql → import_admin_to_new.sql.
 --
 --   1. Đổi 'NO' (một chỗ, ngay bên dưới) thành 'WIPE'.
 --   2. Run. Cả file là một giao dịch: lỗi ở đâu thì không đổi gì cả.
