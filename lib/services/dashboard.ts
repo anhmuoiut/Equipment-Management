@@ -106,13 +106,18 @@ export const MAX_ACTIVITY_PAGE = 100;
 const MAX_ACTIVITY_OFFSET = 10_000;
 
 const ASSET_MODULES: HistoryModule[] = ['equipment', 'sub_equipment', 'golden_board'];
+/**
+ * Module mà "Thay đổi gần đây" của Dashboard liệt kê: ba module tài sản cho mọi người, thêm User Management (tạo / sửa / khóa tài khoản) cho Admin.
+ * Thay đổi Configuration KHÔNG hiện ở đây cho ai cả — vẫn được ghi lại và vẫn xem được ở tab History của từng mục Configuration.
+ */
+const visibleModules = (role: Role): HistoryModule[] => (role === 'admin' ? [...ASSET_MODULES, 'user'] : ASSET_MODULES);
 /** % _ \ trong chữ gõ vào là ký tự thường (ilike). */
 const likePattern = (text: string) => `%${text.replace(/[\\%_]/g, '\\$&')}%`;
 
 /**
  * Thay đổi gần đây, MỘT thao tác của người dùng = MỘT dòng (view recent_actions, gộp theo action_id). Mọi bộ lọc và giới hạn tính trên
  * THAO TÁC đã gộp, không phải dòng nhật ký: module = thao tác có chạm bản ghi của module đó; tìm chữ = khớp tên / serial của BẤT KỲ bản
- * ghi nào trong thao tác. Configuration / User chỉ Admin thấy.
+ * ghi nào trong thao tác. User Management chỉ Admin thấy; Configuration không hiện ở đây (xem visibleModules).
  */
 export async function recentActivities(role: Role, filter: ActivityFilter): Promise<RecentAction[]> {
   const limit = Math.min(Math.max(Math.floor(filter.limit ?? 50), 1), MAX_ACTIVITY_PAGE);
@@ -121,7 +126,7 @@ export async function recentActivities(role: Role, filter: ActivityFilter): Prom
     .select('id, module, modules, action, source, created_by, created_at, item_count, records')
     .order('created_at', { ascending: false }).order('id')
     .range(offset, offset + limit - 1);
-  if (role !== 'admin') query = query.containedBy('modules', ASSET_MODULES);
+  query = query.containedBy('modules', visibleModules(role));
   if (filter.module) query = query.contains('modules', [filter.module]);
   if (filter.userId) query = query.eq('created_by', filter.userId);
   if (filter.search) query = query.ilike('search_text', likePattern(filter.search));
@@ -152,7 +157,7 @@ async function legacyActivities(role: Role, filter: ActivityFilter, limit: numbe
     .select('module, object_id, label, action, changes, created_by, created_at, note, source, item_count')
     .order('created_at', { ascending: false })
     .limit(LEGACY_ROWS);
-  if (role !== 'admin') query = query.in('module', ASSET_MODULES);
+  query = query.in('module', visibleModules(role));
   if (filter.userId) query = query.eq('created_by', filter.userId);
   if (filter.from) query = query.gte('created_at', filter.from);
   if (filter.to) query = query.lte('created_at', filter.to);
@@ -189,7 +194,7 @@ async function legacyActivities(role: Role, filter: ActivityFilter, limit: numbe
   const visible = actions
     .filter((a) => !filter.module || a.modules.includes(filter.module))
     .filter((a) => !needle || a.labels.some((label) => label.includes(needle)))
-    .filter((a) => role === 'admin' || a.modules.every((m) => ASSET_MODULES.includes(m)))
+    .filter((a) => a.modules.every((m) => visibleModules(role).includes(m)))
     .slice(offset, offset + limit);
   return withActorNames(visible.map(({ labels: _labels, ...action }) => action));
 }

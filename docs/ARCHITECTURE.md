@@ -122,7 +122,7 @@ Every route is under `app/api/**/route.ts` and goes through `withAuth`. Success:
 | Calibration | `GET·POST /calibration`, `GET·PUT /calibration/{id}`, `GET·POST /calibration/{id}/records`, `PUT·DELETE /calibration/records/{recordId}`, `GET …/history`, `POST /calibration/import`, `GET …/import/template` | read: all; write: Editors; delete: Admin |
 | Golden | `GET·POST /golden`, `GET·PUT /golden/{id}`, `GET …/history`, `POST /golden/import`, `GET …/import/template` | read: all; write: Editors |
 | Asset tree (all 3 types, `{type}` = `equipment`/`sub_equipment`/`golden_board`) | `GET /assets/{type}/valid-parents`, `GET /assets/{type}/{id}/swap-candidates`, `GET /assets/serial-matches`, `POST /assets/{type}/{id}/change-location\|move\|detach\|swap`, `POST /assets/usage` (Check-out/in), `DELETE /assets/{type}/{id}` | read: all; operations: Editors; delete: Admin |
-| Overview / Dashboard | `GET /overview?usage=&kind=&q=`, `GET /dashboard`, `GET /dashboard/activities?module=&user=&q=&from=&to=&limit=` | everyone (Configuration/User activity only for Admin) |
+| Overview / Dashboard | `GET /overview?usage=&kind=&q=`, `GET /dashboard`, `GET /dashboard/activities?module=&user=&q=&from=&to=&limit=` | everyone (User Management activity only for Admin; Configuration changes are never listed) |
 | Configuration | `GET·POST /configuration/{list}`, `GET·PUT·DELETE /configuration/{list}/{id}`, `GET …/history`, `GET /configuration/error-log` | Admin. `list` = `part-numbers`, `locations`, `types`, `type-groups`, `tags`, `levels`, `departments`, `calibration-setup`, `calibration-vendors` |
 
 ## 7. Excel import

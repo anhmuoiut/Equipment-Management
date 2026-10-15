@@ -323,7 +323,7 @@ function RecentActivities({ initial }: { initial: RecentAction[] | null | undefi
   }
 
   const modules: HistoryModule[] = can.admin
-    ? ['equipment', 'sub_equipment', 'golden_board', 'configuration', 'user']
+    ? ['equipment', 'sub_equipment', 'golden_board', 'user']
     : ['equipment', 'sub_equipment', 'golden_board'];
 
   return (

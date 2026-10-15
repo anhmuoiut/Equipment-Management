@@ -105,6 +105,25 @@ describe('Dashboard — Recent changes load page by page', () => {
 const failure = () => new ApiError('DATABASE_OUT_OF_DATE', 'x', {}, 'req_8d22f1ae', 503);
 const tiles = () => [...document.querySelectorAll('.kpi-value')].map((e) => e.textContent);
 
+describe('Dashboard — Recent changes module filter', () => {
+  const optionsOf = async (role: Role) => {
+    await mount(role);
+    await waitFor(() => expect(shown()).toHaveLength(50));
+    await act(async () => { fireEvent.click(screen.getByLabelText('dash.module')); });
+    return screen.getAllByRole('option').map((o) => o.textContent);
+  };
+
+  it('an Admin can narrow to Equipment, Sub-equipment, Golden board or User — there is no Configuration', async () => {
+    expect(await optionsOf('admin')).toEqual([
+      'dash.allModules', 'dash.moduleName.equipment', 'dash.moduleName.sub_equipment', 'dash.moduleName.golden_board', 'dash.moduleName.user',
+    ]);
+  });
+
+  it('a User only gets the three asset modules', async () => {
+    expect(await optionsOf('user')).toEqual(['dash.allModules', 'dash.moduleName.equipment', 'dash.moduleName.sub_equipment', 'dash.moduleName.golden_board']);
+  });
+});
+
 describe('Dashboard — when the numbers cannot be loaded (for example the database is behind the app)', () => {
   beforeEach(() => {
     get.mockImplementation(async (url: string) => {

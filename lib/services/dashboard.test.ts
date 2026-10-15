@@ -103,7 +103,7 @@ describe('getDashboard', () => {
 });
 
 describe('recentActivities', () => {
-  it('one user action = one row (view recent_actions); non-admins never see Configuration or User actions; filters apply to the grouped action', async () => {
+  it('one user action = one row (view recent_actions); non-admins only see the asset modules; filters apply to the grouped action', async () => {
     const c = chain({ data: [{ id: 'act-1', module: 'equipment', modules: ['equipment'], action: 'SWAP', source: 'ui', created_at: '2026-10-01T00:00:00Z', created_by: 'u1', item_count: 2, records: [] }] });
     m.from.mockReturnValue(c.proxy);
     const rows = await recentActivities('user', { module: 'sub_equipment', userId: 'u1', search: 'a_b', from: '2026-10-01', limit: 20 });
@@ -115,10 +115,21 @@ describe('recentActivities', () => {
     expect(c.call('ilike')).toEqual(['search_text', '%a\\_b%']);
     expect(rows[0]).toMatchObject({ id: 'act-1', created_by_name: 'Ann', item_count: 2 });
 
+  });
+
+  it('Configuration changes are not listed for anyone; User Management actions are listed for an Admin only', async () => {
     const admin = chain({ data: [] });
     m.from.mockReturnValue(admin.proxy);
     await recentActivities('admin', {});
-    expect(admin.names()).not.toContain('containedBy');
+    expect(admin.call('containedBy')).toEqual(['modules', ['equipment', 'sub_equipment', 'golden_board', 'user']]); // no 'configuration'
+    const user = chain({ data: [] });
+    m.from.mockReturnValue(user.proxy);
+    await recentActivities('user', {});
+    expect(user.call('containedBy')).toEqual(['modules', ['equipment', 'sub_equipment', 'golden_board']]); // no 'user' either
+    const readonly = chain({ data: [] });
+    m.from.mockReturnValue(readonly.proxy);
+    await recentActivities('readonly', {});
+    expect(readonly.call('containedBy')).toEqual(['modules', ['equipment', 'sub_equipment', 'golden_board']]);
   });
 
   it('pages the history in the database: the next page starts after the actions already shown; one page is never more than 100', async () => {
@@ -185,6 +196,17 @@ describe('recentActivities', () => {
       expect(legacy.call('eq')).toEqual(['created_by', 'u1']);
       expect(legacy.call('gte')).toEqual(['created_at', '2026-10-01']);
       expect(legacy.call('lte')).toEqual(['created_at', '2026-10-31']);
+    });
+
+    it('an Admin sees User Management actions but never Configuration ones', async () => {
+      const { out, legacy } = await run('admin', {}, [
+        ...rows,
+        row({ module: 'configuration', label: 'Locations', created_at: '2026-10-12T00:00:00+00:00' }),
+        row({ module: 'user', label: 'ann', action: 'CREATE', created_at: '2026-10-11T00:00:00+00:00' }),
+      ]);
+      expect(legacy.call('in')).toEqual(['module', ['equipment', 'sub_equipment', 'golden_board', 'user']]);
+      expect(out.some((a) => a.modules.includes('user' as never))).toBe(true);
+      expect(out.some((a) => a.modules.includes('configuration' as never))).toBe(false);
     });
 
     it('a User never sees an action that touches Configuration or Users', async () => {

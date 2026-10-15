@@ -7,7 +7,8 @@ vi.mock('@/lib/auth/withAuth', () => ({
     handler(req, { requestId: 'req_test', profile: { id: 'u1', role: 'admin' }, params: routeCtx?.params ?? {} }),
   ok: (data: unknown, requestId: string, meta: Record<string, unknown> = {}) => ({ success: true, data, meta: { ...meta, request_id: requestId } }),
 }));
-const svc = vi.hoisted(() => ({ listEquipment: vi.fn(), listSubEquipment: vi.fn(), listGolden: vi.fn(), filterValues: vi.fn() }));
+const svc = vi.hoisted(() => ({ listEquipment: vi.fn(), listSubEquipment: vi.fn(), listGolden: vi.fn(), filterValues: vi.fn(), recentActivities: vi.fn() }));
+vi.mock('@/lib/services/dashboard', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/services/dashboard')>()), recentActivities: svc.recentActivities }));
 vi.mock('@/lib/services/equipment', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/services/equipment')>()), listEquipment: svc.listEquipment }));
 vi.mock('@/lib/services/calibration', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/services/calibration')>()), listSubEquipment: svc.listSubEquipment }));
 vi.mock('@/lib/services/golden', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/services/golden')>()), listGolden: svc.listGolden }));
@@ -18,6 +19,7 @@ import { GET as equipmentGet } from './equipment/route';
 import { GET as calibrationGet } from './calibration/route';
 import { GET as goldenGet } from './golden/route';
 import { GET as filterValuesGet } from './filter-values/[list]/route';
+import { GET as activitiesGet } from './dashboard/activities/route';
 
 const call = (handler: unknown, url: string, params?: Record<string, string>) =>
   (handler as (req: Request, ctx?: unknown) => unknown)(new Request(`http://localhost${url}`), { params }) as Promise<{ data: unknown; meta: Record<string, unknown> }>;
@@ -62,6 +64,22 @@ describe('list routes: one page in `data`, its position in `meta`', () => {
     await call(calibrationGet, '/api/calibration?quick=attention&f.status=overdue&f.result=__empty');
     expect(svc.listSubEquipment).toHaveBeenCalledWith(expect.objectContaining({ quick: 'attention', filters: { status: 'overdue', result: '__empty' } }));
     await expect(call(goldenGet, '/api/golden?quick=overdue')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+});
+
+describe('/api/dashboard/activities — the module filter', () => {
+  it('accepts the asset modules and User Management, with limit and offset for paging', async () => {
+    svc.recentActivities.mockResolvedValue([]);
+    await call(activitiesGet, '/api/dashboard/activities?module=user&limit=50&offset=100');
+    expect(svc.recentActivities).toHaveBeenCalledWith('admin', expect.objectContaining({ module: 'user', limit: 50, offset: 100 }));
+    await call(activitiesGet, '/api/dashboard/activities?module=equipment');
+    expect(svc.recentActivities).toHaveBeenLastCalledWith('admin', expect.objectContaining({ module: 'equipment' }));
+  });
+
+  it('Configuration is not a module of Recent changes: asking for it is ignored (no filter), not an error', async () => {
+    svc.recentActivities.mockResolvedValue([]);
+    await call(activitiesGet, '/api/dashboard/activities?module=configuration');
+    expect(svc.recentActivities).toHaveBeenCalledWith('admin', expect.objectContaining({ module: undefined }));
   });
 });
 

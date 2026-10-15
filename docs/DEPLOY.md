@@ -175,7 +175,7 @@ Run on the preview URL as an Admin unless stated. Use any three test serials. Ti
 **J. Recent changes: one entry per user action**
 - [ ] Each of these gives exactly **one** line on the Dashboard: a Swap (two records inside), a Move with children, a Check-out of a tree, an Excel import of 3 rows (shows "3"), a form edit that changes both a field and the parent, a Create, a calibration record.
 - [ ] Expanding a line lists the affected records and their changes. Filters by module, user, date and search by **any** serial in the action work; "Show more" counts actions.
-- [ ] Configuration and user changes appear for Admin only (not for `qa.user`).
+- [ ] As Admin, creating / editing / locking a user shows in Recent changes (module *User*); changing a Configuration list does **not** appear there (it is still in that record's History tab). `qa.user` sees neither, and the module filter offers no Configuration.
 - [ ] A record's own History tab still shows one row per change to that record.
 
 **K. Languages and layout**
