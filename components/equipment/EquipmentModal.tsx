@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Modal Equipment — Tester, Base, Fixture (docs/DETAIL_MODEL.md 4.1). Dùng khung RecordModal; riêng module này:
+ * Modal Equipment — Tester, Base, Fixture (docs/UI.md). Dùng khung RecordModal; riêng module này:
  * nhóm trường, quan hệ cha – con (dòng SN · Type bấm để mở), nhóm Hiệu chuẩn chỉ đọc của Tester (từ module Calibration),
  * tab Cây thiết bị, cảnh báo serial trùng trước khi lưu. Overview dùng lại đúng component này.
  */
@@ -17,7 +17,7 @@ import { parentAllowed } from '@/lib/assetTree';
 import { useCan } from '@/components/ViewerContext';
 import { TagChips, UsageTag } from '@/components/ui/tags';
 import { TagPicker } from '@/components/ui/TagPicker';
-import { RecordModal, type ActionDef } from '@/components/ui/record/RecordModal';
+import { RecordModal, type ActionDef, type RecordModalProps } from '@/components/ui/record/RecordModal';
 import { DetailValue, type Draft, type SectionDef } from '@/components/ui/record/fields';
 import type { DetailCtx } from '@/components/ui/workspace/ModuleWorkspace';
 import { assetActions } from '@/components/assets/actions';
@@ -26,13 +26,27 @@ import { ParentPicker } from '@/components/assets/pickers';
 import { ActionLink, ParentRelation, RelationChip, RelationList, useOpenAsset } from '@/components/assets/Relations';
 import { SerialWarning } from '@/components/assets/SerialWarning';
 import { TreeTab } from '@/components/assets/TreeTab';
-import type { EquipmentKind, EquipmentRow, EquipmentTree, ParentCandidate, TreeNode } from '@/lib/types';
+import { useAssetTree, type AssetTreeState } from '@/components/assets/useAssetTree';
+import type { EquipmentKind, EquipmentRow, ParentCandidate, TreeNode } from '@/lib/types';
 
 export function EquipmentModal({ ctx, initialTab }: {
   ctx: DetailCtx<EquipmentRow>;
   /** Tab mở sẵn (Overview: `tree`). */
   initialTab?: string;
 }) {
+  return <RecordModal<EquipmentRow> {...useEquipmentModal(ctx, { initialTab })} />;
+}
+
+/**
+ * Props của RecordModal cho Equipment. Tách thành hook để Overview gọi cả ba hook (Equipment / Calibration / Golden) rồi vẽ MỘT
+ * RecordModal duy nhất: chọn nút thuộc loại khác trong cây chỉ đổi props, khung modal và cây không bị mount lại.
+ */
+export function useEquipmentModal(ctx: DetailCtx<EquipmentRow>, opts: {
+  initialTab?: string;
+  /** Cây do chỗ gọi giữ (Overview); không có thì modal tự tải. */
+  treeState?: AssetTreeState;
+} = {}): RecordModalProps<EquipmentRow> {
+  const { initialTab } = opts;
   const { t, i18n } = useTranslation();
   const language = i18n.language === 'vi' ? 'vi' : 'en';
   const router = useRouter();
@@ -42,7 +56,7 @@ export function EquipmentModal({ ctx, initialTab }: {
   const record = ctx.creating ? null : ctx.record;
   const phone = usePhone();
   // Desktop tree/detail is one workspace: selecting a node replaces the current record.
-  const openAsset = useOpenAsset('equipment', (id) => record && ctx.open(id, record.serial_number, { trackTrail: phone }));
+  const openAsset = useOpenAsset('equipment', (id) => record && ctx.open(id, record.serial_number, { trackTrail: phone }), ctx.openAny);
 
   // "Thêm thiết bị con": cha cố định (Thao tác › Thêm thiết bị con). Chọn cha ở form: vị trí theo cha.
   const fixedParentId = ctx.creating && typeof ctx.defaults?.parent_id === 'string' ? ctx.defaults.parent_id : null;
@@ -51,10 +65,13 @@ export function EquipmentModal({ ctx, initialTab }: {
   // Cha chọn trong ô: danh sách tìm chỉ có vị trí, nên Level của cha lấy từ chính thiết bị đó.
   const pickedRow = useFetch<EquipmentRow>(picked ? `/api/equipment/${picked.id}` : null).data;
 
-  // Cây chứa thiết bị này: MỘT lần tải cho cả tab Cây thiết bị, chip thiết bị con và nhóm Hiệu chuẩn của Tester.
-  // Mở thiết bị khác trong cùng cây thì dùng lại cây đã có (không tải lại); sang cây khác thì chờ cây mới.
-  const tree = useFetch<EquipmentTree>(record ? `/api/equipment/${record.id}/tree?_v=${ctx.version}` : null);
-  const loaded = record && tree.data?.nodes.some((n) => n.id === record.id) ? tree.data : null;
+  // Cây chứa thiết bị này: MỘT lần tải cho cả tab Cây thiết bị, chip thiết bị con và nhóm Hiệu chuẩn của Tester
+  // (useAssetTree: chọn nút khác trong cùng cây không tải lại). Overview truyền cây vào qua `opts.treeState`.
+  const ownTree = useAssetTree({ type: 'equipment', record: opts.treeState ? null : record, version: ctx.version, selectedId: ctx.id });
+  const treeState = opts.treeState ?? ownTree;
+  const { tree, loaded } = treeState;
+  // Bản ghi vừa chọn còn đang tải (`record` vẫn là bản trước, như ở Overview): cây tô nút mới ngay, bảng bên phải mờ đi.
+  const switching = !!record && !!ctx.id && ctx.id !== record.id;
   // Con trực tiếp (equipment, sub-equipment, golden board); null = đang tải.
   const family = record && loaded ? loaded.nodes.filter((n) => n.parent_id === record.id) : null;
   const relationType = (node: TreeNode) => node.type_name ?? t(`ov.kinds.${node.kind}`);
@@ -107,6 +124,9 @@ export function EquipmentModal({ ctx, initialTab }: {
           } },
         { key: 'jabil_id', label: t('fields.jabil_id'), maxLength: 200 },
         { key: 'asset', label: t('fields.asset'), maxLength: 200 },
+        { key: 'part_number_description', label: t('fields.description'), readOnly: true, wide: true,
+          view: (r) => partOption(r.part_number_id)?.description ?? null,
+          draftView: (d) => partOption(d.part_number_id)?.description ?? null },
       ],
     },
     {
@@ -191,7 +211,7 @@ export function EquipmentModal({ ctx, initialTab }: {
         { key: 'remark', label: t('fields.remark'), kind: 'textarea', wide: true, maxLength: 1000 },
       ],
     },
-    // Nhóm chỉ đọc do module Calibration cung cấp (extension point, docs/DETAIL_MODEL.md 3.10): chỉ Tester.
+    // Nhóm chỉ đọc do module Calibration cung cấp (extension point, docs/UI.md): chỉ Tester.
     {
       key: 'calibration', title: t('cal.groupCalibration'), hideInCreate: true,
       render: (r) => {
@@ -232,44 +252,44 @@ export function EquipmentModal({ ctx, initialTab }: {
     return matches.length ? <SerialWarning matches={matches} /> : null;
   }
 
-  return (
-    <RecordModal<EquipmentRow>
-      {...ctx}
-      trail={phone ? ctx.trail : []}
-      record={record}
-      size="l"
-      canEdit={can.edit}
-      createTitle={fixedParentId ? t('eq.addChildTitle', { serial: fixedParent?.serial_number ?? '' }) : t('eq.addTitle')}
-      heading={(r) => ({
-        title: r.serial_number,
-        tags: <><UsageTag usage={r.usage} /><TagChips items={r.tags} /></>,
-        subtitle: [r.part_number, r.type].filter(Boolean).join(' · ') || undefined,
-        meta: (
-          <>
-            {r.location && <span data-primary><MapPin size={12} aria-hidden="true" /> {r.location}</span>}
-            {r.parent_serial && <span>{t('eq.parentShort')}: {r.parent_serial}</span>}
-            <span>{t('dp.updated', { when: formatRelativeTime(r.updated_at, language), who: r.updated_by_name ?? '—' })}</span>
-          </>
-        ),
-      })}
-      sections={sections}
-      initialTab={initialTab}
-      detailAsideTab="tree"
-      extraTabs={[{
-        key: 'tree', label: t('eq.tabTree'),
-        render: (r) => <TreeTab key={loaded?.root_id ?? r.id} tree={loaded} error={loaded ? null : tree.error} onRetry={tree.reload} current={{ type: 'equipment', id: r.id }} onOpen={openAsset} />,
-      }]}
-      historyUrl={(r) => `/api/equipment/${r.id}/history`}
-      historyLabels={{ parent: t('fields.parent') }}
-      beforeSave={checkSerial}
-      onSave={async (payload, current) => {
-        // Ô khóa không nằm trong payload — cha cố định của "Thêm thiết bị con" gửi kèm ở đây.
-        const res = current
-          ? await api.put<EquipmentRow>(`/api/equipment/${current.id}`, payload)
-          : await api.post<EquipmentRow>('/api/equipment', fixedParentId ? { ...payload, parent_id: fixedParentId } : payload);
-        return { row: res.data };
-      }}
-      actions={actions}
-    />
-  );
+  return {
+    ...ctx,
+    trail: phone ? ctx.trail : [],
+    record,
+    switching,
+    size: 'l',
+    canEdit: can.edit,
+    createTitle: fixedParentId ? t('eq.addChildTitle', { serial: fixedParent?.serial_number ?? '' }) : t('eq.addTitle'),
+    heading: (r) => ({
+      title: r.serial_number,
+      tags: <><UsageTag usage={r.usage} /><TagChips items={r.tags} /></>,
+      subtitle: [r.part_number, r.type].filter(Boolean).join(' · ') || undefined,
+      meta: (
+        <>
+          {r.location && <span data-primary><MapPin size={12} aria-hidden="true" /> {r.location}</span>}
+          {r.parent_serial && <span>{t('eq.parentShort')}: {r.parent_serial}</span>}
+          <span>{t('dp.updated', { when: formatRelativeTime(r.updated_at, language), who: r.updated_by_name ?? '—' })}</span>
+        </>
+      ),
+    }),
+    sections,
+    initialTab,
+    detailAsideTab: 'tree',
+    extraTabs: [{
+      key: 'tree', label: t('eq.tabTree'),
+      render: (r) => <TreeTab key={loaded?.root_id ?? r.id} tree={loaded} error={loaded ? null : tree.error} onRetry={tree.reload}
+        current={treeState.current ?? { type: 'equipment', id: r.id }} home={treeState.home} onOpen={openAsset} />,
+    }],
+    historyUrl: (r) => `/api/equipment/${r.id}/history`,
+    historyLabels: { parent: t('fields.parent') },
+    beforeSave: checkSerial,
+    onSave: async (payload, current) => {
+      // Ô khóa không nằm trong payload — cha cố định của "Thêm thiết bị con" gửi kèm ở đây.
+      const res = current
+        ? await api.put<EquipmentRow>(`/api/equipment/${current.id}`, payload)
+        : await api.post<EquipmentRow>('/api/equipment', fixedParentId ? { ...payload, parent_id: fixedParentId } : payload);
+      return { row: res.data };
+    },
+    actions,
+  };
 }

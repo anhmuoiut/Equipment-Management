@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Quan hệ cha – con trong chi tiết tài sản (docs/DETAIL_MODEL.md 4.1): dòng chữ `SN · Type` bấm để mở; thao tác
+ * Quan hệ cha – con trong chi tiết tài sản (docs/UI.md): dòng chữ `SN · Type` bấm để mở; thao tác
  * (Thêm thiết bị con, Gắn vào…) là liên kết chữ dẫn tới đúng màn hình thao tác của modal.
  */
 import { useId, useState, type ReactNode } from 'react';
@@ -48,10 +48,12 @@ export function ActionLink({ action, children }: { action: string; children: str
  * Mở một tài sản: cùng module → mở trong chính modal này (breadcrumb `← SN-001 › SN-002`); module khác →
  * chuyển tới trang module đó với `?id=` — modal cũ đóng, modal mới mở (luôn chỉ một modal).
  */
-export function useOpenAsset(sameType: AssetType, openSame?: (id: string) => void) {
+export function useOpenAsset(sameType: AssetType, openSame?: (id: string) => void, openAny?: (type: AssetType, id: string) => void) {
   const router = useRouter();
   return (type: AssetType, id: string) => {
-    if (type === sameType && openSame) openSame(id);
+    // Overview: mọi loại mở ngay trong modal đang mở (cây + chi tiết là một màn hình).
+    if (openAny) openAny(type, id);
+    else if (type === sameType && openSame) openSame(id);
     else router.push(assetHref(type, id));
   };
 }

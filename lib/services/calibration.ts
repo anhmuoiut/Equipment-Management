@@ -2,16 +2,18 @@ import 'server-only';
 
 /**
  * Module Calibration — bảng sub_equipment (thiết bị cần hiệu chuẩn, nằm trong tester) và calibrations (mỗi lần hiệu
- * chuẩn một dòng). docs/DATABASE_MODIFIED.md mục 4.
+ * chuẩn một dòng). docs/DATABASE.md.
  *
  * Phụ thuộc một chiều vào Equipment (tên tester). Calibration Status KHÔNG lưu và không tính ở đây: đọc từ view
  * sub_equipment_calibration (lần hiệu chuẩn mới nhất + Setup của part number). due_date của một lần hiệu chuẩn do
  * database tự tính (calibrated_at + interval_months của Setup). Nhật ký ghi vào asset_logs (CALIBRATE…).
  */
-import { appWrite, db, selectAll, selectOne } from './core/db';
+import { appWrite, db, selectOne } from './core/db';
 import { applyTreeEdit, assetLog, previewTreeEdit } from './core/assets';
+import { runList, type ListPage, type ListParams, type ListSpec } from './core/listQuery';
 import { assertActive, assertTags, auditOf, loadLookups, nameOf, tagItems, type Lookups } from './core/lookups';
 import { AppError, mapRpcError } from '@/lib/errors';
+import { CALIBRATION_STATUSES, USAGE_STATUSES } from '@/lib/status';
 import type { CalibrationRecord, CalibrationResult, CalibrationStatus, HistoryEntry, SubEquipmentRow, Usage } from '@/lib/types';
 
 type DbSub = {
@@ -63,6 +65,8 @@ function toRow(s: WithTester, c: DbStatus | undefined, lookups: Lookups): SubEqu
     serial_number: s.serial_number,
     asset: s.asset,
     type_id: s.type_id, type: nameOf(lookups.types, s.type_id),
+    manufacturer: lookups.part_numbers.get(s.part_number_id)?.manufacturer ?? null,
+    description: lookups.part_numbers.get(s.part_number_id)?.description ?? null,
     tester_id: s.tester_id, tester_serial: s.tester?.serial_number ?? null,
     location_id: s.location_id, location: nameOf(lookups.locations, s.location_id),
     usage: s.usage,
@@ -77,15 +81,51 @@ function toRow(s: WithTester, c: DbStatus | undefined, lookups: Lookups): SubEqu
   };
 }
 
-/** Danh sách Calibration: mọi sub-equipment kèm lần hiệu chuẩn mới nhất và Calibration Status. */
-export async function listSubEquipment(): Promise<SubEquipmentRow[]> {
-  const [rows, statuses, lookups] = await Promise.all([
-    selectAll<WithTester>('sub_equipment', WITH_TESTER),
-    selectAll<DbStatus>('sub_equipment_calibration', '*', 'sub_equipment_id'),
-    loadLookups(),
-  ]);
-  const byStatus = new Map(statuses.map((s) => [s.sub_equipment_id, s]));
-  return rows.map((r) => toRow(r, byStatus.get(r.id), lookups));
+/**
+ * Masterlist Calibration: MỘT trang của view sub_equipment_list (migration 20261016000000) — mỗi sub-equipment một dòng kèm lần hiệu chuẩn mới nhất và
+ * Calibration Status (view sub_equipment_calibration), phân trang / tìm / lọc / sắp xếp chạy ở database. Lọc nhanh: overdue, due_soon,
+ * attention (chưa hiệu chuẩn hoặc không đạt).
+ */
+export const SUB_EQUIPMENT_LIST: ListSpec = {
+  view: 'sub_equipment_list',
+  select: 'id, jabil_id, part_number_id, serial_number, asset, type_id, tester_id, location_id, usage, remark, tag_ids, '
+    + 'created_at, created_by, updated_at, updated_by, tester_serial, calibration_id, calibrated_at, due_date, vendor_id, cert_no, '
+    + 'cert_file_url, result, interval_months, warning_days, status',
+  sort: {
+    status: 'status', usage: 'usage', serial_number: 'serial_nk', part_number: 'part_nk', type: 'type_nk', tester: 'tester_nk',
+    location: 'location_nk', calibrated_at: 'calibrated_at', due_date: 'due_date', vendor: 'vendor_nk', cert_no: 'cert_nk', result: 'result',
+    jabil_id: 'jabil_nk', asset: 'asset_nk', tags: 'tags_text', remark: 'remark',
+    manufacturer: 'manufacturer_nk', description: 'description_nk',
+  },
+  defaultOrder: [['created_at', 'desc']],
+  filters: {
+    status: { column: 'status', kind: 'enum', values: CALIBRATION_STATUSES },
+    usage: { column: 'usage', kind: 'enum', values: USAGE_STATUSES },
+    part_number: { column: 'part_number_id', kind: 'id' },
+    type: { column: 'type_id', kind: 'id' },
+    tester: { column: 'tester_serial', kind: 'text', allowEmpty: true },
+    location: { column: 'location_id', kind: 'id' },
+    vendor: { column: 'vendor_id', kind: 'id', allowEmpty: true },
+    result: { column: 'result', kind: 'enum', values: ['pass', 'fail'], allowEmpty: true },
+    manufacturer: { column: 'manufacturer', kind: 'text', allowEmpty: true },
+    tags: { column: 'tag_ids', kind: 'tag' },
+  },
+  quick: {
+    overdue: { column: 'status', values: ['overdue'] },
+    due_soon: { column: 'status', values: ['due_soon'] },
+    attention: { column: 'status', values: ['not_calibrated', 'failed'] },
+  },
+  searchEnums: { usage: USAGE_STATUSES, status: CALIBRATION_STATUSES, result: ['pass', 'fail'] },
+};
+
+type ListRow = DbSub & Omit<DbStatus, 'sub_equipment_id'> & { tester_serial: string | null };
+
+export async function listSubEquipment(params: ListParams): Promise<ListPage<SubEquipmentRow>> {
+  const [page, lookups] = await Promise.all([runList<ListRow>(SUB_EQUIPMENT_LIST, params), loadLookups()]);
+  return {
+    ...page,
+    rows: page.rows.map((r) => toRow({ ...r, tester: r.tester_serial ? { serial_number: r.tester_serial } : null }, { ...r, sub_equipment_id: r.id }, lookups)),
+  };
 }
 
 export async function getSubEquipment(id: string): Promise<SubEquipmentRow> {

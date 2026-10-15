@@ -1,6 +1,6 @@
 import { z, optText, optId, reqText, reqId } from '@/lib/services/core/validate';
 
-/** Trường trên form thiết bị — docs/DATABASE_MODIFIED.md mục 3. */
+/** Trường trên form thiết bị — docs/DATABASE.md. */
 const fields = {
   serial_number: reqText(200),
   jabil_id: optText(200),
@@ -8,7 +8,7 @@ const fields = {
   part_number_id: reqId,
   asset: optText(200),
   level_id: optId,
-  tag_ids: z.array(reqId).max(50),
+  tag_ids: z.array(reqId).max(1), // mỗi lần chỉ một thẻ (cột vẫn là mảng)
   location_id: reqId,
   remark: optText(1000),
 };

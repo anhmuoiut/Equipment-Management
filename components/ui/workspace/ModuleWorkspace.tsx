@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Trang của một module: Masterlist full chiều rộng + modal của bản ghi (docs/DETAIL_MODEL.md).
+ * Trang của một module: Masterlist full chiều rộng + modal của bản ghi (docs/UI.md).
  * URL là nguồn sự thật: `?id=` (chi tiết, mở lại / chia sẻ được), `?new=1` (thêm mới), `?tool=` (công cụ
  * như Import). Mở từ danh sách → `push` (nút Back của trình duyệt đóng modal); chuyển bản ghi (‹ ›, thêm
  * mới → chi tiết) → `replace`. Module chỉ truyền cột và cách vẽ modal; bản ghi được tải theo id.
@@ -10,19 +10,14 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
 import { useFetch } from '@/lib/client/useFetch';
+import type { ListState } from '@/lib/client/listState';
 import { useUrlParams } from '@/lib/client/useUrlParams';
 import { PageHeading } from '@/components/layout/PageHeading';
 import { Masterlist, type Column, type QuickFilter } from '@/components/ui/masterlist/Masterlist';
 import type { TrailItem } from '@/components/ui/record/RecordModal';
+import type { AssetType } from '@/lib/types';
 
-export type ListState<R> = {
-  rows: R[];
-  loading: boolean;
-  error: string | null;
-  reload: () => void;
-  upsert: (row: R) => void;
-  remove: (id: string) => void;
-};
+export type { ListState };
 
 /** Mảng rỗng cố định: `rows` phải giữ nguyên identity khi chưa có dữ liệu (Masterlist memo theo nó). */
 const NO_ROWS: never[] = [];
@@ -49,6 +44,8 @@ export function useList<R extends { id: string }>(url: string): ListState<R> {
  */
 export type DetailCtx<R> = {
   record: R | null;
+  /** Id đang được chọn: khác `record.id` trong lúc bản ghi vừa chọn còn đang tải (`record` vẫn là bản trước). */
+  id?: string;
   creating: boolean;
   loading: boolean;
   error: string | null;
@@ -67,6 +64,8 @@ export type DetailCtx<R> = {
   defaults?: Record<string, unknown>;
   /** Mở bản ghi trong cùng module; trackTrail=false chỉ thay lựa chọn hiện tại, không thêm breadcrumb. */
   open: (id: string, fromLabel: string, options?: { trackTrail?: boolean }) => void;
+  /** Overview: mở một tài sản bất kỳ loại nào ngay trong modal này (thay vì chuyển sang trang module của nó). */
+  openAny?: (type: AssetType, id: string) => void;
   /** Mở form thêm mới với giá trị điền sẵn. */
   create?: (defaults?: Record<string, unknown>) => void;
 };
@@ -178,6 +177,7 @@ export function ModuleWorkspace<R extends { id: string }>({
 
   const detail: DetailCtx<R> = {
     record: creating ? null : record,
+    id: id ?? undefined,
     creating,
     loading: (recordUrl ? fetched.loading : list.loading) && !record,
     error: recordUrl ? fetched.error : !record && list.error ? list.error : !record && !list.loading && id ? t('dp.notFound') : null,
@@ -208,7 +208,7 @@ export function ModuleWorkspace<R extends { id: string }>({
 
   return (
     <div className="ws" data-open={open || undefined} data-add={canAdd || undefined}>
-      <PageHeading title={title} subtitle={list.loading ? undefined : t('ml.count', { count: viewIds.length, total: list.rows.length })} />
+      <PageHeading title={title} subtitle={(list.paged ? list.loading && list.rows.length === 0 : list.loading) ? undefined : t('ml.count', { count: viewIds.length, total: list.paged ? list.paged.total : list.rows.length })} />
       {beforeList}
       {/* Điện thoại: một nút + nổi cho mọi module (CSS ẩn nó trên desktop, nơi có nút + Thêm trên thanh công cụ). */}
       {canAdd && !open && (
@@ -224,7 +224,7 @@ export function ModuleWorkspace<R extends { id: string }>({
             columns={columns} mobileCard={mobileCard} storageKey={storageKey} defaultColumns={defaultColumns} exportName={exportName} quickFilters={quickFilters}
             leading={leading} rowTone={rowTone} selectedId={id} onSelect={select}
             onAdd={canAdd ? () => create() : undefined}
-            addLabel={addLabel} onViewChange={setViewIds} initialSearch={searchParams.get('q') ?? undefined}
+            addLabel={addLabel} onViewChange={setViewIds} initialSearch={searchParams.get('q') ?? undefined} server={list.paged}
             mobileFilterKeys={mobileFilterKeys} searchPlaceholder={searchPlaceholder} mobileEmptyState={mobileEmptyState}
             tools={tools?.map((x) => ({
               key: x.key, label: x.label, icon: x.icon, active: toolKey === x.key,

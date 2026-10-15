@@ -6,7 +6,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
 }));
 
-import { Modal, ModalFooter, ModalSuspend, useInModal } from './index';
+import { Modal, ModalFooter, ModalSuspend } from './index';
 
 describe('Modal', () => {
   it('size is a prop (S by default) and is shown on the dialog; a sheet is only for phones', () => {
@@ -102,12 +102,8 @@ describe('ModalFooter', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
   });
 
-  it('a footer prop is used as is (no slot), and useInModal says whether a component is inside a modal', () => {
-    function Probe() { return <span data-testid="probe">{String(useInModal())}</span>; }
-    const { rerender } = render(<Probe />);
-    expect(screen.getByTestId('probe').textContent).toBe('false');
-    rerender(<Modal title="A" footer={<button type="button">Done</button>} onClose={() => {}}><Probe /></Modal>);
-    expect(screen.getByTestId('probe').textContent).toBe('true');
+  it('a footer prop is used as is (no slot)', () => {
+    render(<Modal title="A" footer={<button type="button">Done</button>} onClose={() => {}}><span>body</span></Modal>);
     expect(within(document.querySelector('.modal-footer') as HTMLElement).getByRole('button', { name: 'Done' })).toBeTruthy();
   });
 });

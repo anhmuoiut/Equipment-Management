@@ -10,3 +10,8 @@ next-env.d.ts
 .vercel
 /backups
 *.tsbuildinfo
+
+# A filled-in admin import / export carries a password hash: never commit one.
+admin_export*.json
+/database/tools/*.filled.sql
+/database/tools/*.local.sql

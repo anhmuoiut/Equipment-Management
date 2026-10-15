@@ -1,6 +1,6 @@
 'use client';
 
-import { listCache } from '@/lib/client/cache';
+import { listCache, pagedCache } from '@/lib/client/cache';
 
 /**
  * API client. Mọi thất bại đều thành ApiError { code, status, requestId }:
@@ -81,7 +81,7 @@ async function call<T>(path: string, init: RequestInit = {}, timeout = TIMEOUT_M
   const body = (await res.json().catch(() => null)) as Envelope<T> | null;
   if (res.ok && body?.success) {
     // Đăng nhập / đăng xuất: danh sách đã nhớ là của tài khoản trước.
-    if (path.startsWith('/api/auth/')) listCache.clear();
+    if (path.startsWith('/api/auth/')) { listCache.clear(); pagedCache.clear(); }
     return { data: body.data, meta: body.meta };
   }
   throw toApiError(path, res, body);
@@ -105,7 +105,8 @@ function get<T>(path: string): Promise<Result<T>> {
 
 function write<T>(path: string, init: RequestInit, timeout?: number): Promise<Result<T>> {
   writes++;
-  return call<T>(path, init, timeout).finally(() => { writes++; });
+  // Sau MỌI lần ghi (kể cả lỗi — một thao tác nhiều bước có thể đã đổi dữ liệu): không giữ trang danh sách nào (cache.ts).
+  return call<T>(path, init, timeout).finally(() => { writes++; pagedCache.clear(); });
 }
 
 /** Lưu Blob thành file tải về. */

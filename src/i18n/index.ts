@@ -36,5 +36,3 @@ export function setLanguage(lang: SupportedLanguage): void {
   document.documentElement.lang = lang;
   try { window.localStorage.setItem(STORAGE_KEY, lang); } catch {}
 }
-
-export default i18n;

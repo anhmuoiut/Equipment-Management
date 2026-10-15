@@ -6,7 +6,8 @@ vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => client }));
 const cache = vi.hoisted(() => ({ invalidateLookups: vi.fn() }));
 vi.mock('./lookupCache', async (importOriginal) => ({ ...(await importOriginal<typeof import('./lookupCache')>()), ...cache }));
 
-import { appWrite, selectAll } from './db';
+import { appWrite, rpc, selectAll } from './db';
+import { runInAction } from './actionContext';
 
 /** Một bảng giả có `total` dòng; mỗi lời gọi .range() ghi lại để kiểm tra các trang được tải thế nào. */
 function table(total: number | null, size: number) {
@@ -78,5 +79,52 @@ describe('appWrite and the lookups cache', () => {
     client.rpc.mockResolvedValue({ data: null, error: { message: 'DUPLICATE_VALUE', code: '23505' } });
     await expect(appWrite('locations', 'insert', null, { display_name: 'A' }, 'actor')).rejects.toBeTruthy();
     expect(cache.invalidateLookups).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('rpc and p_action_id', () => {
+  const sentId = () => client.rpc.mock.calls.map((c) => 'p_action_id' in (c[1] as Record<string, unknown>));
+
+  it('write functions get the request action id; lookup functions never do', async () => {
+    client.rpc.mockResolvedValue({ data: { ok: 1 }, error: null });
+    await runInAction(async () => {
+      await rpc('asset_move', { p_id: 'a' });
+      await rpc('valid_parents', { p_id: 'a' });
+    });
+    expect(sentId()).toEqual([true, false]);
+    const id = (client.rpc.mock.calls[0]![1] as { p_action_id: string }).p_action_id;
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  // TEMPORARY compatibility with a database built before the baseline (the old project). Delete with the retry in db.ts.
+  it('retries WITHOUT the id when the database predates p_action_id (PGRST202), and remembers that for a minute', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      client.rpc.mockImplementation(async (_fn: string, args: Record<string, unknown>) =>
+        ('p_action_id' in args ? { data: null, error: { code: 'PGRST202', message: 'no such function' } } : { data: { ok: 1 }, error: null }));
+      await runInAction(async () => {
+        expect(await rpc('asset_swap', { p_a: 'a' })).toEqual({ ok: 1 });
+        expect(sentId()).toEqual([true, false]); // tried with the id, then without
+        client.rpc.mockClear();
+        await rpc('asset_swap', { p_a: 'b' });
+        expect(sentId()).toEqual([false]); // remembered: no second failing attempt
+        client.rpc.mockClear();
+
+        vi.setSystemTime(Date.now() + 61_000); // a minute later the database may have been upgraded: try the id again
+        client.rpc.mockImplementation(async () => ({ data: { ok: 1 }, error: null }));
+        await rpc('asset_swap', { p_a: 'c' });
+        expect(sentId()).toEqual([true]);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('other errors are not retried', async () => {
+    client.rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'SWAP_NO_CHANGE' } });
+    await runInAction(async () => {
+      await expect(rpc('asset_swap', { p_a: 'a' })).rejects.toBeTruthy();
+    });
+    expect(client.rpc).toHaveBeenCalledTimes(1);
   });
 });

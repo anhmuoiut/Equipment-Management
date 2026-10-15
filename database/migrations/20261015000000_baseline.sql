@@ -1,26 +1,577 @@
 -- =============================================================================
--- 04_functions.sql — NGHIỆP VỤ của database (chạy sau 02_schema.sql và 03_seed.sql).
+-- Baseline migration 2026-10-15 — toàn bộ database của Equipment Management trong MỘT file.
 --
--- 1. Nhật ký tự động: mọi thêm / sửa / xóa trên bảng chính tự ghi vào asset_logs
---    (equipment, sub_equipment, golden_boards, calibrations) hoặc configuration_histories /
---    user_histories, trong cùng giao dịch (trigger write_history).
--- 2. app_write: một cửa ghi dữ liệu cho server — thêm / sửa / xóa một dòng,
---    kèm người thao tác, ghi chú, nguồn (ui / import / script).
--- 2b. User Management: không khóa / hạ quyền Admin cuối cùng, Admin không tự khóa / tự hạ quyền mình.
--- 3. Cây tài sản (Tester ⊃ Base ⊃ Fixture; sub-equipment và golden board gắn vào cây): 6 hàm thao tác
---    asset_* dùng chung cho 3 loại (đổi vị trí, Move, Detach, Swap, xóa, Check-out / Check-in) + 3 hàm import,
---    đều có p_dry_run (xem trước rồi hoàn tác) và trả cùng một dạng kết quả; tra cứu cho màn hình thao tác:
---    valid_parents, swap_candidates, serial_matches; Type theo Part Number (3b); Level theo thiết bị cha (3c);
---    Usage cần cha (3d); Thẻ (3e).
--- 4. Calibration: tự tính due_date; Calibration Status (view sub_equipment_calibration).
--- 5. Overview: overview_board() — bảng thẻ theo Location cho trang Overview (mỗi cột một tài sản gốc, tối đa 3 thẻ kể cả thẻ gốc);
---    asset_tree() — cây đầy đủ chứa một tài sản (tab Cây thiết bị, chip thiết bị con của modal Equipment).
--- 6. Dashboard: view recent_activities (thay đổi gần đây; import gộp một dòng).
+-- Dựng database MỚI (project Supabase trống) bằng đúng một lần chạy file này trong SQL Editor (dán cả file → Run).
+-- Cả file là một giao dịch: lỗi ở đâu thì không tạo gì cả. Thứ tự các bước dựng project: docs/DEPLOY.md.
 --
--- Chạy lại nhiều lần được (create or replace).
+--   Phần A  Bảng, ràng buộc, chỉ mục, trigger toàn vẹn dữ liệu, RLS bật cho mọi bảng (không có policy: chỉ server đọc / ghi).
+--   Phần B  Hàm và trigger nghiệp vụ: nhật ký tự động (write_history), app_write, cây tài sản (Move / Swap / Detach / Check-out…),
+--           import Excel, Overview, Dashboard (view recent_actions), Calibration (view sub_equipment_calibration).
+--
+-- Bảo mật: mọi hàm và view là SECURITY INVOKER; anon / authenticated không có quyền gì; chỉ service_role (server) gọi được.
+-- Dữ liệu bắt buộc (3 loại hệ thống + danh sách Configuration) KHÔNG nằm ở đây: database/seed.sql.
+--
+-- Thay đổi về sau: thêm file mới trong database/migrations (YYYYMMDDHHMMSS_tên.sql), không sửa file này.
+-- File này thay cho 01–04 và sáu migration cũ (lưu ở database/archive/).
 -- =============================================================================
 
 begin;
+
+-- =============================================================================
+-- PHẦN A — BẢNG, RÀNG BUỘC, CHỈ MỤC
+-- =============================================================================
+
+-- =============================================================================
+-- 0. HÀM DÙNG CHUNG
+-- =============================================================================
+
+-- Tự cập nhật updated_at mỗi khi sửa dòng.
+create function public.set_updated_at() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+-- Bảng lịch sử chỉ được thêm, không sửa / xóa.
+create function public.prevent_history_change() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  raise exception 'HISTORY_IS_APPEND_ONLY'
+    using detail = format('Rows in %I cannot be updated or deleted', tg_table_name);
+end;
+$$;
+
+-- =============================================================================
+-- 1. USER MANAGEMENT
+-- =============================================================================
+
+-- user_profiles — tài khoản ---------------------------------------------------
+-- Mỗi tài khoản là một người dùng Supabase Auth (id = auth.users.id). Admin tạo; không tự đăng ký, không duyệt.
+-- Đăng nhập bằng username: server đổi thành email nội bộ <username>@jabil.local (không gửi email).
+create table public.user_profiles (
+  id                   uuid primary key references auth.users (id) on delete restrict,
+  username             text not null,
+  full_name            text not null,
+  employee_id          text,
+  department_id        uuid,  -- FK departments: thêm ở mục 2 (departments tạo sau)
+  role                 text not null default 'readonly',
+  is_active            boolean not null default true,
+  must_change_password boolean not null default true,
+  created_by           uuid references public.user_profiles (id),
+  created_at           timestamptz not null default now(),
+  updated_by           uuid references public.user_profiles (id),
+  updated_at           timestamptz not null default now(),
+
+  constraint user_profiles_username_format check (username ~ '^[a-z0-9][a-z0-9._+-]{0,63}$'),
+  constraint user_profiles_role_check check (role in ('admin', 'user', 'readonly'))
+);
+create unique index user_profiles_username_key on public.user_profiles (username);
+create trigger user_profiles_set_updated_at before update on public.user_profiles
+  for each row execute function public.set_updated_at();
+
+comment on table public.user_profiles is 'Tài khoản = một người dùng Supabase Auth. Không xóa, chỉ khóa (is_active = false). Quyền vào app = có dòng ở đây VÀ is_active.';
+comment on column public.user_profiles.id is 'Trùng id của auth.users. Khóa ngoại RESTRICT: không xóa được tài khoản Auth còn dòng ở đây (tránh mất created_by / updated_by).';
+comment on column public.user_profiles.username is 'Chữ thường; không đổi sau khi tạo. Email đăng nhập nội bộ = username@jabil.local.';
+comment on column public.user_profiles.must_change_password is 'true: mật khẩu tạm (tạo mới / Admin đặt lại) — phải đổi mật khẩu mới vào được app.';
+
+-- user_histories — lịch sử tài khoản ------------------------------------------
+create table public.user_histories (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null,  -- cố ý không FK
+  label      text not null,
+  action     text not null,
+  changes    jsonb not null default '{}'::jsonb,
+  note       text,
+  source     text not null default 'ui',
+  created_at timestamptz not null default now(),
+  created_by uuid references public.user_profiles (id),
+  action_id  uuid,  -- cùng một thao tác của người dùng = cùng action_id (view recent_actions gộp theo id này)
+
+  constraint user_histories_action_check check (action in (
+    'CREATE', 'UPDATE', 'ROLE_CHANGE', 'DISABLE', 'ENABLE', 'PASSWORD_RESET')),
+  constraint user_histories_source_check check (source in ('ui', 'import', 'script'))
+);
+create index user_histories_object_idx  on public.user_histories (user_id, created_at desc);
+create index user_histories_created_idx on public.user_histories (created_at desc);
+create trigger user_histories_append_only before update or delete on public.user_histories
+  for each row execute function public.prevent_history_change();
+
+-- =============================================================================
+-- 2. CONFIGURATION — dữ liệu gốc dùng chung + cấu hình hiệu chuẩn
+--    Xóa = ẩn (is_active = false), trừ tags (xóa thật khi không còn dùng), calibration_configurations
+--    và 3 loại hệ thống của types (không xóa, không ẩn được).
+-- =============================================================================
+
+-- type_groups — nhóm của Type (cột Group ở Configuration › Type; Admin tự thêm / sửa / ẩn) ---------------
+-- kind: loại hệ thống mà mọi Type thuộc nhóm này mang — types.kind luôn theo nhóm (mục 3b bên dưới (phần hàm / trigger)).
+-- 3 nhóm hệ thống Tester / Base / Fixture (database/seed.sql) khóa như 3 Type hệ thống; nhóm Admin thêm luôn là kind = sub_equipment.
+create table public.type_groups (
+  id           uuid primary key default gen_random_uuid(),
+  display_name text not null,
+  kind         text not null default 'sub_equipment',
+  sort_order   integer not null default 0,
+  is_active    boolean not null default true,
+  created_by   uuid references public.user_profiles (id),
+  created_at   timestamptz not null default now(),
+  updated_by   uuid references public.user_profiles (id),
+  updated_at   timestamptz not null default now(),
+
+  constraint type_groups_kind_check check (kind in ('tester', 'base', 'fixture', 'sub_equipment'))
+);
+create unique index type_groups_display_name_key on public.type_groups (lower(display_name));
+-- Mỗi nhóm hệ thống (tester / base / fixture) đúng một dòng; kind = sub_equipment thì Admin thêm tùy ý.
+create unique index type_groups_system_kind_key on public.type_groups (kind) where kind <> 'sub_equipment';
+create index type_groups_sort_idx on public.type_groups (sort_order, display_name);
+create trigger type_groups_set_updated_at before update on public.type_groups
+  for each row execute function public.set_updated_at();
+
+comment on column public.type_groups.kind is 'tester / base / fixture (nhóm hệ thống, khóa) hoặc sub_equipment (mọi nhóm Admin thêm). Type thuộc nhóm nào thì mang kind của nhóm đó.';
+
+-- types — loại (tạo trước part_numbers: part number trỏ tới loại) ------------------
+-- kind: tester / base / fixture là 3 loại hệ thống (database/seed.sql, khóa — mục 3b bên dưới (phần hàm / trigger));
+-- sub_equipment là loại thiết bị hiệu chuẩn (DMM, Power supply, Card…) do Admin tự thêm.
+-- group_id: nhóm của Type; kind luôn bằng kind của nhóm (database tự đặt).
+create table public.types (
+  id           uuid primary key default gen_random_uuid(),
+  display_name text not null,
+  kind         text not null default 'sub_equipment',
+  group_id     uuid not null references public.type_groups (id),
+  sort_order   integer not null default 0,
+  is_active    boolean not null default true,
+  created_by   uuid references public.user_profiles (id),
+  created_at   timestamptz not null default now(),
+  updated_by   uuid references public.user_profiles (id),
+  updated_at   timestamptz not null default now(),
+
+  constraint types_kind_check check (kind in ('tester', 'base', 'fixture', 'sub_equipment'))
+);
+create unique index types_display_name_key on public.types (lower(display_name));
+-- Mỗi loại hệ thống (tester / base / fixture) đúng một dòng; kind = sub_equipment thì Admin thêm tùy ý.
+create unique index types_system_kind_key on public.types (kind) where kind <> 'sub_equipment';
+create index types_sort_idx on public.types (sort_order, display_name);
+create index types_group_idx on public.types (group_id);
+create trigger types_set_updated_at before update on public.types
+  for each row execute function public.set_updated_at();
+
+-- part_numbers — mã part --------------------------------------------------------
+-- type_id: loại của mọi thiết bị mang part number này (mục 3b bên dưới (phần hàm / trigger)).
+create table public.part_numbers (
+  id           uuid primary key default gen_random_uuid(),
+  display_name text not null,
+  type_id      uuid not null references public.types (id),
+  description  text,
+  manufacturer text,
+  sort_order   integer not null default 0,
+  is_active    boolean not null default true,
+  created_by   uuid references public.user_profiles (id),
+  created_at   timestamptz not null default now(),
+  updated_by   uuid references public.user_profiles (id),
+  updated_at   timestamptz not null default now()
+);
+create unique index part_numbers_display_name_key on public.part_numbers (lower(display_name));
+create index part_numbers_sort_idx on public.part_numbers (sort_order, display_name);
+create index part_numbers_type_idx on public.part_numbers (type_id);
+create trigger part_numbers_set_updated_at before update on public.part_numbers
+  for each row execute function public.set_updated_at();
+
+comment on column public.part_numbers.type_id is 'Loại của mọi thiết bị mang part number này — database tự đặt type_id của equipment / sub_equipment theo. kind của loại quyết định thiết bị thuộc bảng nào. Chỉ đổi được khi chưa thiết bị nào dùng part number (PART_NUMBER_IN_USE).';
+comment on column public.part_numbers.manufacturer is 'Nhà sản xuất của part number (Configuration › Part Number). Không bắt buộc, chữ tự do, tối đa 200 ký tự (app kiểm tra).';
+comment on column public.types.kind is 'tester / base / fixture (hệ thống, khóa) → bảng equipment; sub_equipment → bảng sub_equipment. Luôn bằng type_groups.kind của group_id (database tự đặt).';
+comment on column public.types.group_id is 'Nhóm của Type (Configuration › Group). Admin chọn trong các nhóm kind = sub_equipment; 3 Type hệ thống giữ nhóm hệ thống tương ứng.';
+
+-- locations — vị trí -------------------------------------------------------------
+create table public.locations (
+  id           uuid primary key default gen_random_uuid(),
+  display_name text not null,
+  sort_order   integer not null default 0,
+  is_active    boolean not null default true,
+  created_by   uuid references public.user_profiles (id),
+  created_at   timestamptz not null default now(),
+  updated_by   uuid references public.user_profiles (id),
+  updated_at   timestamptz not null default now()
+);
+create unique index locations_display_name_key on public.locations (lower(display_name));
+create index locations_sort_idx on public.locations (sort_order, display_name);
+create trigger locations_set_updated_at before update on public.locations
+  for each row execute function public.set_updated_at();
+
+-- tags — thẻ (có màu) để người dùng chọn trong phần Remark của Equipment / Calibration / Golden sample.
+-- Xóa thật; đang được dùng thì không xóa được (mục 3e bên dưới (phần hàm / trigger)). ------------
+create table public.tags (
+  id              uuid primary key default gen_random_uuid(),
+  display_name    text not null,
+  sort_order      integer not null default 0,
+  color           text not null default 'gray',
+  created_by      uuid references public.user_profiles (id),
+  created_at      timestamptz not null default now(),
+  updated_by      uuid references public.user_profiles (id),
+  updated_at      timestamptz not null default now(),
+
+  constraint tags_color_check check (color in ('green', 'yellow', 'red', 'blue', 'gray', 'purple'))
+);
+create unique index tags_display_name_key on public.tags (lower(display_name));
+create index tags_sort_idx on public.tags (sort_order, display_name);
+create trigger tags_set_updated_at before update on public.tags
+  for each row execute function public.set_updated_at();
+
+comment on column public.tags.color is 'Màu thẻ pastel: green (xanh ngọc) / yellow / red / blue / gray / purple.';
+
+-- levels — level trên dây chuyền -------------------------------------------------
+create table public.levels (
+  id           uuid primary key default gen_random_uuid(),
+  display_name text not null,
+  sort_order   integer not null default 0,
+  is_active    boolean not null default true,
+  created_by   uuid references public.user_profiles (id),
+  created_at   timestamptz not null default now(),
+  updated_by   uuid references public.user_profiles (id),
+  updated_at   timestamptz not null default now()
+);
+create unique index levels_display_name_key on public.levels (lower(display_name));
+create index levels_sort_idx on public.levels (sort_order, display_name);
+create trigger levels_set_updated_at before update on public.levels
+  for each row execute function public.set_updated_at();
+
+-- part_numbers.level_id — Level của part number (Admin chọn trong Configuration › Part Number; không bắt buộc ở database).
+-- Thêm sau khi có bảng levels. Equipment không bị ép theo: Level của thiết bị vẫn do form / thiết bị cha quyết định.
+alter table public.part_numbers add column level_id uuid references public.levels (id);
+create index part_numbers_level_idx on public.part_numbers (level_id);
+comment on column public.part_numbers.level_id is 'Level của part number (Configuration › Part Number). Form Thêm thiết bị điền sẵn Level này khi chọn part number; Level của thiết bị không đổi theo khi part number đổi Level.';
+
+-- departments — phòng ban --------------------------------------------------------
+create table public.departments (
+  id           uuid primary key default gen_random_uuid(),
+  display_name text not null,
+  sort_order   integer not null default 0,
+  is_active    boolean not null default true,
+  created_by   uuid references public.user_profiles (id),
+  created_at   timestamptz not null default now(),
+  updated_by   uuid references public.user_profiles (id),
+  updated_at   timestamptz not null default now()
+);
+create unique index departments_display_name_key on public.departments (lower(display_name));
+create index departments_sort_idx on public.departments (sort_order, display_name);
+create trigger departments_set_updated_at before update on public.departments
+  for each row execute function public.set_updated_at();
+
+alter table public.user_profiles
+  add constraint user_profiles_department_id_fkey
+  foreign key (department_id) references public.departments (id);
+
+-- calibration_configurations — Configuration › Hiệu chuẩn › Setup (xóa thật) -----
+-- Mỗi part number (loại sub_equipment) phải hiệu chuẩn một dòng: chu kỳ để tự tính due_date,
+-- warning_days để tính Due soon (mục 4 bên dưới (phần hàm / trigger)).
+create table public.calibration_configurations (
+  id                uuid primary key default gen_random_uuid(),
+  part_number_id    uuid not null references public.part_numbers (id) on delete restrict,
+  interval_months   integer not null,
+  warning_days      integer not null default 30,
+  created_by        uuid references public.user_profiles (id),
+  created_at        timestamptz not null default now(),
+  updated_by        uuid references public.user_profiles (id),
+  updated_at        timestamptz not null default now(),
+
+  constraint calibration_configurations_part_number_id_key unique (part_number_id),
+  constraint calibration_configurations_interval_check check (interval_months > 0),
+  constraint calibration_configurations_warning_check check (warning_days > 0)
+);
+create trigger calibration_configurations_set_updated_at before update on public.calibration_configurations
+  for each row execute function public.set_updated_at();
+
+-- calibration_vendors — vendor hiệu chuẩn ----------------------------------------
+create table public.calibration_vendors (
+  id           uuid primary key default gen_random_uuid(),
+  display_name text not null,
+  sort_order   integer not null default 0,
+  is_active    boolean not null default true,
+  created_by   uuid references public.user_profiles (id),
+  created_at   timestamptz not null default now(),
+  updated_by   uuid references public.user_profiles (id),
+  updated_at   timestamptz not null default now()
+);
+create unique index calibration_vendors_display_name_key on public.calibration_vendors (lower(display_name));
+create index calibration_vendors_sort_idx on public.calibration_vendors (sort_order, display_name);
+create trigger calibration_vendors_set_updated_at before update on public.calibration_vendors
+  for each row execute function public.set_updated_at();
+
+-- configuration_histories — lịch sử của 9 bảng cấu hình ------------------------
+create table public.configuration_histories (
+  id         uuid primary key default gen_random_uuid(),
+  table_name text not null,
+  record_id  uuid not null,  -- cố ý không FK
+  label      text not null,
+  action     text not null,
+  changes    jsonb not null default '{}'::jsonb,
+  note       text,
+  source     text not null default 'ui',
+  created_at timestamptz not null default now(),
+  created_by uuid references public.user_profiles (id),
+  action_id  uuid,  -- cùng một thao tác của người dùng = cùng action_id (view recent_actions gộp theo id này)
+
+  constraint configuration_histories_table_name_check check (table_name in (
+    'part_numbers', 'locations', 'types', 'type_groups', 'tags', 'levels', 'departments',
+    'calibration_configurations', 'calibration_vendors')),
+  constraint configuration_histories_action_check check (action in ('CREATE', 'UPDATE', 'DELETE')),
+  constraint configuration_histories_source_check check (source in ('ui', 'import', 'script'))
+);
+create index configuration_histories_object_idx  on public.configuration_histories (record_id, created_at desc);
+create index configuration_histories_created_idx on public.configuration_histories (created_at desc);
+create trigger configuration_histories_append_only before update or delete on public.configuration_histories
+  for each row execute function public.prevent_history_change();
+
+-- =============================================================================
+-- 3. EQUIPMENT — thiết bị chính: tester / base / fixture
+--    Cây: Tester ⊃ Base ⊃ Fixture (parent_id). Sub-equipment và golden board gắn vào cây
+--    ở bảng riêng của chúng (mục 4, 5).
+-- =============================================================================
+
+-- equipment — tester, base, fixture ------------------------------------------------
+-- Loại (tester / base / fixture) = types.kind của type_id; type_id luôn theo part number
+-- (mục 3b bên dưới (phần hàm / trigger)). Quy tắc cha–con: mục 3 bên dưới (phần hàm / trigger).
+create table public.equipment (
+  id             uuid primary key default gen_random_uuid(),
+  jabil_id       text,
+  part_number_id uuid not null references public.part_numbers (id),
+  serial_number  text not null,
+  asset          text,
+  type_id        uuid not null references public.types (id),
+  level_id       uuid references public.levels (id),
+  location_id    uuid not null references public.locations (id),
+  usage          text not null default 'not_in_use',
+  remark         text,
+  tag_ids        uuid[] not null default '{}',
+  parent_id      uuid references public.equipment (id) on delete restrict,
+  created_at     timestamptz not null default now(),
+  created_by     uuid references public.user_profiles (id),
+  updated_at     timestamptz not null default now(),
+  updated_by     uuid references public.user_profiles (id),
+
+  constraint equipment_not_own_parent check (id <> parent_id),
+  constraint equipment_serial_not_blank check (btrim(serial_number) <> ''),
+  constraint equipment_usage_check check (usage in ('in_use', 'not_in_use')),
+  constraint equipment_remark_length check (char_length(remark) <= 1000)
+);
+create index equipment_part_number_idx   on public.equipment (part_number_id);
+create index equipment_serial_lower_idx  on public.equipment (lower(serial_number));
+create index equipment_asset_idx         on public.equipment (asset);
+create index equipment_type_idx          on public.equipment (type_id);
+create index equipment_tags_idx          on public.equipment using gin (tag_ids);
+create index equipment_location_idx      on public.equipment (location_id);
+create index equipment_parent_idx        on public.equipment (parent_id);
+create index equipment_usage_idx         on public.equipment (usage);
+create trigger equipment_set_updated_at before update on public.equipment
+  for each row execute function public.set_updated_at();
+
+comment on table public.equipment is 'Tester / base / fixture. Xóa thật, chỉ qua asset_delete: con trực tiếp (equipment, sub-equipment, golden board) luôn được giữ và thành chưa gắn (Not in use).';
+comment on column public.equipment.serial_number is 'Không UQ — trùng chỉ cảnh báo (serial_matches kiểm tra cả 3 bảng trước khi lưu, dùng index lower(serial_number)). Database tự cắt khoảng trắng hai đầu.';
+comment on column public.equipment.parent_id is 'Tester không có cha; base: cha là tester hoặc trống; fixture: cha là base hoặc tester, hoặc trống. Khóa ngoại RESTRICT: không xóa được cha khi còn con (xóa qua equipment_delete). Chỉ đổi qua Move / Swap / Detach.';
+comment on column public.equipment.usage is 'Status: In use / Not in use. Hệ thống tự quản (Check-out / Check-in, Swap, Move, Detach), không có danh sách cấu hình.';
+comment on column public.equipment.tag_ids is 'Thẻ (tags.id) người dùng chọn; database kiểm tra mọi lần ghi (mục 3e bên dưới (phần hàm / trigger)).';
+comment on column public.equipment.type_id is 'Luôn bằng part_numbers.type_id của part number thiết bị mang (database tự đặt) — không chọn tay. types.kind phải là tester / base / fixture.';
+
+-- =============================================================================
+-- 4. SUB-EQUIPMENT + CALIBRATION — phụ thuộc một chiều vào Equipment
+-- =============================================================================
+
+-- sub_equipment — thiết bị cần hiệu chuẩn, nằm trong tester ----------------------------
+create table public.sub_equipment (
+  id             uuid primary key default gen_random_uuid(),
+  jabil_id       text,
+  part_number_id uuid not null references public.part_numbers (id),
+  serial_number  text not null,
+  asset          text,
+  type_id        uuid not null references public.types (id),
+  tester_id      uuid references public.equipment (id) on delete set null,
+  location_id    uuid not null references public.locations (id),
+  usage          text not null default 'not_in_use',
+  remark         text,
+  tag_ids        uuid[] not null default '{}',
+  created_at     timestamptz not null default now(),
+  created_by     uuid references public.user_profiles (id),
+  updated_at     timestamptz not null default now(),
+  updated_by     uuid references public.user_profiles (id),
+
+  constraint sub_equipment_serial_not_blank check (btrim(serial_number) <> ''),
+  constraint sub_equipment_usage_check check (usage in ('in_use', 'not_in_use')),
+  constraint sub_equipment_remark_length check (char_length(remark) <= 1000)
+);
+create index sub_equipment_part_number_idx   on public.sub_equipment (part_number_id);
+create index sub_equipment_serial_lower_idx  on public.sub_equipment (lower(serial_number));
+create index sub_equipment_asset_idx         on public.sub_equipment (asset);
+create index sub_equipment_type_idx          on public.sub_equipment (type_id);
+create index sub_equipment_tester_idx        on public.sub_equipment (tester_id);
+create index sub_equipment_location_idx      on public.sub_equipment (location_id);
+create index sub_equipment_usage_idx         on public.sub_equipment (usage);
+create index sub_equipment_tags_idx          on public.sub_equipment using gin (tag_ids);
+create trigger sub_equipment_set_updated_at before update on public.sub_equipment
+  for each row execute function public.set_updated_at();
+
+comment on table public.sub_equipment is 'Thiết bị cần hiệu chuẩn (DMM, power supply, card…). Xóa thật; lịch sử hiệu chuẩn (calibrations) xóa theo.';
+comment on column public.sub_equipment.tester_id is 'Tester chứa nó (equipment có types.kind = tester); trống = chưa gắn (đang nằm kho). Xóa tester → trống, không xóa sub-equipment.';
+comment on column public.sub_equipment.location_id is 'Có tester thì luôn bằng vị trí của tester (database tự đặt).';
+comment on column public.sub_equipment.type_id is 'Luôn bằng part_numbers.type_id (types.kind = sub_equipment). Cùng Type mới Swap được với nhau.';
+
+-- calibrations — mỗi lần hiệu chuẩn một dòng ----------------------------------------------
+create table public.calibrations (
+  id               uuid primary key default gen_random_uuid(),
+  sub_equipment_id uuid not null references public.sub_equipment (id) on delete cascade,
+  calibrated_at    date not null,
+  due_date         date not null,
+  vendor_id        uuid references public.calibration_vendors (id),
+  cert_no          text,
+  cert_file_url    text,
+  result           text not null default 'pass',
+  remark           text,
+  created_by       uuid references public.user_profiles (id),
+  created_at       timestamptz not null default now(),
+  updated_by       uuid references public.user_profiles (id),
+  updated_at       timestamptz not null default now(),
+
+  constraint calibrations_due_after_calibration check (due_date >= calibrated_at),
+  constraint calibrations_result_check check (result in ('pass', 'fail')),
+  constraint calibrations_remark_length check (char_length(remark) <= 1000)
+);
+create index calibrations_sub_equipment_idx on public.calibrations (sub_equipment_id, calibrated_at desc);
+create index calibrations_due_idx           on public.calibrations (due_date);
+create trigger calibrations_set_updated_at before update on public.calibrations
+  for each row execute function public.set_updated_at();
+
+comment on table public.calibrations is 'Lịch sử hiệu chuẩn: mỗi lần một dòng. Lần mới nhất (calibrated_at lớn nhất) quyết định Calibration Status (not_calibrated / failed / overdue / due_soon / valid) — view sub_equipment_calibration. Xóa sub-equipment thì các lần hiệu chuẩn của nó xóa theo (cascade có chủ đích: bản ghi CALIBRATE trong asset_logs vẫn còn).';
+comment on column public.calibrations.due_date is 'Part number có Setup hiệu chuẩn: tự tính = calibrated_at + interval_months (ghi đè giá trị gửi lên). Chưa có Setup: bắt buộc nhập.';
+comment on column public.calibrations.cert_file_url is 'Đường dẫn tới file chứng nhận (SharePoint / OneDrive…); chưa upload lên Supabase Storage.';
+
+-- =============================================================================
+-- 5. GOLDEN BOARD
+-- =============================================================================
+
+-- golden_boards — golden board (PCBA tốt đã biết kết quả) -------------------------------
+create table public.golden_boards (
+  id              uuid primary key default gen_random_uuid(),
+  part_number     text not null,
+  serial_number   text not null,
+  utd_part_number text,
+  origin          text,
+  purpose         text,
+  parent_id       uuid references public.equipment (id) on delete set null,
+  location_id     uuid not null references public.locations (id),
+  usage           text not null default 'not_in_use',
+  remark          text,
+  tag_ids         uuid[] not null default '{}',
+  created_by      uuid references public.user_profiles (id),
+  created_at      timestamptz not null default now(),
+  updated_by      uuid references public.user_profiles (id),
+  updated_at      timestamptz not null default now(),
+
+  constraint golden_boards_serial_not_blank check (btrim(serial_number) <> ''),
+  constraint golden_boards_usage_check check (usage in ('in_use', 'not_in_use')),
+  constraint golden_boards_remark_length check (char_length(remark) <= 1000)
+);
+create index golden_boards_part_number_idx   on public.golden_boards (part_number);
+create index golden_boards_serial_lower_idx  on public.golden_boards (lower(serial_number));
+create index golden_boards_parent_idx        on public.golden_boards (parent_id);
+create index golden_boards_location_idx      on public.golden_boards (location_id);
+create index golden_boards_usage_idx         on public.golden_boards (usage);
+create index golden_boards_tags_idx          on public.golden_boards using gin (tag_ids);
+create trigger golden_boards_set_updated_at before update on public.golden_boards
+  for each row execute function public.set_updated_at();
+
+comment on table public.golden_boards is 'Golden board. Xóa thật.';
+comment on column public.golden_boards.parent_id is 'Tester hoặc fixture chứa nó (equipment có types.kind = tester / fixture); trống = chưa gắn. Xóa cha → trống, không xóa golden board.';
+comment on column public.golden_boards.location_id is 'Có cha thì luôn bằng vị trí của cha (database tự đặt).';
+comment on column public.golden_boards.usage is 'Chỉ In use được khi đã gắn vào cha (mục 3d bên dưới (phần hàm / trigger)).';
+
+-- =============================================================================
+-- 5b. ASSET_LOGS — nhật ký thay đổi chung của equipment / sub_equipment / golden_boards
+--     (lịch sử hiệu chuẩn nằm ở đây với asset_type = sub_equipment, action = CALIBRATE…).
+--     Database tự ghi bằng trigger (mục 1 bên dưới (phần hàm / trigger)). Chỉ thêm, không sửa / xóa.
+-- =============================================================================
+create table public.asset_logs (
+  id            uuid primary key default gen_random_uuid(),
+  asset_type    text not null,
+  asset_id      uuid not null,  -- cố ý không FK: log còn lại sau khi tài sản bị xóa
+  label         text not null,
+  action        text not null,
+  old_value     jsonb,
+  new_value     jsonb,
+  from_location text,
+  to_location   text,
+  reason        text,
+  source        text not null default 'ui',
+  user_id       uuid references public.user_profiles (id),
+  created_at    timestamptz not null default now(),
+  action_id     uuid,  -- cùng một thao tác của người dùng (Swap, Move kèm con cháu, Import…) = cùng action_id; view recent_actions gộp theo id này
+
+  constraint asset_logs_asset_type_check check (asset_type in ('equipment', 'sub_equipment', 'golden_board')),
+  constraint asset_logs_action_check check (action in (
+    'CREATE', 'UPDATE', 'CHANGE_LOCATION', 'MOVE', 'SWAP', 'DETACH', 'CHECK_OUT', 'CHECK_IN', 'TAGS', 'DELETE',
+    'CALIBRATE', 'CALIBRATION_UPDATE', 'CALIBRATION_REMOVE')),
+  constraint asset_logs_source_check check (source in ('ui', 'import', 'script'))
+);
+create index asset_logs_object_idx  on public.asset_logs (asset_type, asset_id, created_at desc);
+create index asset_logs_created_idx on public.asset_logs (created_at desc);
+create trigger asset_logs_append_only before update or delete on public.asset_logs
+  for each row execute function public.prevent_history_change();
+
+comment on column public.asset_logs.label is 'Serial tại thời điểm thay đổi — vẫn đọc được sau khi tài sản bị xóa.';
+comment on column public.asset_logs.old_value is 'Các trường đổi: { trường: giá trị cũ }. Trường FK lưu tên hiển thị. DELETE: chụp lại cả dòng.';
+comment on column public.asset_logs.new_value is 'Các trường đổi: { trường: giá trị mới }. CREATE: cả dòng mới.';
+comment on column public.asset_logs.reason is 'Ghi chú: lý do do user nhập (Check-out / Check-in…) hoặc mã hệ thống (via_parent:<SN>, swap_with:<SN>, parent_deleted:<SN>…).';
+
+-- =============================================================================
+-- 6. HỆ THỐNG
+-- =============================================================================
+
+-- error_log — nhật ký lỗi (tự xóa bản ghi cũ hơn 90 ngày) ----------------------------
+create table public.error_log (
+  id         uuid primary key default gen_random_uuid(),
+  request_id text not null,
+  route      text,
+  user_id    uuid,  -- cố ý không FK
+  error_code text,
+  message    text,
+  stack      text,
+  created_at timestamptz not null default now(),
+
+  constraint error_log_message_length check (char_length(message) <= 2000),
+  constraint error_log_stack_length   check (char_length(stack) <= 8000)
+);
+create index error_log_request_idx on public.error_log (request_id);
+create index error_log_created_idx on public.error_log (created_at desc);
+
+create function public.purge_old_error_log() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  delete from public.error_log where created_at < now() - interval '90 days';
+  return null;
+end;
+$$;
+create trigger error_log_purge after insert on public.error_log
+  for each statement execute function public.purge_old_error_log();
+
+-- =============================================================================
+-- 7. BẢO MẬT — RLS chặn hết; chỉ server (service_role) đọc / ghi
+-- =============================================================================
+do $$
+declare
+  r record;
+begin
+  for r in select tablename from pg_tables where schemaname = 'public' loop
+    execute format('alter table public.%I enable row level security', r.tablename);
+  end loop;
+end
+$$;
+
+revoke all on all tables    in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+revoke execute on all functions in schema public from public, anon, authenticated;
+grant  all on all tables    in schema public to service_role;
+grant  execute on all functions in schema public to service_role;
+
+-- =============================================================================
+-- PHẦN B — HÀM VÀ TRIGGER NGHIỆP VỤ
+-- =============================================================================
 
 -- =============================================================================
 -- 0. NGỮ CẢNH GIAO DỊCH — ai thao tác, hành động, ghi chú, nguồn
@@ -112,12 +663,19 @@ begin
 end;
 $$;
 
--- old_value / new_value của asset_logs → lại dạng { trường: { old, new } } (view recent_activities, màn hình History).
+-- old_value / new_value của asset_logs → lại dạng { trường: { old, new } } (view recent_actions, màn hình History).
 create or replace function public.asset_log_changes(p_old jsonb, p_new jsonb) returns jsonb
 language sql immutable set search_path = '' as $$
   select coalesce(jsonb_object_agg(k, jsonb_build_object('old', p_old -> k, 'new', p_new -> k)), '{}'::jsonb)
   from (select jsonb_object_keys(coalesce(p_old, '{}'::jsonb) || coalesce(p_new, '{}'::jsonb)) as k) keys
 $$;
+
+-- action_id: mọi dòng nhật ký do CÙNG MỘT thao tác của người dùng ghi ra dùng chung một id (app đặt qua p_action_id của các hàm
+-- bên dưới; hàm tự sinh nếu không truyền). Dòng ghi từ SQL tay không có id (null) và hiện như một thao tác riêng.
+-- Cột action_id nằm ở phần bảng ở trên; chỉ mục (một phần) cho việc gộp theo action_id:
+create index if not exists asset_logs_action_idx on public.asset_logs (action_id) where action_id is not null;
+create index if not exists configuration_histories_action_idx on public.configuration_histories (action_id) where action_id is not null;
+create index if not exists user_histories_action_idx on public.user_histories (action_id) where action_id is not null;
 
 create or replace function public.write_history() returns trigger
 language plpgsql set search_path = '' as $$
@@ -131,6 +689,7 @@ declare
   v_action  text  := public.ctx('action');
   v_note    text  := public.ctx('note');
   v_source  text  := coalesce(public.ctx('source'), 'ui');
+  v_action_id uuid := public.ctx('action_id')::uuid;
   v_actor   uuid;
   v_label   text;
   v_type    text;
@@ -174,11 +733,11 @@ begin
 
   if v_type is not null then
     insert into public.asset_logs (asset_type, asset_id, label, action, old_value, new_value,
-                                   from_location, to_location, reason, source, user_id)
+                                   from_location, to_location, reason, source, user_id, action_id)
     values (v_type, v_asset, v_label, v_action,
       case when tg_op = 'INSERT' then null else (select jsonb_object_agg(e.key, e.value -> 'old') from jsonb_each(v_changes) e) end,
       case when tg_op = 'DELETE' then null else (select jsonb_object_agg(e.key, e.value -> 'new') from jsonb_each(v_changes) e) end,
-      v_changes -> 'location' ->> 'old', v_changes -> 'location' ->> 'new', v_note, v_source, v_actor);
+      v_changes -> 'location' ->> 'old', v_changes -> 'location' ->> 'new', v_note, v_source, v_actor, v_action_id);
     return null;
   end if;
 
@@ -192,8 +751,8 @@ begin
       v_label := v_row ->> 'display_name';
     end if;
     v_action := case tg_op when 'INSERT' then 'CREATE' when 'DELETE' then 'DELETE' else 'UPDATE' end;
-    insert into public.configuration_histories (table_name, record_id, label, action, changes, note, source, created_by)
-    values (tg_table_name, v_id, v_label, v_action, v_changes, v_note, v_source, v_actor);
+    insert into public.configuration_histories (table_name, record_id, label, action, changes, note, source, created_by, action_id)
+    values (tg_table_name, v_id, v_label, v_action, v_changes, v_note, v_source, v_actor, v_action_id);
 
   -- -------------------------------------------------------------- User profile
   elsif tg_table_name = 'user_profiles' then
@@ -215,8 +774,8 @@ begin
         when 'role' = any (v_keys) then 'ROLE_CHANGE'
         else 'UPDATE' end);
     end if;
-    insert into public.user_histories (user_id, label, action, changes, note, source, created_by)
-    values (v_id, v_label, v_action, v_changes, v_note, v_source, v_actor);
+    insert into public.user_histories (user_id, label, action, changes, note, source, created_by, action_id)
+    values (v_id, v_label, v_action, v_changes, v_note, v_source, v_actor, v_action_id);
   end if;
 
   return null;
@@ -242,6 +801,7 @@ $$;
 --    p_op: 'insert' | 'update' | 'delete'. Chỉ ghi các cột có trong p_data.
 --    Trả về dòng sau khi ghi (delete: dòng trước khi xóa).
 -- =============================================================================
+-- Chữ ký mới thêm p_action_id: bỏ chữ ký cũ (cùng giao dịch với create bên dưới) để không còn hai hàm trùng tên.
 create or replace function public.app_write(
   p_table  text,
   p_op     text,
@@ -250,7 +810,8 @@ create or replace function public.app_write(
   p_actor  uuid,
   p_action text default null,
   p_note   text default null,
-  p_source text default 'ui'
+  p_source text default 'ui',
+  p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -270,6 +831,7 @@ begin
   end if;
 
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('action', p_action);
   perform public.set_ctx('note', p_note);
   perform public.set_ctx('source', coalesce(p_source, 'ui'));
@@ -334,7 +896,6 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists user_profiles_admin_guard on public.user_profiles;
 create trigger user_profiles_admin_guard before update of role, is_active on public.user_profiles
   for each row execute function public.user_admin_guard();
 
@@ -537,7 +1098,7 @@ $$;
 -- Đổi vị trí — chỉ tài sản chưa gắn cha; đang In use thì không đổi được (EQUIPMENT_IN_USE).
 -- Con cháu (cả sub-equipment, golden board) luôn đi theo.
 create or replace function public.asset_change_location(
-  p_type text, p_id uuid, p_location_id uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_id uuid, p_location_id uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -546,7 +1107,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_change_location(p_type, p_id, p_location_id, p_actor, false);
+      v_result := public.asset_change_location(p_type, p_id, p_location_id, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -556,6 +1117,7 @@ begin
   if public.asset_parent(p_type, p_id) is not null then raise exception 'LOCATION_INHERITED_READ_ONLY'; end if;
   if public.asset_usage(p_type, p_id) = 'in_use' then raise exception 'EQUIPMENT_IN_USE'; end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -575,7 +1137,7 @@ $$;
 -- và Usage của cha mới, cả nhánh con đi theo — nên In use → Not in use khi cha mới Not in use (xem usage_changes của kết quả).
 -- Cha mới phải đúng loại (PARENT_TYPE_INVALID); danh sách cha hợp lệ: valid_parents.
 create or replace function public.asset_move(
-  p_type text, p_id uuid, p_parent_id uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_id uuid, p_parent_id uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -586,7 +1148,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_move(p_type, p_id, p_parent_id, p_actor, false);
+      v_result := public.asset_move(p_type, p_id, p_parent_id, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -597,6 +1159,7 @@ begin
   select location_id, usage into v_loc, v_usage from public.equipment where id = p_parent_id;
   if not found then raise exception 'PARENT_NOT_FOUND'; end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -615,7 +1178,7 @@ $$;
 
 -- Tách khỏi cha — giữ vị trí hiện tại; tài sản (và con cháu) về Not in use. Được cả khi đang In use.
 create or replace function public.asset_detach(
-  p_type text, p_id uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_id uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -624,7 +1187,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_detach(p_type, p_id, p_actor, false);
+      v_result := public.asset_detach(p_type, p_id, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -633,6 +1196,7 @@ begin
   if not public.asset_lock(p_type, p_id) then raise exception 'NOT_FOUND'; end if;
   if public.asset_parent(p_type, p_id) is null then raise exception 'EQUIPMENT_HAS_NO_PARENT'; end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -654,7 +1218,7 @@ $$;
 -- ghi chú swap_with:<SN>. Không thay đổi gì (cùng cha, cùng vị trí) → SWAP_NO_CHANGE.
 -- Danh sách tài sản hợp lệ để swap: swap_candidates.
 create or replace function public.asset_swap(
-  p_type text, p_a uuid, p_b uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_a uuid, p_b uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -665,7 +1229,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_swap(p_type, p_a, p_b, p_actor, false);
+      v_result := public.asset_swap(p_type, p_a, p_b, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -687,6 +1251,7 @@ begin
   if a_parent is not distinct from b_parent and a_loc = b_loc then raise exception 'SWAP_NO_CHANGE'; end if;
 
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', 'SWAP');
   perform public.set_ctx('note', 'swap_with:' || b_serial);
@@ -719,7 +1284,7 @@ $$;
 -- được GIỮ và thành chưa gắn: Not in use (cả nhánh của con theo), nhật ký DETACH, ghi chú parent_deleted:<SN>; không tự gắn
 -- lên ông. Lần hiệu chuẩn của sub-equipment xóa theo (nhật ký DELETE đã chụp lại cả dòng).
 create or replace function public.asset_delete(
-  p_type text, p_id uuid, p_actor uuid, p_dry_run boolean default false
+  p_type text, p_id uuid, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -730,7 +1295,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_delete(p_type, p_id, p_actor, false);
+      v_result := public.asset_delete(p_type, p_id, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -740,6 +1305,7 @@ begin
   if public.asset_usage(p_type, p_id) = 'in_use' then raise exception 'EQUIPMENT_IN_USE'; end if;
   v_serial := public.asset_serial(p_type, p_id);
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', null);
   for r in select c.asset_type as t, c.id as i from public.asset_children(p_type, p_id) c loop
@@ -771,7 +1337,7 @@ $$;
 -- Check-out RIÊNG một con thì cha phải In use (PARENT_NOT_IN_USE) — trừ khi cha cũng nằm trong lần Check-out này.
 -- (Đây là chỗ duy nhất dùng PARENT_NOT_IN_USE: Move không bị chặn vì In use.)
 create or replace function public.asset_set_usage(
-  p_refs jsonb, p_usage text, p_actor uuid, p_note text default null, p_dry_run boolean default false
+  p_refs jsonb, p_usage text, p_actor uuid, p_note text default null, p_dry_run boolean default false, p_action_id uuid default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -784,7 +1350,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.asset_set_usage(p_refs, p_usage, p_actor, p_note, false);
+      v_result := public.asset_set_usage(p_refs, p_usage, p_actor, p_note, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -816,6 +1382,7 @@ begin
     end loop;
   end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'ui');
   perform public.set_ctx('action', case p_usage when 'in_use' then 'CHECK_OUT' else 'CHECK_IN' end);
   perform public.set_ctx('note', p_note);
@@ -870,7 +1437,7 @@ $$;
 -- equipment: server đặt sẵn id để dòng con trỏ được tới dòng cha trong cùng file (parent_id), và đặt location_id của
 -- dòng con = vị trí của cha. Quy tắc cha–con kiểm tra sau khi cả file đã vào bảng. Server cũng đã quyết usage (Status: theo cha,
 -- hoặc ô Status, hoặc Not in use) và tag_ids; thiếu thì Not in use và không có thẻ (app cũ không gửi hai trường này).
-create or replace function public.equipment_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false) returns jsonb
+create or replace function public.equipment_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
   v_marks  uuid[] := public.asset_log_marks();
@@ -878,7 +1445,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.equipment_import(p_rows, p_actor, false);
+      v_result := public.equipment_import(p_rows, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -888,6 +1455,7 @@ begin
     raise exception 'VALIDATION_ERROR' using detail = 'no rows';
   end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'import');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -901,7 +1469,7 @@ begin
 end;
 $$;
 
-create or replace function public.sub_equipment_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false) returns jsonb
+create or replace function public.sub_equipment_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
   v_marks  uuid[] := public.asset_log_marks();
@@ -909,7 +1477,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.sub_equipment_import(p_rows, p_actor, false);
+      v_result := public.sub_equipment_import(p_rows, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -919,6 +1487,7 @@ begin
     raise exception 'VALIDATION_ERROR' using detail = 'no rows';
   end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'import');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -931,7 +1500,7 @@ begin
 end;
 $$;
 
-create or replace function public.golden_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false) returns jsonb
+create or replace function public.golden_import(p_rows jsonb, p_actor uuid, p_dry_run boolean default false, p_action_id uuid default null) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
   v_marks  uuid[] := public.asset_log_marks();
@@ -939,7 +1508,7 @@ declare
 begin
   if p_dry_run then
     begin
-      v_result := public.golden_import(p_rows, p_actor, false);
+      v_result := public.golden_import(p_rows, p_actor, false, p_action_id);
       raise exception 'dry run' using errcode = 'DRY01';
     exception when sqlstate 'DRY01' then
       return jsonb_set(v_result, '{dry_run}', 'true');
@@ -949,6 +1518,7 @@ begin
     raise exception 'VALIDATION_ERROR' using detail = 'no rows';
   end if;
   perform public.set_ctx('actor_id', p_actor::text);
+  perform public.set_ctx('action_id', coalesce(p_action_id, gen_random_uuid())::text);
   perform public.set_ctx('source', 'import');
   perform public.set_ctx('action', null);
   perform public.set_ctx('note', null);
@@ -1104,13 +1674,10 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists equipment_00_serial_trim on public.equipment;
 create trigger equipment_00_serial_trim before insert or update of serial_number on public.equipment
   for each row execute function public.serial_trim();
-drop trigger if exists sub_equipment_00_serial_trim on public.sub_equipment;
 create trigger sub_equipment_00_serial_trim before insert or update of serial_number on public.sub_equipment
   for each row execute function public.serial_trim();
-drop trigger if exists golden_boards_00_serial_trim on public.golden_boards;
 create trigger golden_boards_00_serial_trim before insert or update of serial_number on public.golden_boards
   for each row execute function public.serial_trim();
 
@@ -1151,11 +1718,9 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists equipment_01_type_from_part_number on public.equipment;
 create trigger equipment_01_type_from_part_number
   before insert or update of part_number_id, type_id on public.equipment
   for each row execute function public.asset_type_from_part_number();
-drop trigger if exists sub_equipment_01_type_from_part_number on public.sub_equipment;
 create trigger sub_equipment_01_type_from_part_number
   before insert or update of part_number_id, type_id on public.sub_equipment
   for each row execute function public.asset_type_from_part_number();
@@ -1171,7 +1736,6 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists part_numbers_type_guard on public.part_numbers;
 create trigger part_numbers_type_guard
   before update of type_id on public.part_numbers
   for each row when (new.type_id is distinct from old.type_id)
@@ -1189,7 +1753,6 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists types_system_lock on public.types;
 create trigger types_system_lock before update or delete on public.types
   for each row execute function public.types_system_lock();
 
@@ -1207,7 +1770,6 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists types_00_group_kind on public.types;
 create trigger types_00_group_kind before insert or update of group_id on public.types
   for each row execute function public.types_group_kind();
 
@@ -1225,7 +1787,6 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists type_groups_system_lock on public.type_groups;
 create trigger type_groups_system_lock before update or delete on public.type_groups
   for each row execute function public.type_groups_system_lock();
 
@@ -1245,7 +1806,6 @@ begin
   return null;
 end;
 $$;
-drop trigger if exists equipment_parent_rule on public.equipment;
 create trigger equipment_parent_rule after insert or update of parent_id on public.equipment
   for each row execute function public.equipment_parent_rule();
 
@@ -1274,10 +1834,8 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists sub_equipment_02_from_parent on public.sub_equipment;
 create trigger sub_equipment_02_from_parent before insert or update of tester_id, location_id on public.sub_equipment
   for each row execute function public.leaf_from_parent('tester_id', 'sub_equipment');
-drop trigger if exists golden_boards_01_from_parent on public.golden_boards;
 create trigger golden_boards_01_from_parent before insert or update of parent_id, location_id on public.golden_boards
   for each row execute function public.leaf_from_parent('parent_id', 'golden_board');
 
@@ -1301,12 +1859,10 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists equipment_02_level_from_parent on public.equipment;
 create trigger equipment_02_level_from_parent
   before insert or update of parent_id, level_id on public.equipment
   for each row execute function public.equipment_level_from_parent();
 
-drop trigger if exists equipment_03_usage_from_parent on public.equipment;
 create trigger equipment_03_usage_from_parent before insert on public.equipment
   for each row execute function public.equipment_usage_from_parent();
 
@@ -1330,7 +1886,6 @@ end;
 $$;
 -- Không dùng "update of level_id": Đổi cha / Swap đổi Level qua trigger trên (cột không
 -- nằm trong câu update) — vẫn phải lan xuống con.
-drop trigger if exists equipment_level_cascade on public.equipment;
 create trigger equipment_level_cascade
   after update on public.equipment
   for each row when (new.level_id is distinct from old.level_id)
@@ -1354,13 +1909,10 @@ begin
 end;
 $$;
 -- Tên trigger của equipment xếp sau equipment_03_usage_from_parent → thấy giá trị cuối cùng.
-drop trigger if exists equipment_04_usage_rule on public.equipment;
 create trigger equipment_04_usage_rule before insert or update of usage, parent_id on public.equipment
   for each row execute function public.asset_usage_rule();
-drop trigger if exists sub_equipment_03_usage_rule on public.sub_equipment;
 create trigger sub_equipment_03_usage_rule before insert or update of usage, tester_id on public.sub_equipment
   for each row execute function public.asset_usage_rule();
-drop trigger if exists golden_boards_02_usage_rule on public.golden_boards;
 create trigger golden_boards_02_usage_rule before insert or update of usage, parent_id on public.golden_boards
   for each row execute function public.asset_usage_rule();
 
@@ -1381,13 +1933,10 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists equipment_05_tags_check on public.equipment;
 create trigger equipment_05_tags_check before insert or update of tag_ids on public.equipment
   for each row execute function public.tag_ids_check();
-drop trigger if exists sub_equipment_04_tags_check on public.sub_equipment;
 create trigger sub_equipment_04_tags_check before insert or update of tag_ids on public.sub_equipment
   for each row execute function public.tag_ids_check();
-drop trigger if exists golden_boards_03_tags_check on public.golden_boards;
 create trigger golden_boards_03_tags_check before insert or update of tag_ids on public.golden_boards
   for each row execute function public.tag_ids_check();
 
@@ -1402,7 +1951,6 @@ begin
   return old;
 end;
 $$;
-drop trigger if exists tags_delete_check on public.tags;
 create trigger tags_delete_check before delete on public.tags
   for each row execute function public.tag_delete_check();
 
@@ -1430,7 +1978,6 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists calibrations_compute_due on public.calibrations;
 create trigger calibrations_compute_due before insert or update of calibrated_at on public.calibrations
   for each row execute function public.calibration_compute_due();
 
@@ -1447,7 +1994,6 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists calibration_configurations_kind on public.calibration_configurations;
 create trigger calibration_configurations_kind before insert or update of part_number_id on public.calibration_configurations
   for each row execute function public.calibration_configuration_kind();
 
@@ -1642,7 +2188,7 @@ $$;
 -- =============================================================================
 -- 5b. CÂY TÀI SẢN — asset_tree(p_type, p_id)
 --    Cây chứa một tài sản: từ tài sản GỐC của nó (đi ngược theo cha) xuống mọi con cháu, ở cả 3 bảng, trong MỘT lần gọi.
---    Dùng cho tab "Cây thiết bị" và cho chip thiết bị con / tóm tắt hiệu chuẩn của modal Equipment (docs/DETAIL_MODEL.md 4.1).
+--    Dùng cho tab "Cây thiết bị" và cho chip thiết bị con / tóm tắt hiệu chuẩn của modal Equipment (docs/UI.md).
 --    Mỗi dòng: asset_type, id, kind (tester / base / fixture / sub_equipment / golden_board), type_name (golden board: null),
 --    part_number, serial_number, usage, cal_status (sub-equipment: Calibration Status; còn lại null), parent_id (gốc: null),
 --    depth (gốc = 0), pos (vị trí theo thứ tự cây: anh em Base, Fixture, Golden, Sub rồi serial — giống overview_board).
@@ -1717,35 +2263,65 @@ $$;
 --    gộp thành MỘT dòng cho mỗi (module, người import, lần import); item_count = số dòng.
 --    Dòng khác item_count = 1.
 -- =============================================================================
-create or replace view public.recent_activities with (security_invoker = true) as
-with activity as (
-  select asset_type as module, asset_id as object_id, label, action,
-         public.asset_log_changes(old_value, new_value) as changes,
-         user_id as created_by, created_at, reason as note, source
-  from public.asset_logs
-  union all
-  select 'configuration', record_id, label, action, changes, created_by, created_at, note, source
-  from public.configuration_histories
-  union all
-  select 'user', user_id, label, action, changes, created_by, created_at, note, source
-  from public.user_histories
-)
-select module, object_id, label, action, changes, created_by, created_at, note, source, 1 as item_count
-from activity
-where source <> 'import'
-union all
-select module, object_id, label, action, changes, created_by, created_at, note, source, item_count
-from (
-  select distinct on (module, created_by, created_at)
-         module, object_id, label, action, changes, created_by, created_at, note, source,
-         count(*) over (partition by module, created_by, created_at)::integer as item_count
-  from activity
-  where source = 'import'
-  order by module, created_by, created_at, label
-) imported;
 
-revoke all on public.recent_activities from public, anon, authenticated;
-grant select on public.recent_activities to service_role;
+-- -----------------------------------------------------------------------------
+-- recent_actions — "Thay đổi gần đây" theo THAO TÁC: MỘT thao tác của người dùng = MỘT dòng (tính khi đọc, không lưu).
+--   Gộp các dòng nhật ký có cùng action_id (Swap hai thiết bị = một dòng, Move / Check-out kèm con cháu = một dòng, Import = một dòng).
+--   Dòng chưa có action_id (ghi từ SQL tay): mỗi dòng là một thao tác riêng, trừ import vẫn gộp theo (module, người import, lần import).
+--   Không đổi, không xóa dữ liệu nhật ký nào.
+--   id          action_id (hoặc id dòng nhật ký / khóa gộp của dòng cũ)
+--   module      module của bản ghi đứng đầu; modules = mọi module trong thao tác (để lọc theo module và phân quyền)
+--   action      mã hành động của bản ghi đứng đầu; source, created_by lấy theo bản ghi đứng đầu; created_at = lúc bắt đầu
+--   item_count  số dòng nhật ký của thao tác; records = các bản ghi bị ảnh hưởng (TỐI ĐA 50 — item_count là tổng thật)
+--   search_text tên / serial của MỌI bản ghi trong thao tác (ngăn bằng chr(31)) — để tìm theo bản ghi nào cũng khớp
+--   Thứ tự bản ghi: bản ghi chính (do người dùng chọn) trước, bản ghi đi theo (note via_parent: / parent_deleted:) sau; trong mỗi nhóm theo
+--   THỨ TỰ GHI (ctid — bảng nhật ký chỉ thêm, không sửa / xóa nên ctid tăng dần theo lúc ghi): Swap hiện "A ⇄ B" đúng thứ tự thao tác, import
+--   liệt kê theo thứ tự dòng trong file.
+-- -----------------------------------------------------------------------------
+create or replace view public.recent_actions with (security_invoker = true) as
+with activity as (
+  select l.asset_type as module, l.asset_id as object_id, l.label, l.action, l.old_value, l.new_value, null::jsonb as changes,
+         l.user_id as created_by, l.created_at, l.reason as note, l.source, l.from_location, l.to_location, l.id as log_id, l.ctid as row_pos,
+         coalesce(l.action_id, case when l.source = 'import'
+           then md5(l.asset_type || ':' || coalesce(l.user_id::text, '') || ':' || l.created_at::text)::uuid else l.id end) as group_id
+  from public.asset_logs l
+  union all
+  select 'configuration', c.record_id, c.label, c.action, null::jsonb, null::jsonb, c.changes,
+         c.created_by, c.created_at, c.note, c.source, null::text, null::text, c.id, c.ctid,
+         coalesce(c.action_id, case when c.source = 'import'
+           then md5('configuration:' || coalesce(c.created_by::text, '') || ':' || c.created_at::text)::uuid else c.id end)
+  from public.configuration_histories c
+  union all
+  select 'user', u.user_id, u.label, u.action, null::jsonb, null::jsonb, u.changes,
+         u.created_by, u.created_at, u.note, u.source, null::text, null::text, u.id, u.ctid,
+         coalesce(u.action_id, case when u.source = 'import'
+           then md5('user:' || coalesce(u.created_by::text, '') || ':' || u.created_at::text)::uuid else u.id end)
+  from public.user_histories u
+), ranked as (
+  select a.*, row_number() over (
+    partition by a.group_id
+    order by (coalesce(a.note ~ '^(via_parent|parent_deleted):', false))::int, a.row_pos, a.log_id) as rn
+  from activity a
+)
+select r.group_id as id,
+       (array_agg(r.module order by r.rn))[1] as module,
+       array_agg(distinct r.module) as modules,
+       (array_agg(r.action order by r.rn))[1] as action,
+       (array_agg(r.source order by r.rn))[1] as source,
+       (array_agg(r.created_by order by r.rn))[1] as created_by,
+       min(r.created_at) as created_at,
+       count(*)::integer as item_count,
+       coalesce(jsonb_agg(jsonb_build_object(
+         'module', r.module, 'object_id', r.object_id, 'label', r.label, 'action', r.action,
+         'changes', coalesce(r.changes, public.asset_log_changes(r.old_value, r.new_value)),
+         'note', r.note, 'from_location', r.from_location, 'to_location', r.to_location
+       ) order by r.rn) filter (where r.rn <= 50), '[]'::jsonb) as records,
+       string_agg(r.label, chr(31) order by r.rn) as search_text
+from ranked r
+group by r.group_id;
+
+revoke all on public.recent_actions from public, anon, authenticated;
+grant select on public.recent_actions to service_role;
 revoke all on public.sub_equipment_calibration from public, anon, authenticated;
 grant select on public.sub_equipment_calibration to service_role;
 
@@ -1756,57 +2332,3 @@ revoke execute on all functions in schema public from public, anon, authenticate
 grant  execute on all functions in schema public to service_role;
 
 commit;
-
--- -----------------------------------------------------------------------------
--- Kiểm tra (mỗi cột phải đúng số bên dưới):
---   history_triggers = 14 · type_triggers = 3 (Type theo Part Number) · type_lock_triggers = 1 (3 loại hệ thống)
---   type_group_triggers = 2 (Type theo nhóm + 3 nhóm hệ thống khóa)
---   tree_triggers = 3 (quy tắc cha–con) · level_triggers = 2 · usage_rule_triggers = 3 (Usage cần cha)
---   tag_triggers = 4 · serial_triggers = 3 · calibration_triggers = 2 · user_guard_triggers = 1 (bảo vệ Admin)
---   asset_ops = 6 (hàm thao tác asset_*) · asset_swap_args = 5 · dry_run_functions = 9 (6 asset_* + 3 import)
---   lookup_functions = 3 (valid_parents, swap_candidates, serial_matches) · overview_board = 1 · asset_tree = 1 · views = 2
---   app_write = 1 · equipment_import = 1 · sub_equipment_import = 1 · golden_import = 1
--- -----------------------------------------------------------------------------
-select
-  (select count(*) from pg_trigger where tgname ~ '_write_history$') as history_triggers,
-  (select count(*) from pg_trigger
-    where tgname in ('equipment_01_type_from_part_number', 'sub_equipment_01_type_from_part_number',
-                     'part_numbers_type_guard')) as type_triggers,
-  (select count(*) from pg_trigger where tgname = 'types_system_lock') as type_lock_triggers,
-  (select count(*) from pg_trigger where tgname in ('types_00_group_kind', 'type_groups_system_lock')) as type_group_triggers,
-  (select count(*) from pg_trigger
-    where tgname in ('equipment_parent_rule', 'sub_equipment_02_from_parent', 'golden_boards_01_from_parent')) as tree_triggers,
-  (select count(*) from pg_trigger
-    where tgname in ('equipment_02_level_from_parent', 'equipment_level_cascade')) as level_triggers,
-  (select count(*) from pg_trigger
-    where tgname in ('equipment_04_usage_rule', 'sub_equipment_03_usage_rule', 'golden_boards_02_usage_rule')) as usage_rule_triggers,
-  (select count(*) from pg_trigger
-    where tgname in ('equipment_05_tags_check', 'sub_equipment_04_tags_check', 'golden_boards_03_tags_check',
-                     'tags_delete_check')) as tag_triggers,
-  (select count(*) from pg_trigger where tgname ~ '_00_serial_trim$') as serial_triggers,
-  (select count(*) from pg_trigger
-    where tgname in ('calibrations_compute_due', 'calibration_configurations_kind')) as calibration_triggers,
-  (select count(*) from pg_trigger where tgname = 'user_profiles_admin_guard') as user_guard_triggers,
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('asset_change_location', 'asset_move', 'asset_detach', 'asset_swap',
-                                                 'asset_delete', 'asset_set_usage')) as asset_ops,
-  (select string_agg(p.pronargs::text, ',') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'asset_swap') as asset_swap_args,
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and 'p_dry_run' = any (p.proargnames) and p.proname <> 'asset_op_result') as dry_run_functions,
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('valid_parents', 'swap_candidates', 'serial_matches')) as lookup_functions,
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'overview_board') as overview_board,
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'asset_tree') as asset_tree,
-  (select count(*) from pg_views where schemaname = 'public'
-    and viewname in ('recent_activities', 'sub_equipment_calibration')) as views,
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'app_write') as app_write,
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'equipment_import') as equipment_import,
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'sub_equipment_import') as sub_equipment_import,
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'golden_import') as golden_import;

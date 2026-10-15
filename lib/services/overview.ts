@@ -1,8 +1,8 @@
 import 'server-only';
 
 /**
- * Overview — bảng thẻ theo Location (docs/DETAIL_MODEL.md 4.6). Không có bảng riêng: một lần gọi hàm overview_board
- * của database (docs/DATABASE_MODIFIED.md mục 2) trả cả bảng; service chỉ gom các dòng thành Location → cột → thẻ và
+ * Overview — bảng thẻ theo Location (docs/UI.md). Không có bảng riêng: một lần gọi hàm overview_board
+ * của database (docs/DATABASE.md) trả cả bảng; service chỉ gom các dòng thành Location → cột → thẻ và
  * tính số liệu header. Lọc và tìm chạy trong database (thẻ khớp có thể nằm sau "+N"). Mở một thẻ = mở modal của module
  * sở hữu bản ghi, nên service này chỉ đọc.
  */

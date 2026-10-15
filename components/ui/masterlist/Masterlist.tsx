@@ -1,12 +1,14 @@
 'use client';
 
 /**
- * Masterlist — trang danh sách dùng chung cho mọi module (docs/DETAIL_MODEL.md
- * mục 2). Mỗi module chỉ khai báo cột; khung lo tìm kiếm, bộ lọc, sắp xếp,
+ * Masterlist — trang danh sách dùng chung cho mọi module (docs/UI.md). Mỗi module chỉ khai báo cột; khung lo tìm kiếm, bộ lọc, sắp xếp,
  * tùy chọn hiển thị cột, xuất Excel, chọn dòng.
  *
- * Dữ liệu đã tải đủ ở client nên lọc / sắp xếp tức thì, và thứ tự đang hiện
- * được báo lên (onViewChange) để Detail Panel chuyển ‹ › đúng thứ tự đó.
+ * Hai chế độ. Danh sách nhỏ (Users, Configuration, Error log): dữ liệu tải đủ ở client nên lọc / sắp xếp tức thì. Danh sách lớn (Equipment,
+ * Calibration, Golden — `server`): chỉ MỘT trang nằm ở client; tìm (debounce), lọc, sắp xếp, quick filter và phân trang đều gửi lên server
+ * (usePagedList) và chạy ở database trên toàn bộ dữ liệu; thanh phân trang ở cuối. Giao diện giữ nguyên ở cả hai chế độ.
+ *
+ * Thứ tự đang hiện được báo lên (onViewChange) để Detail Panel chuyển ‹ › đúng thứ tự đó (chế độ server: trong trang đang xem).
  *
  * Điện thoại (< 768px): không ép bảng vào màn hình hẹp — mỗi dòng là một thẻ
  * (`mobileCard` của module, hoặc thẻ chung dựng từ các cột); thanh công cụ chỉ
@@ -20,7 +22,9 @@ import { usePhone } from '@/lib/client/usePhone';
 import { Button, EmptyState, ErrorState, Modal, Skeleton, TableSkeleton, toast } from '@/components/ui';
 import { ActionMenu, type MoreItem } from '@/components/ui/ActionMenu';
 import { SearchableSelect, type SelectOption } from '@/components/ui/SearchableSelect';
+import { EMPTY_FILTER, type PagedState, type SortState } from '@/lib/client/listState';
 import { ColumnSettings, useColumnPrefs } from './ColumnSettings';
+import { Pager } from './Pager';
 import { ToolbarButton } from './ToolbarButton';
 import { exportToExcel } from './exportExcel';
 
@@ -37,14 +41,18 @@ export type Column<R> = {
   width?: number;
   /** Cho phép xuống dòng (mặc định không). */
   wrap?: boolean;
+  /** Chế độ server: các lựa chọn của bộ lọc (value gửi lên server, label hiện cho người dùng) — không còn suy ra từ các dòng đã tải. */
+  choices?: SelectOption[];
+  /** Chế độ server: bộ lọc có thêm lựa chọn "(trống)" — cột cho phép giá trị trống. */
+  emptyChoice?: boolean;
+  /** Chế độ server: chữ tìm khớp NHÃN của một lựa chọn (đã dịch: "In use", "Overdue"…) thì cũng khớp các dòng mang giá trị đó. */
+  searchByLabel?: boolean;
 };
 
 export type QuickFilter<R> = { key: string; label: string; test: (row: R) => boolean };
 
 /** Công cụ của module (Import…): nút trên thanh công cụ desktop, mục trong menu ⋮ trên điện thoại. */
 export type ListTool = { key: string; label: string; icon?: ReactNode; active?: boolean; onClick: () => void };
-
-type SortState = { key: string; dir: 'asc' | 'desc' } | null;
 
 /** Sheet trên điện thoại: mọi lựa chọn đều là dropdown mở ngay dưới ô. */
 function SheetSelect({ label, value, onChange, options, disabled }: {
@@ -64,6 +72,8 @@ function SheetSelect({ label, value, onChange, options, disabled }: {
 }
 
 const PAGE = 200;
+/** Chế độ server: chờ người dùng gõ xong rồi mới hỏi server (không một request cho mỗi phím). */
+const SEARCH_DEBOUNCE_MS = 350;
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 function compare(a: string | number | null, b: string | number | null): number {
@@ -159,7 +169,7 @@ const Card = memo(CardView) as typeof CardView;
 export function Masterlist<R extends { id: string }>({
   title, rows, loading, error, onRetry, columns, storageKey, defaultColumns, selectedId, onSelect,
   onAdd, addLabel, tools, exportName, quickFilters, leading, onViewChange, rowTone, mobileCard, initialSearch,
-  mobileFilterKeys, searchPlaceholder, mobileEmptyState,
+  mobileFilterKeys, searchPlaceholder, mobileEmptyState, server,
 }: {
   title: string;
   rows: R[];
@@ -192,6 +202,8 @@ export function Masterlist<R extends { id: string }>({
   mobileFilterKeys?: string[];
   searchPlaceholder?: string;
   mobileEmptyState?: { title: string; subtitle: string };
+  /** Có: danh sách phân trang ở server — `rows` là MỘT trang; tìm / lọc / sắp xếp / trang đi qua đây (usePagedList). */
+  server?: PagedState<R>;
 }) {
   const { t } = useTranslation();
   const phone = usePhone();
@@ -228,6 +240,7 @@ export function Masterlist<R extends { id: string }>({
   const extraPhoneFilters = mobileFilterKeys ? filterable.filter((c) => !mobileFilterKeys.includes(c.key)) : [];
   const filterValues = useMemo(() => {
     const out: Record<string, string[]> = {};
+    if (server) return out; // chế độ server: lựa chọn bộ lọc do cột khai báo (`choices`), không suy ra từ một trang
     filterable.forEach((c) => {
       const set = new Set<string>(c.key === 'parent' ? [''] : []);
       rows.forEach((r) => { const v = c.value(r); set.add(v === null || v === '' ? '' : String(v)); });
@@ -238,6 +251,7 @@ export function Masterlist<R extends { id: string }>({
   }, [rows, columns]);
 
   const view = useMemo(() => {
+    if (server) return rows; // đã tìm / lọc / sắp xếp / cắt trang ở server
     const q = deferredSearch.trim().toLowerCase();
     const quickTest = quickFilters?.find((f) => f.key === quick)?.test;
     const checks = Object.entries(filters).flatMap(([key, wanted]) => {
@@ -273,7 +287,29 @@ export function Masterlist<R extends { id: string }>({
       }
     }
     return out;
-  }, [rows, deferredSearch, filters, sort, quick, quickFilters, columns]);
+  }, [rows, deferredSearch, filters, sort, quick, quickFilters, columns, server]);
+
+  // Chế độ server: chữ tìm (debounce) và bộ lọc / sắp xếp đi lên server. Chữ gõ khớp nhãn của một lựa chọn enum (usage, status, result) thì
+  // gửi kèm mã của nó, để tìm "overdue" / "in use" vẫn ra như khi tìm trên các dòng đã tải. Trang về 1 khi có gì thật sự đổi (usePagedList).
+  const setServerQuery = server?.setQuery;
+  useEffect(() => {
+    if (!setServerQuery) return;
+    const id = setTimeout(() => {
+      const text = search.trim();
+      const needle = text.toLowerCase();
+      const enums: Record<string, string[]> = {};
+      if (needle) {
+        for (const c of columns) {
+          if (!c.searchByLabel) continue;
+          const matched = (c.choices ?? []).filter((o) => o.label.toLowerCase().includes(needle)).map((o) => o.value);
+          if (matched.length > 0) enums[c.key] = matched;
+        }
+      }
+      setServerQuery({ q: text, enums });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [search, columns, setServerQuery]);
+  useEffect(() => { setServerQuery?.({ filters, sort, quick }); }, [filters, sort, quick, setServerQuery]);
 
   const ids = useMemo(() => view.map((r) => r.id), [view]);
   useEffect(() => { onViewChange?.(ids); }, [ids, onViewChange]);
@@ -309,10 +345,12 @@ export function Masterlist<R extends { id: string }>({
   async function doExport() {
     setExporting(true);
     try {
+      // Chế độ server: xuất MỌI dòng khớp bộ tìm / lọc (không chỉ trang đang xem) — một request riêng, chỉ khi người dùng bấm.
+      const exportRows = server ? await server.exportAll() : view;
       await exportToExcel(exportName, [
         { label: t('ml.no'), value: (_r: R, i: number) => i + 1 },
         ...visibleColumns.map((c) => ({ label: c.label, value: (r: R) => c.value(r) })),
-      ], view);
+      ], exportRows);
     } catch (e) {
       // Ví dụ mất mạng khi tải thư viện Excel (tải khi cần).
       toast.error(errorMessage(e, t));
@@ -322,10 +360,27 @@ export function Masterlist<R extends { id: string }>({
   }
 
   const activeFilters = Object.entries(filters);
+  const filtered = deferredSearch.trim() !== '' || activeFilters.length > 0 || quick !== null;
+  /** Chữ của lựa chọn "để trống" (cột cha dùng dấu —). */
+  const emptyLabel = (key: string) => t(key === 'parent' ? 'ml.emptyValue' : 'ml.empty');
+  /** Các lựa chọn của bộ lọc một cột: chế độ server lấy từ cột; chế độ client lấy từ giá trị đang có trong các dòng. */
+  const choicesFor = (c: Column<R>, empty: string): SelectOption[] => (server
+    ? [...(c.choices ?? []), ...(c.emptyChoice ? [{ value: EMPTY_FILTER, label: empty }] : [])]
+    : (filterValues[c.key] ?? []).map((value) => ({ value, label: value || empty })));
+  /** Chữ hiện trên chip của một bộ lọc đang bật. */
+  const chipText = (key: string, value: string, empty: string) => {
+    const column = columns.find((c) => c.key === key);
+    if (server && column) return choicesFor(column, empty).find((o) => o.value === value)?.label ?? value;
+    return value || empty;
+  };
+  const offset = server ? (server.page - 1) * server.pageSize : 0;
+  const nothingLoaded = server ? !filtered : rows.length === 0;
   const activeCount = activeFilters.length + (sort ? 1 : 0) + (quick ? 1 : 0);
   const draftCount = Object.keys(draftFilters).length + (draftSort ? 1 : 0);
   const sortLabel = sort ? columns.find((c) => c.key === sort.key)?.label : undefined;
   const colCount = visibleColumns.length + 1 + (leading ? 1 : 0);
+  /** Chế độ server: cả trang đang có; chế độ client: vẽ từng đoạn 200 dòng khi cuộn. */
+  const visible = server ? view : view.slice(0, limit);
   const setFilter = (key: string, value: string) => setFilters((f) => {
     const next = { ...f };
     if (value === '__all') delete next[key]; else next[key] = value;
@@ -346,15 +401,12 @@ export function Masterlist<R extends { id: string }>({
         if (value === '__all') delete next[c.key]; else next[c.key] = value;
         return next;
       })}
-      options={[
-        { value: '__all', label: t('ml.all') },
-        ...(filterValues[c.key] ?? []).map((value) => ({ value, label: value || t('ml.emptyValue') })),
-      ]} />
+      options={[{ value: '__all', label: t('ml.all') }, ...choicesFor(c, t('ml.emptyValue'))]} />
   );
 
   // Menu ⋮ trên điện thoại: Xuất Excel + công cụ của module (Import…).
   const menu: MoreItem[] = [
-    { key: 'export', label: t('ml.export'), icon: <Download size={16} aria-hidden="true" />, disabled: view.length === 0, onClick: () => void doExport() },
+    { key: 'export', label: t('ml.export'), icon: <Download size={16} aria-hidden="true" />, disabled: server ? server.total === 0 : view.length === 0, onClick: () => void doExport() },
     ...(tools ?? []).map((x) => ({ key: x.key, label: x.label, icon: x.icon, onClick: x.onClick })),
   ];
 
@@ -397,7 +449,7 @@ export function Masterlist<R extends { id: string }>({
             <div className="ml-toolbar-end">
               <ColumnSettings columns={columns} prefs={prefs} />
               <ToolbarButton label={t('ml.export')} icon={<Download size={14} aria-hidden="true" />}
-                onClick={doExport} loading={exporting} disabled={view.length === 0} />
+                onClick={doExport} loading={exporting} disabled={server ? server.total === 0 : view.length === 0} />
               {toolButtons}
               {onAdd && (
                 <Button size="sm" variant="primary" onClick={onAdd}>
@@ -427,12 +479,7 @@ export function Masterlist<R extends { id: string }>({
               <span>{c.label}</span>
               <SearchableSelect value={filters[c.key] ?? '__all'} onChange={(value) => setFilter(c.key, value)}
                 ariaLabel={c.label} className="ml-filter-select"
-                options={[
-                  { value: '__all', label: t('ml.all') },
-                  ...(filterValues[c.key] ?? []).map((value) => ({
-                    value, label: value || t(c.key === 'parent' ? 'ml.emptyValue' : 'ml.empty'),
-                  })),
-                ]} />
+                options={[{ value: '__all', label: t('ml.all') }, ...choicesFor(c, emptyLabel(c.key))]} />
             </div>
           ))}
           {activeFilters.length > 0 && <Button size="sm" onClick={() => setFilters({})}>{t('ml.clearFilters')}</Button>}
@@ -443,11 +490,11 @@ export function Masterlist<R extends { id: string }>({
         <div className="ml-chips">
           {activeFilters.map(([key, value]) => (
             <button key={key} type="button" className="ml-chip"
-              data-usage={key === 'usage' ? (value === t('values.in_use') ? 'in_use' : 'not_in_use') : undefined}
-              aria-label={t('ml.removeFilter', { name: `${columns.find((c) => c.key === key)?.label ?? key}: ${value || t('ml.emptyValue')}` })}
+              data-usage={key === 'usage' ? (value === 'in_use' || value === t('values.in_use') ? 'in_use' : 'not_in_use') : undefined}
+              aria-label={t('ml.removeFilter', { name: `${columns.find((c) => c.key === key)?.label ?? key}: ${chipText(key, value, t('ml.emptyValue'))}` })}
               onClick={() => setFilters((f) => { const n = { ...f }; delete n[key]; return n; })}>
               {phone ? <span className="ml-chip-dot" aria-hidden="true" /> : <>{columns.find((c) => c.key === key)?.label}: </>}
-              {value || t(phone || key === 'parent' ? 'ml.emptyValue' : 'ml.empty')} <X size={12} aria-hidden="true" />
+              {chipText(key, value, t(phone || key === 'parent' ? 'ml.emptyValue' : 'ml.empty'))} <X size={12} aria-hidden="true" />
             </button>
           ))}
           {phone && sort && (
@@ -465,7 +512,8 @@ export function Masterlist<R extends { id: string }>({
         </div>
       )}
 
-      <div className="ml-scroll" data-empty={phone && !loading && !error && view.length === 0 || undefined}>
+      <div className="ml-scroll" data-empty={phone && !loading && !error && view.length === 0 || undefined}
+        data-fetching={server && loading && rows.length > 0 || undefined}>
         {phone ? (
           <ul className="ml-cards">
             {loading && rows.length === 0 ? (
@@ -476,12 +524,12 @@ export function Masterlist<R extends { id: string }>({
                 </li>
               ))
             ) : (
-              view.slice(0, limit).map((r) => (
+              visible.map((r) => (
                 <Card key={r.id} row={r} columns={columns} mobileCard={mobileCard} selected={r.id === selectedId}
                   tone={rowTone?.(r)} onSelect={select} />
               ))
             )}
-            {view.length > limit && <li ref={(el) => { sentinelRef.current = el; }} className="ml-more">{t('common.loadingEllipsis')}</li>}
+            {!server && view.length > limit && <li ref={(el) => { sentinelRef.current = el; }} className="ml-more">{t('common.loadingEllipsis')}</li>}
           </ul>
         ) : (
           <table className="ml-table">
@@ -506,12 +554,12 @@ export function Masterlist<R extends { id: string }>({
               {loading && rows.length === 0 ? (
                 <TableSkeleton columns={colCount} />
               ) : (
-                view.slice(0, limit).map((r, i) => (
-                  <TableRow key={r.id} row={r} index={i} columns={visibleColumns} leading={leading}
+                visible.map((r, i) => (
+                  <TableRow key={r.id} row={r} index={offset + i} columns={visibleColumns} leading={leading}
                     selected={r.id === selectedId} tone={rowTone?.(r)} onSelect={select} />
                 ))
               )}
-              {view.length > limit && <tr ref={(el) => { sentinelRef.current = el; }}><td colSpan={colCount} className="ml-more">{t('common.loadingEllipsis')}</td></tr>}
+              {!server && view.length > limit && <tr ref={(el) => { sentinelRef.current = el; }}><td colSpan={colCount} className="ml-more">{t('common.loadingEllipsis')}</td></tr>}
             </tbody>
           </table>
         )}
@@ -520,13 +568,13 @@ export function Masterlist<R extends { id: string }>({
           phone ? (
             <div className="ml-empty-state">
               <div className="ml-empty-art" aria-hidden="true"><Inbox size={104} strokeWidth={1.1} /></div>
-              <h2>{mobileEmptyState?.title ?? (rows.length === 0 ? t('ml.emptyTitle') : t('ml.noMatch'))}</h2>
+              <h2>{mobileEmptyState?.title ?? (nothingLoaded ? t('ml.emptyTitle') : t('ml.noMatch'))}</h2>
               <p>{mobileEmptyState?.subtitle ?? t('ml.adjustFilters')}</p>
               <Button onClick={() => { setSearch(''); clearFilters(); }}>{t('ml.clearFilters')}</Button>
             </div>
           ) : <EmptyState
-            title={rows.length === 0 ? t('ml.emptyTitle') : t('ml.noMatch')}
-            action={rows.length > 0 ? (
+            title={nothingLoaded ? t('ml.emptyTitle') : t('ml.noMatch')}
+            action={!nothingLoaded ? (
               <Button size="sm" onClick={() => { setSearch(''); setFilters({}); setQuick(null); }}>{t('ml.clearFilters')}</Button>
             ) : onAdd ? (
               <Button size="sm" variant="primary" onClick={onAdd}><Plus size={14} aria-hidden="true" />{addLabel ?? t('ml.add')}</Button>
@@ -534,6 +582,11 @@ export function Masterlist<R extends { id: string }>({
           />
         )}
       </div>
+
+      {server && (
+        <Pager page={server.page} pageSize={server.pageSize} total={server.total} shown={rows.length} busy={loading}
+          onPage={server.setPage} onPageSize={server.setPageSize} />
+      )}
 
       {phone && filtersOpen && (
         <Modal sheet className="ml-filter-sheet" title={t('ml.filters')} onClose={() => setFiltersOpen(false)}

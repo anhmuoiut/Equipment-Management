@@ -12,12 +12,12 @@ import { TYPE_OF_PART, makeLookups } from './testing/fixtures';
 
 const lookups = makeLookups();
 
-/** Điền file mẫu như người dùng: nhập từ dòng 3 của sheet Golden. */
+/** Điền file mẫu như người dùng: nhập từ dòng 2 của sheet Golden. */
 async function filledTemplate(rows: (string | null)[][]): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load((await buildGoldenTemplate(lookups, 'vi', new Date('2026-10-04T03:00:00Z'))) as unknown as ArrayBuffer);
   const ws = wb.getWorksheet('Golden')!;
-  rows.forEach((values, i) => values.forEach((v, c) => { if (v !== null) ws.getCell(3 + i, c + 1).value = v; }));
+  rows.forEach((values, i) => values.forEach((v, c) => { if (v !== null) ws.getCell(2 + i, c + 1).value = v; }));
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -44,11 +44,11 @@ const line = (c: Cells): (string | null)[] => [
 const issues = (report: { rows: { row: number; issues: unknown[] }[] }) => report.rows.map((r) => [r.row, r.issues]);
 
 describe('golden import template', () => {
-  it('has the Golden / Guide / Valid values sheets with the column headers on row 2', async () => {
+  it('has the Golden / Valid values sheets with the column headers on row 1', async () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load((await buildGoldenTemplate(lookups, 'en')) as unknown as ArrayBuffer);
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['Golden', 'Guide', 'Valid values']);
-    const header = wb.getWorksheet('Golden')!.getRow(2);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Golden', 'Valid values']);
+    const header = wb.getWorksheet('Golden')!.getRow(1);
     expect(GOLDEN_IMPORT_COLUMNS.map((_c, i) => cellText(header.getCell(i + 1).value).replace(/ \*$/, ''))).toEqual(GOLDEN_IMPORT_COLUMNS.map((c) => c.header));
   });
 
@@ -74,7 +74,7 @@ describe('checkGoldenTable', () => {
   it('reports required cells by column and row; a loose golden board needs a Location', async () => {
     const { report, inserts } = await check([line({ pn: null, sn: null, loc: null, origin: 'Lab' })]);
     expect(inserts).toEqual([]);
-    expect(issues(report)).toEqual([[3, [
+    expect(issues(report)).toEqual([[2, [
       { column: 'part_number', code: 'required' }, { column: 'serial_number', code: 'required' }, { column: 'location_id', code: 'required' },
     ]]]);
   });
@@ -84,9 +84,9 @@ describe('checkGoldenTable', () => {
       line({ loc: 'Nowhere' }), line({ sn: 'G-2', loc: 'Closed' }), line({ sn: 'G-3', purpose: 'p'.repeat(501) }),
     ]);
     expect(issues(report)).toEqual([
-      [3, [{ column: 'location_id', code: 'not_found', value: 'Nowhere' }]],
-      [4, [{ column: 'location_id', code: 'inactive', value: 'Closed' }]],
-      [5, [{ column: 'purpose', code: 'too_long', max: 500 }]],
+      [2, [{ column: 'location_id', code: 'not_found', value: 'Nowhere' }]],
+      [3, [{ column: 'location_id', code: 'inactive', value: 'Closed' }]],
+      [4, [{ column: 'purpose', code: 'too_long', max: 500 }]],
     ]);
   });
 
@@ -109,11 +109,11 @@ describe('checkGoldenTable', () => {
       line({ sn: 'G-6', parentPn: 'P12316' }),
     ], [], [TESTER, BASE, ...twins]);
     expect(issues(report)).toEqual([
-      [3, [{ column: 'parent_serial', code: 'parent_type_invalid', value: 'BASE-01' }]],
-      [4, [{ column: 'location_id', code: 'location_follows_parent', value: 'B3F2' }]],
-      [5, [{ column: 'parent_serial', code: 'parent_not_found', value: 'NOPE' }]],
-      [6, [{ column: 'parent_serial', code: 'parent_ambiguous', value: 'TWIN', count: 2 }]],
-      [8, [{ column: 'parent_serial', code: 'required' }]],
+      [2, [{ column: 'parent_serial', code: 'parent_type_invalid', value: 'BASE-01' }]],
+      [3, [{ column: 'location_id', code: 'location_follows_parent', value: 'B3F2' }]],
+      [4, [{ column: 'parent_serial', code: 'parent_not_found', value: 'NOPE' }]],
+      [5, [{ column: 'parent_serial', code: 'parent_ambiguous', value: 'TWIN', count: 2 }]],
+      [7, [{ column: 'parent_serial', code: 'required' }]],
     ]);
   });
 
@@ -121,7 +121,7 @@ describe('checkGoldenTable', () => {
     const { report, inserts } = await check([line({ sn: 'G-1' }), line({ sn: 'g-1 ' }), line({ sn: 'SN-OLD' })], ['sn-old']);
     expect(report).toMatchObject({ total: 3, valid: 3, invalid: 0, duplicates: 2 });
     expect(inserts).toHaveLength(3);
-    expect(report.rows.map((r) => [r.row, r.duplicate_of])).toEqual([[4, 3], [5, 'existing']]);
+    expect(report.rows.map((r) => [r.row, r.duplicate_of])).toEqual([[3, 2], [4, 'existing']]);
   });
 
   it('skips blank rows and counts only filled ones', async () => {

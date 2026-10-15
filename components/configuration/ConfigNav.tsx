@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Danh sách con bên trái của trang Configuration (docs/APP_SHELL.md mục 3):
+ * Danh sách con bên trái của trang Configuration (docs/UI.md):
  * gom nhóm, bấm tên nhóm để mở / đóng; nhóm chứa trang đang xem luôn mở.
  * Trên điện thoại đổi thành ô chọn thả xuống, các mục chia theo nhóm.
  */

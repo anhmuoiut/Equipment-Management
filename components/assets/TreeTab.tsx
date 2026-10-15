@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Tab "Cây thiết bị" (docs/DETAIL_MODEL.md 4.1): cây thụt lề từ Tester gốc của thiết bị đang xem, gồm cả
+ * Tab "Cây thiết bị" (docs/UI.md): cây thụt lề từ Tester gốc của thiết bị đang xem, gồm cả
  * sub-equipment và golden board. Mỗi dòng chỉ Part number + Serial (+ `Sub` / `Golden`). Bấm ▸/▾ chỉ mở / đóng
  * nhánh; bấm phần còn lại mở chi tiết (equipment: ngay trong modal; Sub / Golden: sang module của chúng).
  * Bàn phím: ↑ ↓ chọn dòng, → mở nhánh, ← đóng nhánh, Enter mở chi tiết.
@@ -19,13 +19,15 @@ const OPEN_ALL_UP_TO = 30;
 
 type Row = { node: TreeNode; depth: number; guides: ('line' | 'blank')[]; last: boolean; hasKids: boolean };
 
-export function TreeTab({ tree, error, onRetry, current, onOpen }: {
+export function TreeTab({ tree, error, onRetry, current, home, onOpen }: {
   /** Cây đã tải (`null` = đang tải). */
   tree: EquipmentTree | null;
   error?: string | null;
   onRetry: () => void;
   /** Thiết bị đang xem. */
   current: { type: AssetType; id: string };
+  /** Thiết bị mà modal được mở cho; nút "Thiết bị hiện tại" quay về đây (mặc định: thiết bị đang xem). */
+  home?: { type: AssetType; id: string };
   onOpen: (type: AssetType, id: string) => void;
 }) {
   const { t } = useTranslation();
@@ -102,11 +104,15 @@ export function TreeTab({ tree, error, onRetry, current, onOpen }: {
   }
 
   function showCurrent() {
+    const target = home ?? current;
+    const targetKey = keyOf({ asset_type: target.type, id: target.id });
     const open = new Set(expanded ?? []);
-    for (let k = parentOfKey.get(currentKey); k; k = parentOfKey.get(k)) open.add(k);
+    for (let k = parentOfKey.get(targetKey); k; k = parentOfKey.get(k)) open.add(k);
     setExpanded(open);
-    setFocusKey(currentKey);
-    requestAnimationFrame(() => listRef.current?.querySelector('[data-current]')?.scrollIntoView?.({ block: 'center' }));
+    setFocusKey(targetKey);
+    requestAnimationFrame(() => Array.from(listRef.current?.querySelectorAll('li[data-key]') ?? [])
+      .find((el) => el.getAttribute('data-key') === targetKey)?.scrollIntoView?.({ block: 'center' }));
+    if (targetKey !== currentKey) onOpen(target.type, target.id);
   }
 
   useEffect(() => {

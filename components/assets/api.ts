@@ -3,7 +3,7 @@
 /**
  * Phần dùng chung của ba module tài sản (Equipment, Calibration, Golden): đường dẫn, quan hệ cha – con và
  * các lời gọi thao tác trên cây (Đổi vị trí, Move, Detach, Swap, Xóa, Check-out / Check-in) — luôn đi qua
- * `/api/assets/*` với `dry_run` để xem trước mục "Kết quả" (docs/API.md "Thao tác trên cây tài sản").
+ * `/api/assets/*` với `dry_run` để xem trước mục "Kết quả" (docs/ARCHITECTURE.md "Thao tác trên cây tài sản").
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +19,8 @@ export const ASSET_ROUTE: Record<AssetType, string> = {
   equipment: '/equipment', sub_equipment: '/calibration', golden_board: '/golden',
 };
 export const assetHref = (type: AssetType, id: string) => `${ASSET_ROUTE[type]}?id=${encodeURIComponent(id)}`;
+/** Cây chứa tài sản: Equipment giữ đường dẫn riêng của nó; sub-equipment / golden board hỏi qua `/api/assets`. */
+export const assetTreeUrl = (type: AssetType, id: string) => (type === 'equipment' ? `/api/equipment/${id}/tree` : `/api/assets/${type}/${id}/tree`);
 
 export type AssetRecord = EquipmentRow | SubEquipmentRow | GoldenRow;
 

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Khung màn hình thao tác trong modal (docs/DETAIL_MODEL.md 3.6): nội dung · footer `[Hủy] [nút chính]`.
+ * Khung màn hình thao tác trong modal (docs/UI.md): nội dung · footer `[Hủy] [nút chính]`.
  * Tiêu đề nằm ở breadcrumb của khung (← SN-001 › Swap), không lặp ở đây. Khung lo trạng thái gửi: đang chạy
  * thì khóa nút và modal (không bấm lặp, không đóng giữa chừng); lỗi (kể cả mất mạng) hiện ngay trên màn hình.
  */
@@ -74,7 +74,7 @@ export function ActionScreen({
   );
 }
 
-/** "Hủy bỏ thay đổi?" — một màn hình trong chính modal, không phải hộp thoại thứ hai (docs/DETAIL_MODEL.md 3.7). */
+/** "Hủy bỏ thay đổi?" — một màn hình trong chính modal, không phải hộp thoại thứ hai (docs/UI.md). */
 export function DiscardScreen({ title, message, stayLabel, leaveLabel, onStay, onLeave }: {
   title: string; message: string; stayLabel: string; leaveLabel: string; onStay: () => void; onLeave: () => void;
 }) {

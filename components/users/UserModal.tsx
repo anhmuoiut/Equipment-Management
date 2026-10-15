@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Modal tài khoản (docs/DETAIL_MODEL.md 4.5). Đúng bốn thao tác Admin: Thêm, Sửa (form), Đặt lại mật
+ * Modal tài khoản (docs/UI.md). Đúng bốn thao tác Admin: Thêm, Sửa (form), Đặt lại mật
  * khẩu và Khóa / Mở khóa (trong [Thao tác ▾]). Mật khẩu tạm chỉ hiện một lần, ngay trong modal (TempPasswordView).
  */
 import { useState } from 'react';

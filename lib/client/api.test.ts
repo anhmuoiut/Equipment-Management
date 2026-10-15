@@ -151,6 +151,56 @@ describe('GET sharing', () => {
   });
 });
 
+describe('remembered pages (paged lists)', () => {
+  const page = { total: 1, page: 1, pageSize: 50 };
+
+  it('are forgotten after every save — a Swap, Move, edit or import can change any row on any page', async () => {
+    const { pagedCache } = await import('./cache');
+    vi.stubGlobal('fetch', vi.fn(async () => respond(200, { success: true, data: {}, meta: {} })));
+    for (const save of [() => api.post('/api/equipment', {}), () => api.put('/api/equipment/e1', {}), () => api.delete('/api/equipment/e1')]) {
+      pagedCache.set('/api/equipment?page=1&pageSize=50', [{ id: 'a' }], page);
+      await save();
+      expect(pagedCache.get('/api/equipment?page=1&pageSize=50')).toBeUndefined();
+    }
+  });
+
+  it('are forgotten also when the save FAILS (a multi-step action may have changed some rows before it stopped)', async () => {
+    const { pagedCache } = await import('./cache');
+    vi.stubGlobal('fetch', vi.fn(async () => respond(500, { success: false, error: { code: 'SERVER_ERROR', message: '', details: {}, request_id: 'r' } })));
+    pagedCache.set('/api/equipment?page=1&pageSize=50', [{ id: 'a' }], page);
+    await failure(api.post('/api/assets/equipment/swap', {}));
+    expect(pagedCache.get('/api/equipment?page=1&pageSize=50')).toBeUndefined();
+  });
+
+  it('are forgotten on sign-in and sign-out, and reading a page never clears anything', async () => {
+    const { pagedCache } = await import('./cache');
+    vi.stubGlobal('fetch', vi.fn(async () => respond(200, { success: true, data: [], meta: {} })));
+    pagedCache.set('/api/equipment?page=1&pageSize=50', [{ id: 'a' }], page);
+    await api.get('/api/equipment?page=2&pageSize=50');
+    expect(pagedCache.get('/api/equipment?page=1&pageSize=50')).toBeDefined();
+    for (const path of ['/api/auth/login', '/api/auth/logout']) {
+      pagedCache.set('/api/equipment?page=1&pageSize=50', [{ id: 'a' }], page);
+      await api.post(path, {});
+      expect(pagedCache.get('/api/equipment?page=1&pageSize=50')).toBeUndefined();
+    }
+  });
+
+  it('a page is fresh for 30 seconds, then used only as a placeholder; the cache keeps at most 60 pages', async () => {
+    const { pagedCache, STALE_MS } = await import('./cache');
+    pagedCache.clear();
+    pagedCache.set('k', [], page);
+    expect(pagedCache.fresh(pagedCache.get('k'))).toBe(true);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + STALE_MS + 1);
+    expect(pagedCache.fresh(pagedCache.get('k'))).toBe(false);
+    vi.useRealTimers();
+    for (let i = 0; i < 80; i++) pagedCache.set(`p${i}`, [], page);
+    expect(pagedCache.get('p0')).toBeUndefined(); // the oldest were dropped
+    expect(pagedCache.get('p79')).toBeDefined();
+    pagedCache.clear();
+  });
+});
+
 describe('remembered lists', () => {
   it('are forgotten on sign-in and sign-out — the next account must not see the previous one\'s lists', async () => {
     const { listCache } = await import('./cache');

@@ -9,7 +9,7 @@ export type SubImportColumnKey =
   | 'tester_serial' | 'tester_part_number' | 'remark';
 
 /**
- * Các cột của file, theo thứ tự form Thêm sub-equipment (docs/DATABASE_MODIFIED.md mục 4). Tester: tìm theo serial trong
+ * Các cột của file, theo thứ tự form Thêm sub-equipment (docs/DATABASE.md). Tester: tìm theo serial trong
  * các tester đã có; part number của tester chỉ cần khi serial đó trùng ở nhiều thiết bị. Có tester thì vị trí theo tester.
  */
 export const SUB_IMPORT_COLUMNS: readonly ImportColumn<SubImportColumnKey>[] = [

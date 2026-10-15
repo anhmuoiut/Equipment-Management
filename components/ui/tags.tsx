@@ -1,19 +1,19 @@
 'use client';
 
 /**
- * Tag hiển thị dùng chung. Tag trạng thái tô bằng màu admin chọn ở
- * Configuration › Tag (tags.color, 5 màu hệ thống); hạn hiệu chuẩn và
- * trạng thái tài khoản có màu theo ý nghĩa — luôn kèm chữ, không chỉ màu.
+ * Shared pastel tags. Manual palettes stay separate from operating and
+ * calibration states; every viewport keeps the status text visible.
  */
 import { useTranslation } from 'react-i18next';
 import { formatDate } from '@/lib/client/api';
-import { CALIBRATION_STATUS_COLOR } from '@/lib/status';
+import { CALIBRATION_STATUS_COLOR, manualTagColor } from '@/lib/status';
 import type { CalibrationStatus, StatusColor, TagItem } from '@/lib/types';
 
 export function StatusTag({ name, color }: { name: string | null; color: StatusColor | null | undefined }) {
   if (!name) return null;
+  const palette = manualTagColor(name, color);
   return (
-    <span className="tag tag-status" data-status-color={color ?? 'gray'}>{name}</span>
+    <span className="tag tag-status" data-status-color={palette} data-manual-color={palette}>{name}</span>
   );
 }
 
@@ -28,8 +28,7 @@ export function UserStatusTag({ active }: { active: boolean }) {
 }
 
 /**
- * Usage của thiết bị: hiện tag có chữ; riêng thẻ danh sách trên phone hiện chấm xanh / xám.
- * Chữ vẫn có cho trình đọc màn hình; tag Status không có chấm.
+ * Operating state, independent of calibration deadlines. Only this tag has a dot.
  */
 export function UsageTag({ usage }: { usage: 'in_use' | 'not_in_use' }) {
   const { t } = useTranslation();
@@ -44,18 +43,17 @@ export function UsageTag({ usage }: { usage: 'in_use' | 'not_in_use' }) {
 /** Calibration Status: Not calibrated / Failed / Overdue / Due soon / Valid — hệ thống tự tính, không ai chọn. */
 export function CalibrationStatusTag({ status }: { status: CalibrationStatus }) {
   const { t } = useTranslation();
-  return <StatusTag name={t(`cal.status.${status}`)} color={CALIBRATION_STATUS_COLOR[status]} />;
+  return <span className="tag tag-status" data-status-color={CALIBRATION_STATUS_COLOR[status]} data-cal-status={status}>{t(`cal.status.${status}`)}</span>;
 }
 
 /** Ngày đến hạn hiệu chuẩn có màu: đỏ = quá hạn, vàng = sắp đến hạn (theo Calibration Status). */
 export function DueDate({ date, status }: { date: string | null; status: CalibrationStatus }) {
-  const { t } = useTranslation();
   if (!date) return null;
   const tone = status === 'overdue' ? 'alert' : status === 'due_soon' ? 'warn' : 'neutral';
   return (
     <span className="due" data-tone={tone}>
       {formatDate(date)}
-      {(status === 'overdue' || status === 'due_soon') && <span className="due-label">{t(`cal.status.${status}`)}</span>}
+      {(status === 'overdue' || status === 'due_soon') && <CalibrationStatusTag status={status} />}
     </span>
   );
 }

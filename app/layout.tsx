@@ -4,7 +4,7 @@ import './brand.css';
 import { PreferencesProvider } from '@/components/Preferences';
 
 export const metadata: Metadata = {
-  title: 'Jabil | SolarEdge Equipment Management',
+  title: 'Equipment Management',
   description: 'Test Engineering - SolarEdge workcell'
 };
 

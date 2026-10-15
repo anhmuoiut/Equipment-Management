@@ -1,5 +1,5 @@
 /**
- * Quy tắc cây tài sản (docs/DATABASE_MODIFIED.md "Cây tài sản") — bản JS của asset_parent_allowed trong database,
+ * Quy tắc cây tài sản (docs/DATABASE.md "Cây tài sản") — bản JS của asset_parent_allowed trong database,
  * dùng khi kiểm tra file import (báo lỗi theo dòng trước khi gọi database) và giao diện. Database vẫn là nơi quyết
  * định: mọi đường ghi đều bị chặn ở đó (PARENT_TYPE_INVALID).
  *

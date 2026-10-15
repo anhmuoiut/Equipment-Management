@@ -1,7 +1,7 @@
 import 'server-only';
 
 /**
- * Import Excel cho Equipment (docs/DETAIL_MODEL.md mục 6, DATABASE_MODIFIED.md mục 3).
+ * Import Excel cho Equipment (docs/ARCHITECTURE.md §7, docs/DATABASE.md).
  *
  * - File mẫu sinh lúc tải: danh sách chọn (Part number, Type, Level, Location) lấy từ Configuration ngay lúc đó nên
  *   luôn khớp với app; part number chỉ liệt kê loại tester / base / fixture.
@@ -62,23 +62,10 @@ export function importChoices(lookups: Lookups, language: Language = 'en'): Impo
 }
 
 export async function buildTemplate(lookups: Lookups, language: Language, now = new Date()): Promise<Buffer> {
-  const t = textFor(language);
   return buildImportTemplate({
     columns: IMPORT_COLUMNS,
     choices: importChoices(lookups, language),
     sheet: DATA_SHEET,
-    guideTitle: t('imp.tpl.guideTitle'),
-    steps: [
-      t('imp.tpl.step1', { sheet: DATA_SHEET }), t('imp.tpl.step2'), t('imp.tpl.step3'), t('imp.tpl.stepParent'),
-      t('imp.tpl.step4', { max: IMPORT_MAX_ROWS }),
-    ],
-    leadingNotes: (col, tr) => col.key === 'parent_serial' ? [tr('imp.tpl.parentSerial')]
-      : col.key === 'parent_part_number' ? [tr('imp.tpl.parentPart')] : [],
-    extraRules: (col, tr) => col.key === 'serial_number' ? [tr('imp.tpl.serialDuplicate')]
-      : col.key === 'type_id' ? [tr('imp.tpl.typeFromPart')]
-        : col.key === 'level_id' ? [tr('imp.tpl.levelParent')]
-          : col.key === 'usage' ? [tr('imp.tpl.usageRule')]
-            : col.key === 'tag_ids' ? [tr('imp.tpl.tagsRule')] : [],
     // Part number của thiết bị cha có thể là mã đã ẩn → chỉ cảnh báo, không chặn.
     lenientLists: ['parent_part_number'],
     language, now,

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Ô chọn thiết bị tìm trên server (docs/DETAIL_MODEL.md 4.1): danh sách cha hợp lệ (`valid_parents`) và thiết bị
+ * Ô chọn thiết bị tìm trên server (docs/UI.md): danh sách cha hợp lệ (`valid_parents`) và thiết bị
  * Swap được (`swap_candidates`) quá dài để tải hết — gõ serial / part number thì hỏi server. Dùng
  * SearchableSelect ở chế độ `onSearch`.
  */

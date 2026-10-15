@@ -17,11 +17,11 @@ async function loadTemplate(language: 'vi' | 'en' = 'vi') {
   return wb;
 }
 
-/** Điền file mẫu như người dùng: nhập từ dòng 3 của sheet Calibration. */
+/** Điền file mẫu như người dùng: nhập từ dòng 2 của sheet Calibration. */
 async function filledTemplate(rows: (string | null)[][]): Promise<Buffer> {
   const wb = await loadTemplate();
   const ws = wb.getWorksheet('Calibration')!;
-  rows.forEach((values, i) => values.forEach((v, c) => { if (v !== null) ws.getCell(3 + i, c + 1).value = v; }));
+  rows.forEach((values, i) => values.forEach((v, c) => { if (v !== null) ws.getCell(2 + i, c + 1).value = v; }));
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -45,11 +45,11 @@ const line = (c: Cells): (string | null)[] => [
 const issues = (report: { rows: { row: number; issues: unknown[] }[] }) => report.rows.map((r) => [r.row, r.issues]);
 
 describe('sub-equipment import template', () => {
-  it('has the Calibration / Guide / Valid values sheets with the column headers on row 2', async () => {
+  it('has the Calibration / Valid values sheets with the column headers on row 1', async () => {
     const wb = await loadTemplate('en');
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['Calibration', 'Guide', 'Valid values']);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Calibration', 'Valid values']);
     const ws = wb.getWorksheet('Calibration')!;
-    expect(SUB_IMPORT_COLUMNS.map((_c, i) => cellText(ws.getCell(2, i + 1).value).replace(/ \*$/, ''))).toEqual(SUB_IMPORT_COLUMNS.map((c) => c.header));
+    expect(SUB_IMPORT_COLUMNS.map((_c, i) => cellText(ws.getCell(1, i + 1).value).replace(/ \*$/, ''))).toEqual(SUB_IMPORT_COLUMNS.map((c) => c.header));
   });
 
   it('lists only sub-equipment part numbers and Types; the tester part number column lists tester part numbers', async () => {
@@ -66,7 +66,7 @@ describe('sub-equipment import template', () => {
 describe('sub-equipment import check — cùng quy tắc với form Thêm sub-equipment', () => {
   it('maps a valid row to ids; a loose sub-equipment needs a Location', async () => {
     const { report, inserts } = await check([line({ jabil: 'J1', asset: 'A-1', type: 'DMM', remark: 'ok' }), line({ sn: 'SN-DMM-2', loc: null })]);
-    expect(issues(report)).toEqual([[4, [{ column: 'location_id', code: 'required' }]]]);
+    expect(issues(report)).toEqual([[3, [{ column: 'location_id', code: 'required' }]]]);
     expect(inserts).toEqual([{
       serial_number: 'SN-DMM-1', part_number_id: 'pn-4', jabil_id: 'J1', asset: 'A-1', type_id: 'type-3', location_id: 'loc-0',
       tester_id: null, remark: 'ok',
@@ -81,9 +81,9 @@ describe('sub-equipment import check — cùng quy tắc với form Thêm sub-eq
     ]);
     expect(inserts).toEqual([]);
     expect(issues(report)).toEqual([
-      [3, [{ column: 'part_number_id', code: 'wrong_kind', value: 'P12316' }]],
-      [4, [{ column: 'type_id', code: 'type_follows_part_number', value: 'DMM' }]],
-      [5, [{ column: 'part_number_id', code: 'inactive', value: 'DMM-OLD' }]],
+      [2, [{ column: 'part_number_id', code: 'wrong_kind', value: 'P12316' }]],
+      [3, [{ column: 'type_id', code: 'type_follows_part_number', value: 'DMM' }]],
+      [4, [{ column: 'part_number_id', code: 'inactive', value: 'DMM-OLD' }]],
     ]);
   });
 
@@ -103,11 +103,11 @@ describe('sub-equipment import check — cùng quy tắc với form Thêm sub-eq
       line({ sn: 'S5', testerPn: 'P12316' }),
     ], eqs);
     expect(issues(report)).toEqual([
-      [3, [{ column: 'location_id', code: 'location_follows_parent', value: 'B3F2' }]],
-      [4, [{ column: 'tester_serial', code: 'parent_not_found', value: 'NOPE' }]],
-      [5, [{ column: 'tester_serial', code: 'parent_ambiguous', value: 'TWIN', count: 2 }]],
-      [6, [{ column: 'tester_serial', code: 'parent_type_invalid', value: 'FIX-01' }]],
-      [7, [{ column: 'tester_serial', code: 'required' }]],
+      [2, [{ column: 'location_id', code: 'location_follows_parent', value: 'B3F2' }]],
+      [3, [{ column: 'tester_serial', code: 'parent_not_found', value: 'NOPE' }]],
+      [4, [{ column: 'tester_serial', code: 'parent_ambiguous', value: 'TWIN', count: 2 }]],
+      [5, [{ column: 'tester_serial', code: 'parent_type_invalid', value: 'FIX-01' }]],
+      [6, [{ column: 'tester_serial', code: 'required' }]],
     ]);
   });
 
@@ -115,7 +115,7 @@ describe('sub-equipment import check — cùng quy tắc với form Thêm sub-eq
     const { report, inserts } = await check([line({ sn: 'SN-A' }), line({ sn: 'sn-a ' }), line({ sn: 'GB-1' })], [TESTER], ['TESTER-01', 'gb-1']);
     expect(report).toMatchObject({ total: 3, valid: 3, duplicates: 2 });
     expect(inserts).toHaveLength(3);
-    expect(report.rows.map((r) => [r.row, r.duplicate_of])).toEqual([[4, 3], [5, 'existing']]);
+    expect(report.rows.map((r) => [r.row, r.duplicate_of])).toEqual([[3, 2], [4, 'existing']]);
   });
 
   it('rejects a file missing a required column', async () => {

@@ -1,14 +1,14 @@
 import 'server-only';
 
 /**
- * Phần dùng chung của ba loại tài sản (equipment, sub_equipment, golden_board) — docs/DATABASE_MODIFIED.md
+ * Phần dùng chung của ba loại tài sản (equipment, sub_equipment, golden_board) — docs/DATABASE.md
  * "Cây tài sản", "Hàm thao tác", "Tra cứu cho màn hình thao tác", asset_logs.
  *
- * Quy tắc nằm ở database (04_functions.sql); chỗ này chỉ gọi hàm, kiểm tra giá trị chọn và đổi kết quả sang
+ * Quy tắc nằm ở database (the baseline migration); chỗ này chỉ gọi hàm, kiểm tra giá trị chọn và đổi kết quả sang
  * kiểu của ứng dụng. Mọi hàm thao tác nhận `dryRun`: true = chạy đúng như thật (cùng kiểm tra, cùng mã lỗi)
  * rồi hoàn tác — màn hình thao tác dùng cho mục "Kết quả".
  */
-import { db, rpc, selectAll } from './db';
+import { db, rpc } from './db';
 import { withActorNames } from './history';
 import { assertActive, loadLookups } from './lookups';
 import { AppError, mapRpcError } from '@/lib/errors';
@@ -99,21 +99,6 @@ export async function serialMatches(serial: string, exclude?: { type: AssetType;
   return await rpc<SerialMatch[]>('serial_matches', {
     p_serial: serial, p_exclude_type: exclude?.type ?? null, p_exclude_id: exclude?.id ?? null,
   }) ?? [];
-}
-
-/**
- * Id các equipment đang có con là sub-equipment hoặc golden board — nửa còn lại của cờ "có con" trong danh sách Equipment
- * (con là equipment thì chính danh sách đó đã có `parent_id`, không cần đọc bảng equipment thêm lần nữa).
- */
-export async function equipmentWithLeafChildren(): Promise<Set<string>> {
-  const [subs, golden] = await Promise.all([
-    selectAll<{ tester_id: string | null }>('sub_equipment', 'tester_id'),
-    selectAll<{ parent_id: string | null }>('golden_boards', 'parent_id'),
-  ]);
-  const out = new Set<string>();
-  subs.forEach((r) => { if (r.tester_id) out.add(r.tester_id); });
-  golden.forEach((r) => { if (r.parent_id) out.add(r.parent_id); });
-  return out;
 }
 
 // ------------------------------------------------------------------ Nhật ký

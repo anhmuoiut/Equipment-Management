@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Import Excel (docs/DETAIL_MODEL.md mục 2) — modal cỡ L (`?tool=import`);
+ * Import Excel (docs/UI.md) — modal cỡ L (`?tool=import`);
  * dùng chung cho Equipment, Calibration và Golden. 1. Tải file mẫu (danh sách chọn
  * lấy từ Configuration ngay lúc tải). 2. Chọn file → server kiểm tra, chưa
  * ghi gì. 3. Hết lỗi → Import: thêm tất cả trong một giao dịch.

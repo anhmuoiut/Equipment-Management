@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Màn hình trong modal Calibration (docs/DETAIL_MODEL.md 4.2): Ghi nhận hiệu chuẩn (kèm xem trước "Hạn mới"),
+ * Màn hình trong modal Calibration (docs/UI.md): Ghi nhận hiệu chuẩn (kèm xem trước "Hạn mới"),
  * Sửa một lần hiệu chuẩn nhập sai, Xóa một lần hiệu chuẩn (Admin) và tab Hiệu chuẩn liệt kê mọi lần.
  */
 import { useState } from 'react';

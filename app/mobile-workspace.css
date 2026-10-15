@@ -1,8 +1,8 @@
 /* Mobile equipment reference: two-row cards, applied filter chips and bottom drawers. */
 @media (max-width: 767px) {
   :root {
-    --mobile-active: #18b42b;
-    --mobile-idle: #7d8ea6;
+    --mobile-active: var(--tag-online-ink);
+    --mobile-idle: var(--tag-offline-ink);
     --mobile-blue: #006cff;
   }
   .app-brand-row { gap: 6px; }
@@ -98,13 +98,6 @@
   .record-mobile-detail .rm-info .dp-value { min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
   .record-mobile-detail .rm-info .dp-value:has(.eq-rel) .dp-value-content { display: flex; flex-direction: column; align-items: stretch; gap: 6px; white-space: normal; }
   .record-mobile-detail .rm-info .dp-value:has(.eq-rel) .dp-value-content > .link { display: flex; align-items: flex-start; justify-content: flex-start; min-height: 44px; padding: 0; margin: 0; text-align: left; }
-  .record-mobile-detail :is(.tag-status, .tag-usage) { box-shadow: 0 2px 5px color-mix(in srgb, var(--ink) 8%, transparent); }
-  .record-mobile-detail .tag-status { border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 400; }
-  .modal-dialog .tag-usage { gap: 6px; padding: 4px 9px; border-radius: 8px; font-size: 12px; font-weight: 400; }
-  .modal-dialog .tag-usage[data-usage='in_use'] { border-color: transparent; background: var(--success-tint); color: var(--success); }
-  .modal-dialog .tag-usage[data-usage='not_in_use'] { border-color: transparent; background: var(--neutral-tint); color: var(--ink-3); }
-  .modal-dialog .tag-usage[data-usage='in_use'] .tag-dot { width: 9px; height: 9px; background: var(--mobile-active); box-shadow: none; }
-  .modal-dialog .tag-usage[data-usage='not_in_use'] .tag-dot { width: 9px; height: 9px; background: var(--mobile-idle); box-shadow: none; }
   .record-mobile-detail .modal-footer { padding: 16px 18px; padding-bottom: max(18px, env(safe-area-inset-bottom)); border-top: 1px solid var(--rule-soft); background: var(--panel); }
   .am-list button:disabled { opacity: .45; cursor: default; }
 }

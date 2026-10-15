@@ -53,13 +53,13 @@ const click = async (element: HTMLElement) => { await act(async () => { fireEven
 beforeEach(() => { phone(false); vi.mocked(api.get).mockClear(); });
 
 describe('RecordModal — equipment split detail', () => {
-  it('shows the equipment tree before the details together on desktop without a separate tree tab', () => {
+  it('shows the details on the left and the equipment tree on the right on desktop without a separate tree tab', () => {
     render(<RecordModal {...props()} />);
     const regions = within(dialog()).getAllByRole('region');
-    expect(regions.map((region) => region.getAttribute('aria-label'))).toEqual(['Equipment tree', 'dp.tabInfo']);
-    expect(within(regions[0]!).getByText('Tree for SN-001')).toBeTruthy();
-    expect(within(regions[1]!).getByText('record details')).toBeTruthy();
-    expect(within(regions[1]!).getByText('dp.systemInfo')).toBeTruthy();
+    expect(regions.map((region) => region.getAttribute('aria-label'))).toEqual(['dp.tabInfo', 'Equipment tree']);
+    expect(within(regions[1]!).getByText('Tree for SN-001')).toBeTruthy();
+    expect(within(regions[0]!).getByText('record details')).toBeTruthy();
+    expect(within(regions[0]!).getByText('dp.systemInfo')).toBeTruthy();
     expect(within(dialog()).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['dp.tabInfo', 'dp.tabHistory']);
     expect(within(dialog()).getByRole('tab', { name: 'dp.tabInfo' }).getAttribute('aria-selected')).toBe('true');
   });

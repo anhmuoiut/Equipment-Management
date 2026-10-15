@@ -1,6 +1,6 @@
 /**
  * Kiểu dữ liệu trao đổi giữa server và client (theo
- * docs/DATABASE_MODIFIED.md). Chỉ có type, dùng được ở cả hai phía.
+ * docs/DATABASE.md). Chỉ có type, dùng được ở cả hai phía.
  * FK luôn đi kèm chữ hiển thị (display_name) để UI không phải tra lại.
  */
 import type { Role } from '@/lib/permissions';
@@ -29,9 +29,9 @@ export type TypeOption = OptionItem & { kind: TypeKind; group_id: string };
 /** Nhóm của Type: Admin chọn trong các nhóm `kind = sub_equipment` (3 nhóm hệ thống khóa). */
 export type TypeGroupOption = OptionItem & { kind: TypeKind };
 /** Part number + Type mà mọi thiết bị mang part number này có (kind quyết định thiết bị thuộc bảng nào) + Level (không bắt buộc; điền sẵn khi thêm thiết bị). */
-export type PartNumberOption = OptionItem & { type_id: string; kind: TypeKind; level_id: string | null };
-/** 5 màu hệ thống của thẻ (tags.color) — mã màu ở globals.css. */
-export type StatusColor = 'green' | 'yellow' | 'red' | 'blue' | 'gray';
+export type PartNumberOption = OptionItem & { type_id: string; kind: TypeKind; level_id: string | null; manufacturer: string | null; description: string | null };
+/** Shared color keys; purple is an explicit manual tag palette. */
+export type StatusColor = 'green' | 'yellow' | 'red' | 'blue' | 'gray' | 'purple';
 /** Thẻ (Configuration › Tag) để chọn trong phần Remark của Equipment / Calibration / Golden. */
 export type TagOption = { id: string; display_name: string; sort_order: number; color: StatusColor };
 /** Thẻ đang gắn trên một bản ghi (đã xếp theo thứ tự cấu hình). */
@@ -143,6 +143,10 @@ export type SubEquipmentRow = Audit & {
   asset: string | null;
   type_id: string | null;
   type: string | null;
+  /** Nhà sản xuất của part number (Configuration › Part Number); chỉ xem. */
+  manufacturer: string | null;
+  /** Description inherited from Configuration → Part Number; read-only. */
+  description: string | null;
   tester_id: string | null;
   tester_serial: string | null;
   location_id: string;
@@ -254,8 +258,9 @@ export type ConfigRow = Audit & {
   display_name: string;
   sort_order: number;
   is_active: boolean;
-  description?: string | null;                 // types
-  kind?: TypeKind;                             // types, type-groups (tester / base / fixture khóa; sub_equipment do Admin thêm)
+  description?: string | null;                 // part-numbers
+  manufacturer?: string | null;                // part-numbers
+  kind?: TypeKind;                            // types, type-groups (tester / base / fixture khóa; sub_equipment do Admin thêm)
   group_id?: string;                           // types
   group?: string | null;                       // types
   type_id?: string;                            // part-numbers
@@ -307,9 +312,22 @@ export type HistoryEntry = {
   to_location?: string | null;
 };
 
-export type HistoryModule = AssetType | 'configuration' | 'user';
-/** `item_count` > 1: một lần Import Excel gộp thành một dòng (số dòng của lần import). */
-export type RecentActivity = HistoryEntry & { module: HistoryModule; object_id: string; item_count: number };
+export type HistoryModule = AssetType | 'user';
+/** Một bản ghi bị ảnh hưởng bởi một thao tác (nhật ký của chính bản ghi đó). */
+export type ActionRecord = {
+  module: HistoryModule; object_id: string; label: string; action: string;
+  changes: Record<string, HistoryChange>; note: string | null;
+  from_location?: string | null; to_location?: string | null;
+};
+/**
+ * "Thay đổi gần đây": MỘT thao tác của người dùng = MỘT dòng (view recent_actions, gộp theo action_id). `records` = các bản ghi bị ảnh
+ * hưởng, tối đa 50, bản ghi chính trước; `item_count` = tổng số dòng nhật ký của thao tác (một lần Import Excel = một dòng, item_count = số dòng).
+ */
+export type RecentAction = {
+  id: string; module: HistoryModule; modules: HistoryModule[]; action: string; source: string;
+  created_by: string | null; created_by_name: string | null; created_at: string;
+  item_count: number; records: ActionRecord[];
+};
 
 // --------------------------------------------------------------- Dashboard
 export type CountItem = { id: string | null; label: string | null; count: number };
@@ -332,4 +350,6 @@ export type DashboardData = {
   by_type: CountItem[];
   overdue: CalibrationAlert[];
   due_soon: CalibrationAlert[];
+  /** Trang đầu của "Thay đổi gần đây" (không lọc, 50 thao tác) — chỉ `/api/dashboard` trả kèm. */
+  activities?: RecentAction[];
 };

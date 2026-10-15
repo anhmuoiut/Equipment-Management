@@ -1,6 +1,6 @@
 import { z, optText, optId, optDate, reqId, reqText } from '@/lib/services/core/validate';
 
-/** Trường sub-equipment — docs/DATABASE_MODIFIED.md mục 4. Type không gửi: luôn theo part number. */
+/** Trường sub-equipment — docs/DATABASE.md. Type không gửi: luôn theo part number. */
 const sub = {
   serial_number: reqText(200),
   jabil_id: optText(200),
@@ -9,7 +9,7 @@ const sub = {
   tester_id: optId,
   location_id: reqId,
   remark: optText(1000),
-  tag_ids: z.array(reqId).max(50),
+  tag_ids: z.array(reqId).max(1), // mỗi lần chỉ một thẻ (cột vẫn là mảng)
 };
 /** Có tester thì vị trí theo tester (không cần location_id). */
 export const createSubSchema = z.object({ ...sub, location_id: optId }).strict();

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle2, Info, Loader2, RotateCcw, TriangleAlert, X, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, Copy, Info, Loader2, RotateCcw, TriangleAlert, X, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export function Button({
@@ -66,18 +66,13 @@ export function Notice({
 /** Open dialogs, oldest first — Escape and Tab only act on the newest (a picker sheet over a dialog). */
 const openModals: object[] = [];
 
-/** Cỡ cố định theo màn hình mở đầu (docs/DETAIL_MODEL.md 3.1): S ~440px, M ~640px, L ~960px; dưới 768px luôn toàn màn hình. */
+/** Cỡ cố định theo màn hình mở đầu (docs/UI.md): S ~440px, M ~640px, L ~960px; dưới 768px luôn toàn màn hình. */
 export type ModalSize = 's' | 'm' | 'l';
 
 type ModalContextValue = { footerEl: HTMLElement | null; size: ModalSize };
 const ModalContext = createContext<ModalContextValue | null>(null);
 /** Màn hình đang bị che (ví dụ "Hủy bỏ thay đổi?" đang hiện trên form): nút footer của nó tạm ngừng hiện. */
 const SuspendedContext = createContext(false);
-
-/** True khi nằm trong một Modal — popover (SearchableSelect…) khi đó không được mở thêm hộp thoại. */
-export function useInModal(): boolean {
-  return useContext(ModalContext) !== null;
-}
 
 export function ModalSuspend({ suspended, children }: { suspended: boolean; children: ReactNode }) {
   return <SuspendedContext.Provider value={suspended}>{children}</SuspendedContext.Provider>;
@@ -300,11 +295,43 @@ export function EmptyState({ title, subtitle, action }: { title: string; subtitl
  *  a failed fetch. `message` should already be the translated, user-safe
  *  text (errorMessage() / useFetch's job, not this component's); the raw
  *  error goes to error_log server-side, never here. */
+/** "(req_…)" at the end of a server-error message (errorMessage() adds it): shown as a separate, copyable reference. */
+const REQUEST_REFERENCE = /\s*\((req_[A-Za-z0-9-]+)\)\s*$/;
+
+/** A user-facing error message split into its sentence and the request reference (null when it has none). */
+export function splitRequestReference(message: string): { text: string; reference: string | null } {
+  const match = REQUEST_REFERENCE.exec(message);
+  return match ? { text: message.slice(0, match.index), reference: match[1] ?? null } : { text: message, reference: null };
+}
+
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const { text, reference } = splitRequestReference(message);
+  async function copyReference() {
+    try {
+      await navigator.clipboard.writeText(reference ?? '');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard blocked: the reference is selectable text */ }
+  }
   return (
-    <div className="px-4 py-16 text-center">
-      <p className="text-[14px]" style={{ color: 'var(--alert)' }}>{message}</p>
+    <div className="ui-error" role="alert">
+      <span className="ui-error-icon" aria-hidden="true"><TriangleAlert size={22} /></span>
+      <p className="ui-error-title">{t('common.errorTitle')}</p>
+      <p className="ui-error-text">{text}</p>
+      {reference && (
+        <>
+          <p className="ui-error-ref">
+            <span>{t('common.errorReference')}</span>
+            <code>{reference}</code>
+            <button type="button" onClick={() => void copyReference()} aria-label={copied ? t('common.copied') : t('common.copy')} title={copied ? t('common.copied') : t('common.copy')}>
+              {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+            </button>
+          </p>
+          <p className="ui-error-hint">{t('common.errorHint')}</p>
+        </>
+      )}
       {onRetry && (
         <Button size="sm" onClick={onRetry} className="mt-3">
           <RotateCcw size={13} aria-hidden="true" />{t('common.retry')}

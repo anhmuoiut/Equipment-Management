@@ -15,7 +15,7 @@ import type { HistoryChange, HistoryEntry } from '@/lib/types';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{4}-\d{2}-\d{2}T/;
 
-function useFormatHistoryValue() {
+export function useFormatHistoryValue() {
   const { t } = useTranslation();
   function format(value: unknown): string {
     if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) return '—';
@@ -46,7 +46,7 @@ export function useFormatNote() {
   };
 }
 
-function historyFieldLabel(key: string, fieldLabel: (key: string) => string): string {
+export function historyFieldLabel(key: string, fieldLabel: (key: string) => string): string {
   const direct = fieldLabel(key);
   if (direct !== key && direct !== `fields.${key}`) return direct;
   const alias = key === 'calibrated_at' ? 'calibration_date' : key.replace(/_id$/, '');
@@ -103,7 +103,7 @@ function equalValues(left: unknown, right: unknown): boolean {
   return false;
 }
 
-function rowChanges(row: HistoryTableRow): [string, HistoryChange][] {
+export function rowChanges(row: Pick<HistoryTableRow, 'changes' | 'fromLocation' | 'toLocation' | 'actionCode'>): [string, HistoryChange][] {
   const changes = { ...row.changes };
   if (!changes.location && (row.fromLocation || row.toLocation)) {
     changes.location = { old: row.fromLocation ?? null, new: row.toLocation ?? null };

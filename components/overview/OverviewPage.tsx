@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Overview (docs/DETAIL_MODEL.md 4.6): bảng thẻ theo Location — nhìn một lượt mọi Tester và thiết bị chưa gắn ở từng vị trí.
+ * Overview (docs/UI.md): bảng thẻ theo Location — nhìn một lượt mọi Tester và thiết bị chưa gắn ở từng vị trí.
  * Dữ liệu là MỘT lần gọi `GET /api/overview` (lọc và tìm chạy trên server vì thẻ khớp có thể nằm sau "+N"). Bấm thẻ con mở
  * modal của chính nó; bấm thẻ gốc hoặc "+N thiết bị" mở modal của tài sản gốc ở tab Cây thiết bị (`?id=&type=&tab=tree`).
  * Thu gọn / mở section do người dùng chọn, nhớ trong tab đang mở; có bộ lọc thì mọi section tự mở.
@@ -67,8 +67,9 @@ export function OverviewPage() {
     if (modalOpen) update(changes, 'replace');
     else { pushedRef.current = true; update(changes, 'push'); }
   }, [modalOpen, update]);
-  function openRelated(id: string) {
-    update({ id, type: urlType, tab: null }, 'replace');
+  /** Nút trong cây / chip cha – con: mở ngay trong modal đang mở, kể cả khi là loại tài sản khác. */
+  function openRelated(relatedType: AssetType, id: string) {
+    update({ id, type: relatedType, tab: null }, 'replace');
   }
   function closeRecord() {
     if (pushedRef.current) { pushedRef.current = false; back(); } else update({ id: null, type: null, tab: null }, 'replace');
@@ -124,7 +125,7 @@ export function OverviewPage() {
       </div>
 
       {modalOpen && urlId && urlType && (
-        <OverviewRecord key={urlType} type={urlType} id={urlId} tab={urlTab} onClose={closeRecord} onChanged={reload} onOpen={openRelated} />
+        <OverviewRecord type={urlType} id={urlId} tab={urlTab} onClose={closeRecord} onChanged={reload} onOpen={openRelated} />
       )}
     </div>
   );

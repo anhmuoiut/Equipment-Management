@@ -15,11 +15,11 @@ const opt = (id: string, name: string, active = true) => ({ id, display_name: na
 
 export const options: Options = {
   part_numbers: [
-    { ...opt('pn-t', 'P12316'), type_id: 't-tester', kind: 'tester', level_id: null },
+    { ...opt('pn-t', 'P12316'), type_id: 't-tester', kind: 'tester', level_id: null, manufacturer: null, description: null },
     // P20001 carries the Level "EOL": the Add equipment form offers it.
-    { ...opt('pn-b', 'P20001'), type_id: 't-base', kind: 'base', level_id: 'lv1' },
-    { ...opt('pn-f', 'P30005'), type_id: 't-fixture', kind: 'fixture', level_id: null },
-    { ...opt('pn-s', 'DMM-100'), type_id: 't-dmm', kind: 'sub_equipment', level_id: null },
+    { ...opt('pn-b', 'P20001'), type_id: 't-base', kind: 'base', level_id: 'lv1', manufacturer: null, description: 'Base fixture assembly' },
+    { ...opt('pn-f', 'P30005'), type_id: 't-fixture', kind: 'fixture', level_id: null, manufacturer: null, description: null },
+    { ...opt('pn-s', 'DMM-100'), type_id: 't-dmm', kind: 'sub_equipment', level_id: null, manufacturer: 'Keysight', description: 'Digital multimeter' },
   ],
   locations: [opt('l1', 'B3F1'), opt('l2', 'B3F2')],
   types: [
@@ -55,7 +55,7 @@ export const spare = equipment({ id: 'e-spare', serial_number: 'BASE-02', locati
 export const equipmentRows = [tester, base, fixture, spare];
 
 export const sub = (over: Partial<SubEquipmentRow> & { id: string; serial_number: string }): SubEquipmentRow => ({
-  jabil_id: null, part_number_id: 'pn-s', part_number: 'DMM-100', asset: null, type_id: 't-dmm', type: 'DMM',
+  jabil_id: null, part_number_id: 'pn-s', part_number: 'DMM-100', asset: null, type_id: 't-dmm', type: 'DMM', manufacturer: 'Keysight', description: 'Digital multimeter',
   tester_id: 'e-tester', tester_serial: 'TESTER-01', location_id: 'l1', location: 'B3F1', usage: 'in_use', remark: null, tag_ids: [], tags: [],
   status: 'valid', calibration_id: 'c1', calibrated_at: '2026-06-01', due_date: '2027-06-01', result: 'pass', vendor_id: 'v1', vendor: 'Internal',
   cert_no: 'C-1', cert_file_url: null, interval_months: 12, warning_days: 30, ...audit, ...over,

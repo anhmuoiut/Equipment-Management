@@ -2,10 +2,10 @@ import 'server-only';
 
 /**
  * Bộ dùng chung của ba lần import Excel (Equipment, Calibration/sub-equipment, Golden): đọc file, tiêu đề cột,
- * giới hạn, và dựng file mẫu theo Configuration lúc tải (docs/DETAIL_MODEL.md mục 6).
+ * giới hạn, và dựng file mẫu theo Configuration lúc tải (docs/ARCHITECTURE.md §7).
  *
- * File mẫu: dòng 1 ghi chú từng cột nhận gì, dòng 2 là tiêu đề (`*` = bắt buộc), nhập từ dòng 3. Cột chọn có ô thả
- * xuống lấy từ sheet "Giá trị hợp lệ", bấm vào ô hiện chú thích; thêm sheet Hướng dẫn.
+ * File mẫu chỉ có hai sheet: sheet nhập (dòng 1 là tiêu đề, `*` = bắt buộc, nhập từ dòng 2; cột chọn có ô thả xuống lấy từ sheet
+ * "Giá trị hợp lệ") và sheet "Giá trị hợp lệ" (nguồn của các ô thả xuống). Không có dòng ghi chú, không có sheet hướng dẫn.
  */
 import ExcelJS from 'exceljs';
 import { AppError } from '@/lib/errors';
@@ -17,24 +17,27 @@ import { IMPORT_MAX_FILE_MB, IMPORT_MAX_ROWS, type ImportFileError } from '@/lib
 // ---------------------------------------------------------------------------
 
 export const PRUSSIAN = 'FF002B49';
-export const NOTE_FILL = 'FFEAF6FC';
-export const NOTE_INK = 'FF33495C';
 export const STAR = 'FFFFD54F';
-/** Ghi chú dòng 1 chỉ liệt kê nguyên danh sách khi danh sách ngắn. */
-export const SHORT_LIST = 80;
 
-export type Text = ReturnType<typeof textFor>;
 type Validations = { add(range: string, validation: Record<string, unknown>): void };
 export const validationsOf = (ws: ExcelJS.Worksheet) => (ws as unknown as { dataValidations: Validations }).dataValidations;
 
-export const clip = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1)}…`);
-
-/** Ước lượng chiều cao dòng (Excel không tự giãn dòng có chữ xuống dòng). */
-export function fitHeight(texts: { text: string; width: number }[], lineHeight = 15): number {
-  const lines = Math.max(1, ...texts.map(({ text, width }) =>
-    text.split('\n').reduce((n, part) => n + Math.max(1, Math.ceil(part.length / Math.max(width * 1.05, 1))), 0)));
-  return Math.min(lines * lineHeight + 4, 409);
+/**
+ * Gắn một quy tắc kiểm tra dữ liệu cho cả cột (dòng `from` → `to`) bằng TỪNG Ô một. Không dùng khóa dạng vùng ("A2:A1001"): exceljs 3.x
+ * không nhận khóa vùng — optimiseDataValidations giải mã nó thành MỘT ô rồi lỗi "Cannot set properties of undefined (setting 'marked')"
+ * khi ghi file (4.4+ thì nhận). Khóa từng ô chạy được ở cả hai bản, và khi ghi file exceljs gộp các ô giống hệt nhau thành một vùng.
+ *
+ * `_digits` (số chữ số của số dòng) chia cột thành các khúc 2–9, 10–99, 100–999, 1000+: exceljs duyệt các ô theo thứ tự CHỮ ("A10" đứng
+ * trước "A2") và mở rộng mỗi vùng xuống tận ô cuối giống hệt, nên không có dấu này thì "A2" tạo vùng A2:A1001 chồng lên A10:A1001 —
+ * Excel coi vùng chồng nhau là file lỗi. Khúc khác nhau thì dừng đúng chỗ → các vùng liền nhau, không chồng. Thuộc tính này không được
+ * ghi ra file (exceljs chỉ ghi các thuộc tính nó biết).
+ */
+function addColumnValidation(ws: ExcelJS.Worksheet, letter: string, from: number, to: number, validation: Record<string, unknown>): void {
+  const validations = validationsOf(ws);
+  for (let row = from; row <= to; row++) validations.add(`${letter}${row}`, { ...validation, _digits: String(row).length });
 }
+
+export const clip = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1)}…`);
 
 export function fileError(code: ImportFileError, extra: Record<string, unknown> = {}): AppError {
   return new AppError('VALIDATION_ERROR', { fields: { file: code }, ...extra });
@@ -78,7 +81,7 @@ export function cellText(value: ExcelJS.CellValue | undefined): string {
 
 /**
  * Sheet có cột Serial number trong 5 dòng đầu; dòng đó là tiêu đề, dữ liệu ở các dòng bên dưới (bỏ dòng trống).
- * File mẫu: dòng 1 ghi chú, dòng 2 tiêu đề.
+ * File mẫu hiện tại: tiêu đề ở dòng 1. File mẫu cũ (dòng 1 ghi chú, dòng 2 tiêu đề) vẫn đọc được.
  */
 export async function readWorkbook(buffer: Buffer, keys: Map<string, string>): Promise<SheetTable> {
   const wb = new ExcelJS.Workbook();
@@ -190,13 +193,6 @@ export type TemplateSpec = {
   choices: Record<string, string[]>;
   /** Tên sheet nhập. */
   sheet: string;
-  guideTitle: string;
-  /** Các bước trong sheet Hướng dẫn (đã dịch). */
-  steps: string[];
-  /** Ghi chú đứng trước phần "chọn / chữ" của cột (ví dụ cách ghi serial cha). */
-  leadingNotes?: (col: TemplateColumn, t: Text) => string[];
-  /** Quy tắc riêng của cột (ngoài bắt buộc / độ dài / danh sách). */
-  extraRules?: (col: TemplateColumn, t: Text) => string[];
   /** Cột chọn mà giá trị ngoài danh sách chỉ cảnh báo, không chặn (ví dụ part number của cha có thể đã ẩn). */
   lenientLists?: readonly string[];
   language: Language;
@@ -207,51 +203,25 @@ export async function buildImportTemplate(spec: TemplateSpec): Promise<Buffer> {
   const t = textFor(spec.language);
   const now = spec.now ?? new Date();
   const { columns, choices } = spec;
-  const guideName = t('imp.tpl.sheetGuide');
   const valuesName = t('imp.tpl.sheetValues');
   const errorTitle = clip(t('imp.tpl.errorTitle'), 32);
   const lists = [...new Set(columns.flatMap((c) => (c.list ? [c.list] : [])))];
-  const rulesOf = (col: TemplateColumn) => spec.extraRules?.(col, t) ?? [];
-
-  const noteOf = (col: TemplateColumn): string => {
-    const parts: string[] = [];
-    if (col.required) parts.push(t('imp.tpl.required'));
-    if (col.requiredUnlessParent) parts.push(t('imp.tpl.requiredUnlessParent'));
-    parts.push(...(spec.leadingNotes?.(col, t) ?? []));
-    if (col.list) {
-      const values = choices[col.list] ?? [];
-      const joined = values.join(', ');
-      if (!values.length) parts.push(t('imp.tpl.noValues'));
-      else if (joined.length <= SHORT_LIST) parts.push(t(col.multi ? 'imp.tpl.pickMultiShort' : 'imp.tpl.pickShort', { values: joined }));
-      else parts.push(t(col.multi ? 'imp.tpl.pickMultiMany' : 'imp.tpl.pickMany', { count: values.length, sheet: valuesName }));
-    } else {
-      parts.push(t('imp.tpl.text', { max: col.max ?? 0 }));
-    }
-    return [...parts, ...rulesOf(col)].join(' · ');
-  };
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Equipment Management';
   wb.created = now;
 
-  // ---- Sheet nhập: dòng 1 ghi chú, dòng 2 tiêu đề, nhập từ dòng 3.
-  const ws = wb.addWorksheet(spec.sheet, { views: [{ state: 'frozen', ySplit: 2, activeCell: 'A3' }] });
-  const lastRow = IMPORT_MAX_ROWS + 2;
-  const notes = columns.map(noteOf);
+  // ---- Sheet nhập: dòng 1 là tiêu đề (`*` = bắt buộc), nhập từ dòng 2. Chỉ có ô thả xuống / kiểm tra độ dài — không ghi chú, không hướng dẫn.
+  const ws = wb.addWorksheet(spec.sheet, { views: [{ state: 'frozen', ySplit: 1, activeCell: 'A2' }] });
+  const firstRow = 2;
+  const lastRow = IMPORT_MAX_ROWS + 1;
   columns.forEach((col, i) => {
-    const text = notes[i] ?? '';
     const column = ws.getColumn(i + 1);
     column.width = col.width;
     // Ô dạng chữ: giữ số 0 đầu serial / part number, Level "1" khớp đúng danh sách thả xuống.
     column.numFmt = '@';
 
-    const note = ws.getCell(1, i + 1);
-    note.value = text;
-    note.font = { size: 9, italic: true, color: { argb: NOTE_INK } };
-    note.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NOTE_FILL } };
-    note.alignment = { wrapText: true, vertical: 'top' };
-
-    const header = ws.getCell(2, i + 1);
+    const header = ws.getCell(1, i + 1);
     const font = { bold: true, color: { argb: 'FFFFFFFF' } };
     header.value = col.required || col.requiredUnlessParent
       ? { richText: [{ text: col.header, font }, { text: ' *', font: { bold: true, color: { argb: STAR } } }] }
@@ -260,80 +230,25 @@ export async function buildImportTemplate(spec: TemplateSpec): Promise<Buffer> {
     header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PRUSSIAN } };
     header.alignment = { vertical: 'middle' };
 
-    const range = `${column.letter}3:${column.letter}${lastRow}`;
-    const prompt = { showInputMessage: true, promptTitle: clip(col.header, 32), prompt: clip(text, 255) };
-    if (col.list && col.multi) {
-      // Nhiều giá trị trong một ô ("A; B"): ô thả xuống chỉ nhận một giá trị nên không đặt — giá trị hợp lệ ở sheet Giá trị hợp lệ.
-      validationsOf(ws).add(range, { type: 'any', ...prompt });
-    } else if (col.list) {
+    // Nhiều giá trị trong một ô ("A; B", ví dụ Tags): ô thả xuống chỉ nhận một giá trị nên không đặt — giá trị hợp lệ ở sheet Giá trị hợp lệ.
+    if (col.list && col.multi) return;
+    if (col.list) {
       const count = (choices[col.list] ?? []).length;
+      if (count === 0) return;
       const letter = String.fromCharCode(65 + lists.indexOf(col.list)); // cột của danh sách ở sheet Giá trị hợp lệ
       const strict = !spec.lenientLists?.includes(col.key);
-      validationsOf(ws).add(range, count
-        ? {
-          type: 'list', allowBlank: true, formulae: [`'${valuesName}'!$${letter}$2:$${letter}$${count + 1}`], ...prompt,
-          showErrorMessage: true, errorStyle: strict ? 'stop' : 'warning', errorTitle, error: clip(t('imp.tpl.errorList'), 255),
-        }
-        : { type: 'any', ...prompt });
+      addColumnValidation(ws, column.letter!, firstRow, lastRow, {
+        type: 'list', allowBlank: true, formulae: [`'${valuesName}'!$${letter}$2:$${letter}$${count + 1}`],
+        showErrorMessage: true, errorStyle: strict ? 'stop' : 'warning', errorTitle, error: clip(t('imp.tpl.errorList'), 255),
+      });
     } else {
-      validationsOf(ws).add(range, {
-        type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true, formulae: [col.max], ...prompt,
+      addColumnValidation(ws, column.letter!, firstRow, lastRow, {
+        type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true, formulae: [col.max],
         showErrorMessage: true, errorStyle: 'stop', errorTitle, error: clip(t('imp.tpl.errorText', { max: col.max ?? 0 }), 255),
       });
     }
   });
-  ws.getRow(1).height = fitHeight(columns.map((c, i) => ({ text: notes[i] ?? '', width: c.width * 1.15 })), 12);
-  ws.getRow(2).height = 20;
-
-  // ---- Hướng dẫn
-  const guide = wb.addWorksheet(guideName);
-  guide.columns = [{ width: 22 }, { width: 14 }, { width: 58 }, { width: 58 }];
-  const time = new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
-  }).format(now);
-  guide.getCell('A1').value = spec.guideTitle;
-  guide.getCell('A1').font = { bold: true, size: 14, color: { argb: PRUSSIAN } };
-  guide.getCell('A2').value = t('imp.tpl.generated', { time });
-  guide.getCell('A2').font = { italic: true, color: { argb: NOTE_INK } };
-  spec.steps.forEach((step, i) => {
-    const r = 4 + i;
-    guide.mergeCells(r, 1, r, 4);
-    const cell = guide.getCell(r, 1);
-    cell.value = `${i + 1}. ${step}`;
-    cell.alignment = { wrapText: true, vertical: 'top' };
-    guide.getRow(r).height = fitHeight([{ text: cell.value, width: 140 }]);
-  });
-  const headRow = 4 + spec.steps.length + 1;
-  guide.getRow(headRow).values = [t('imp.tpl.colColumn'), t('imp.tpl.colRequired'), t('imp.tpl.colRule'), t('imp.tpl.colValues')];
-  guide.getRow(headRow).eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PRUSSIAN } };
-  });
-  columns.forEach((col, i) => {
-    const rules: string[] = [...(spec.leadingNotes?.(col, t) ?? [])];
-    let values = '';
-    if (col.list) {
-      if (col.multi) rules.push(t('imp.tpl.pickMulti', { page: col.page ?? col.header }));
-      else if (!spec.lenientLists?.includes(col.key)) rules.push(col.fixed ? t('imp.tpl.pickFixed') : t('imp.tpl.pick', { page: col.page ?? col.header }));
-      const list = choices[col.list] ?? [];
-      const joined = list.join(', ');
-      values = !list.length ? t('imp.tpl.noValues')
-        : joined.length <= 400 ? joined : t('imp.tpl.pickMany', { count: list.length, sheet: valuesName });
-    } else {
-      rules.push(t('imp.tpl.text', { max: col.max ?? 0 }));
-    }
-    if (col.requiredUnlessParent) rules.push(t('imp.tpl.locationParent'));
-    rules.push(...rulesOf(col));
-    const rule = rules.join(' — ');
-    const required = col.required ? t('imp.tpl.yes') : col.requiredUnlessParent ? t('imp.tpl.yesUnlessParent') : t('imp.tpl.no');
-
-    const row = guide.getRow(headRow + 1 + i);
-    row.values = [col.header, required, rule, values];
-    row.getCell(1).font = { bold: true };
-    if (col.required || col.requiredUnlessParent) row.getCell(2).font = { bold: true, color: { argb: 'FFC00000' } };
-    row.eachCell((cell) => { cell.alignment = { wrapText: true, vertical: 'top' }; });
-    row.height = fitHeight([{ text: required, width: 14 }, { text: rule, width: 58 }, { text: values, width: 58 }]);
-  });
+  ws.getRow(1).height = 20;
 
   // ---- Giá trị hợp lệ (nguồn của các ô thả xuống — không sửa ở đây).
   const vs = wb.addWorksheet(valuesName, { views: [{ state: 'frozen', ySplit: 1 }] });

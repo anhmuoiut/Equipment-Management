@@ -7,7 +7,7 @@ export type UrlChanges = Record<string, string | null>;
 
 /**
  * Tham số trên URL (`?id=`, `?new=1`, `?tool=`) là nguồn sự thật của modal đang mở
- * (docs/DETAIL_MODEL.md 3.9). Đổi bằng `history.pushState` / `replaceState` — Next.js nối chúng vào
+ * (docs/UI.md). Đổi bằng `history.pushState` / `replaceState` — Next.js nối chúng vào
  * `useSearchParams`, nên modal mở / đóng ngay, không chờ server trả lại trang.
  * `push`: mở từ danh sách (nút Back của trình duyệt đóng modal); `replace`: chuyển bản ghi / màn hình.
  */

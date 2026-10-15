@@ -74,7 +74,7 @@ const config = {
     { id: 'g4', display_name: 'Sub-equipment', kind: 'sub_equipment', sort_order: 4, is_active: true, ...audit },
     { id: 'g5', display_name: 'Meters', kind: 'sub_equipment', sort_order: 5, is_active: true, ...audit },
   ],
-  tags: [{ id: 'tg1', display_name: 'Repair', sort_order: 1, is_active: true, color: 'yellow', ...audit }],
+  tags: [{ id: 'tg1', display_name: 'Repair', sort_order: 1, is_active: true, color: 'purple', ...audit }],
   'calibration-setup': [{ id: 'cc1', display_name: 'DMM-100', sort_order: 0, is_active: true, part_number_id: 'pn2', interval_months: 12, warning_days: 30, ...audit }],
 };
 const errorLog = [{ id: 'x1', request_id: 'req_1', route: 'GET /api/x', user_id: null, user_name: null, error_code: 'SERVER_ERROR', message: 'boom', stack: 'at x', created_at: audit.created_at }];
@@ -221,11 +221,12 @@ describe('User Management — Admin tạo tài khoản, bốn thao tác', () => 
     expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toBe('Dan');
   });
 
-  it('Edit: the username is locked with the reason', async () => {
+  it('Edit: the username is locked — shown as a plain value, with no input', async () => {
     await mount(<UsersWorkspace />);
     await openRow('Bob');
     await clickEdit();
-    expect(screen.getByText('usr.usernameLocked')).toBeTruthy();
+    expect(document.getElementById('f-username')).toBeNull();
+    expect(within(dialog()).getAllByText('bob').length).toBeGreaterThan(0);
   });
 
   it('Edit with an unsaved change: Esc asks "discard?" inside the modal; Stay keeps the form, Discard closes the modal', async () => {
@@ -264,8 +265,32 @@ describe('Configuration', () => {
     await mount(<ConfigWorkspace listKey={list} />);
     await openRow(list === 'tags' ? 'Repair' : list === 'calibration-setup' ? 'DMM-100' : list === 'types' ? 'DMM' : 'P12316');
     await clickEdit();
-    // Setup hiệu chuẩn: part number khóa khi sửa (đổi PN = xóa rồi thêm lại).
-    if (list === 'calibration-setup') expect(screen.getByText('cfg.partNumberFixed')).toBeTruthy();
+    // Setup hiệu chuẩn: part number khóa khi sửa (đổi PN = xóa rồi thêm lại) — chỉ hiện giá trị, không có ô chọn.
+    if (list === 'calibration-setup') expect(screen.queryByLabelText(/fields.part_number/)).toBeNull();
+  });
+
+  it('a Configuration record has no History tab and nothing asks the server for one (changes to the lists are not recorded)', async () => {
+    await mount(<ConfigWorkspace listKey="tags" />);
+    await openRow('Repair');
+    expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toBe('Repair');
+    expect(screen.queryByRole('tab', { name: 'dp.tabHistory' })).toBeNull();
+    expect(vi.mocked(api.get).mock.calls.some(([url]) => String(url).endsWith('/history'))).toBe(false);
+  });
+
+  it('part numbers: the Manufacturer column is there — also for someone whose saved column choices were made before it existed', async () => {
+    localStorage.setItem('masterlist-columns:configuration-part-numbers', JSON.stringify({ order: ['display_name', 'type', 'level', 'sort_order', 'is_active'], hidden: ['sort_order'] }));
+    await mount(<ConfigWorkspace listKey="part-numbers" />);
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '');
+    expect(headers.some((h) => /fields.manufacturer/.test(h))).toBe(true);
+    expect(headers.some((h) => /fields.sort_order/.test(h))).toBe(false); // their own choice is kept
+    localStorage.clear();
+  });
+
+  it('part numbers: the Add form and the record both have the Manufacturer field', async () => {
+    await mount(<ConfigWorkspace listKey="part-numbers" />);
+    await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
+    expect(screen.getByLabelText(/fields.manufacturer/)).toBeTruthy();
+    await click(within(footer()).getByRole('button', { name: 'common.cancel' }));
   });
 
   it('part numbers: Type column and required Type, and no "needs a parent" setting any more', async () => {
@@ -275,7 +300,6 @@ describe('Configuration', () => {
     expect(screen.getAllByText('Tester').length).toBeGreaterThan(0);
 
     await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
-    expect(screen.getByText('cfg.partTypeHint')).toBeTruthy();
     expect(screen.queryByText(/usageNeedsParent/)).toBeNull();
     await act(async () => { fireEvent.change(screen.getByLabelText(/fields.display_name/), { target: { value: 'P99999' } }); });
     await click(within(footer()).getByRole('button', { name: 'common.save' }));
@@ -306,7 +330,6 @@ describe('Configuration', () => {
     await mount(<ConfigWorkspace listKey="types" />);
     await openRow('Tester');
     await clickEdit();
-    expect(screen.getByText('cfg.groupLocked')).toBeTruthy();
     expect(screen.queryByLabelText(/fields.group/)).toBeNull();
     await click(within(dialog()).getByRole('button', { name: 'common.close' }));
     await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
@@ -343,7 +366,7 @@ describe('Configuration', () => {
     expect(screen.getByText('Meters')).toBeTruthy();
     await openRow('Tester');
     await clickEdit();
-    expect(screen.getByText('cfg.systemGroupLocked')).toBeTruthy();
+    expect(document.getElementById('f-is_active')).toBeNull(); // a system Group cannot be hidden: no switch
     await click(within(dialog()).getByRole('button', { name: 'common.close' }));
     await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
     await openRow('Meters');
@@ -386,20 +409,19 @@ describe('Configuration', () => {
   it('calibration setup: only sub-equipment part numbers that are not set up yet can be chosen', async () => {
     await mount(<ConfigWorkspace listKey="calibration-setup" />);
     await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
-    expect(screen.getByText('cfg.calibrationPartHint')).toBeTruthy();
     await click(screen.getByLabelText(/fields.part_number/));
     const labels = screen.getAllByRole('option').map((o) => o.textContent);
     expect(labels).toEqual(['DMM-200']); // DMM-100 đã có Setup; P12316 là part number của tester
   });
 
-  it('tags: color chip in list; 5-color picker, required when adding', async () => {
+  it('tags: pastel color chip in list; six palettes, required when adding', async () => {
     await mount(<ConfigWorkspace listKey="tags" />);
-    expect(document.querySelector('td .tag-status[data-status-color="yellow"]')?.textContent).toBe('values.yellow');
+    expect(document.querySelector('td .tag-status[data-manual-color="purple"]')?.textContent).toBe('cfg.tagPalette.purple');
     await openRow('Repair');
     await clickEdit();
     const picker = screen.getByRole('radiogroup', { name: 'fields.color' });
-    expect(within(picker).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['green', 'yellow', 'red', 'blue', 'gray']);
-    expect((within(picker).getByRole('radio', { checked: true }) as HTMLInputElement).value).toBe('yellow');
+    expect(within(picker).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['blue', 'green', 'gray', 'purple', 'yellow', 'red']);
+    expect((within(picker).getByRole('radio', { checked: true }) as HTMLInputElement).value).toBe('purple');
 
     await click(within(dialog()).getByRole('button', { name: 'common.close' }));
     await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
@@ -407,6 +429,17 @@ describe('Configuration', () => {
     await click(within(footer()).getByRole('button', { name: 'common.save' }));
     expect(api.post).not.toHaveBeenCalled();
     expect(within(screen.getByRole('radiogroup', { name: 'fields.color' }).closest('.dp-field') as HTMLElement).getByRole('alert').textContent).toBe('dp.required');
+  });
+
+  it.each(['yellow', 'red'] as const)('tags: an admin can save the new %s color', async (color) => {
+    vi.mocked(api.put).mockResolvedValue({ data: { ...config.tags[0], color }, meta: {} });
+    await mount(<ConfigWorkspace listKey="tags" />);
+    await openRow('Repair');
+    await clickEdit();
+    await click(screen.getByRole('radio', { name: `cfg.tagPalette.${color}` }));
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
+    expect(api.put).toHaveBeenCalledWith('/api/configuration/tags/tg1', expect.objectContaining({ color }));
+    expect(within(dialog()).getAllByText('Repair').some((e) => e.getAttribute('data-manual-color') === color)).toBe(true);
   });
 
   it('Error log: read-only modal', async () => {
@@ -423,6 +456,14 @@ describe('Dashboard', () => {
       id: 's1', serial_number: 'DMM-1', part_number: 'DMM-100', type: 'DMM', tester_serial: 'TESTER-01', location: 'B3F1',
       due_date: '2026-09-30', status: 'overdue',
     };
+    const base = { created_at: audit.created_at, created_by: 'u1', created_by_name: 'Admin', item_count: 1 };
+    // Recent changes: ONE row per user action (records = the affected records of that action).
+    const activities = [
+      { ...base, id: 'a1', module: 'equipment', modules: ['equipment'], action: 'UPDATE', source: 'ui',
+        records: [{ module: 'equipment', object_id: 'e1', label: 'SN-ROOT', action: 'UPDATE', changes: { asset: { old: null, new: 'A1' } }, note: null }] },
+      { ...base, id: 'a2', module: 'golden_board', modules: ['golden_board'], action: 'CREATE', source: 'import', item_count: 40,
+        records: [{ module: 'golden_board', object_id: 'g1', label: 'G-1', action: 'CREATE', changes: {}, note: null }] },
+    ];
     vi.mocked(api.get).mockImplementation(async (url: string) => {
       if (url === '/api/dashboard') {
         const usage = (inUse: number, notInUse: number) => [
@@ -438,17 +479,11 @@ describe('Dashboard', () => {
           ],
           by_tag: [{ id: 'tg1', label: 'Repair', count: 2 }], by_location: [{ id: 'l1', label: 'B3F1', count: 4 }], by_type: [],
           overdue: [alert], due_soon: [],
+          // the first page of Recent changes now arrives with the summary (one request); filters still call /activities
+          activities,
         }, meta: {} };
       }
-      if (url.startsWith('/api/dashboard/activities')) {
-        const base = { created_at: audit.created_at, created_by: 'u1', created_by_name: 'Admin', item_count: 1 };
-        return { data: [
-          { ...base, id: 'a1', module: 'equipment', object_id: 'e1', label: 'SN-ROOT', action: 'UPDATE',
-            changes: { asset: { old: null, new: 'A1' } }, note: 'swap_with:SN-2', source: 'ui' },
-          { ...base, id: 'a2', module: 'golden_board', object_id: 'g1', label: 'G-1', action: 'CREATE',
-            changes: {}, note: null, source: 'import', item_count: 40 },
-        ], meta: {} };
-      }
+      if (url.startsWith('/api/dashboard/activities')) return { data: activities, meta: {} };
       return { data: respond(url), meta: {} };
     });
     await mount(<Dashboard />);
@@ -462,10 +497,9 @@ describe('Dashboard', () => {
     expect(screen.getByText('DMM-1')).toBeTruthy();
     expect(screen.getByText('dash.byTag')).toBeTruthy();
     expect(screen.queryByText('dash.pendingUsers')).toBeNull();
-    expect(screen.getByText('hist.action.UPDATE')).toBeTruthy();
-    // Một lần import gộp thành một dòng, không liệt kê từng bản ghi.
-    expect(screen.getByText('hist.swapWith')).toBeTruthy();
-    expect(screen.getByText('dash.importedBatch')).toBeTruthy();
+    // One user action = one sentence; the record name is a link; an import is ONE line whose records stay behind "Show more".
+    expect(screen.getByText('hist.act.updated')).toBeTruthy();
+    expect(screen.getByText('hist.act.importedGolden')).toBeTruthy();
     expect(screen.queryByText('G-1')).toBeNull();
   });
 });

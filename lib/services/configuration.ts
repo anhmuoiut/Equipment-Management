@@ -1,15 +1,15 @@
 import 'server-only';
 
 /**
- * Module Configuration — 8 danh sách: dữ liệu gốc + hiệu chuẩn (Setup, Vendor),
- * bảng configuration_histories. Chỉ Admin.
+ * Module Configuration — 8 danh sách: dữ liệu gốc + hiệu chuẩn (Setup, Vendor). Chỉ Admin.
+ * Sửa cấu hình không ghi nhật ký (migration 20261017000000).
  */
 import { appWrite, db, selectAll, selectOne } from './core/db';
-import { readHistory, withActorNames } from './core/history';
+import { withActorNames } from './core/history';
 import { assertActive, auditOf, loadLookups, nameOf } from './core/lookups';
 import { AppError, mapRpcError } from '@/lib/errors';
 import type { ConfigListDef } from '@/lib/configuration';
-import type { ConfigRow, ErrorLogRow, HistoryEntry, TypeKind } from '@/lib/types';
+import type { ConfigRow, ErrorLogRow, TypeKind } from '@/lib/types';
 
 type DbRow = Record<string, unknown> & {
   id: string; created_at: string; created_by: string | null; updated_at: string; updated_by: string | null;
@@ -33,9 +33,9 @@ function toRow(list: ConfigListDef, r: DbRow, lookups: Lookups): ConfigRow {
     ...auditOf(lookups, r),
   };
   // Types: kind cho biết loại hệ thống (tester / base / fixture — khóa) hay loại sub-equipment do Admin thêm; group = nhóm (kind theo nhóm).
-  if (list.hasDescription) {
+  if (list.hasGroup) {
     return {
-      ...base, description: (r.description as string | null) ?? null, kind: r.kind as TypeKind,
+      ...base, kind: r.kind as TypeKind,
       group_id: r.group_id as string, group: nameOf(lookups.type_groups, r.group_id as string),
     };
   }
@@ -46,6 +46,8 @@ function toRow(list: ConfigListDef, r: DbRow, lookups: Lookups): ConfigRow {
     return {
       ...base, type_id: r.type_id as string, type: nameOf(lookups.types, r.type_id as string),
       level_id: levelId, level: nameOf(lookups.levels, levelId),
+      manufacturer: (r.manufacturer as string | null | undefined) ?? null,
+      description: (r.description as string | null | undefined) ?? null,
     };
   }
   if (list.isTag) return { ...base, color: (r.color as ConfigRow['color']) ?? 'gray' };
@@ -119,13 +121,6 @@ async function assertPartNumberActive(id: string | undefined) {
   const pn = await selectOne<{ is_active: boolean }>('part_numbers', id, 'is_active');
   if (!pn) throw new AppError('VALIDATION_ERROR', { fields: { part_number_id: 'not_found' } });
   if (!pn.is_active) throw new AppError('INACTIVE_OPTION', { fields: { part_number_id: 'inactive' } });
-}
-
-export function configHistory(list: ConfigListDef, id: string): Promise<HistoryEntry[]> {
-  return readHistory('configuration_histories', [
-    { column: 'table_name', value: list.table },
-    { column: 'record_id', value: id },
-  ]);
 }
 
 /** Configuration › HỆ THỐNG › Error log — chỉ xem, 1000 lỗi mới nhất. */

@@ -73,7 +73,7 @@ describe('Overview board — one load, sections per Location, one column per roo
     expect(Array.from(document.querySelectorAll('.ob-col')).map((g) => g.getAttribute('aria-label'))).toEqual(['TESTER-01', 'BASE-02', 'TESTER-09']);
   });
 
-  it('a card has no icon but ⚠: Type, PN, SN; the left border is the Status; the root card is the dark one; an unattached root says so', async () => {
+  it('a card shows operating and deadline tags together without icons; the border is operating status', async () => {
     await mount();
     const root = within(column('TESTER-01')).getAllByRole('button')[0]!;
     expect(root.getAttribute('data-root')).toBe('true');
@@ -82,11 +82,13 @@ describe('Overview board — one load, sections per Location, one column per roo
     expect(root.textContent).toContain('P12316');
     expect(root.textContent).toContain('TESTER-01');
     expect(root.getAttribute('aria-label')).toBe('Tester TESTER-01, ov.pn P12316, values.in_use, ov.alert: cal.status.overdue');
-    expect(root.querySelector('.ob-warn')!.getAttribute('data-tone')).toBe('alert');
+    expect(root.querySelector('[data-usage="in_use"]')?.textContent).toBe('values.in_use');
+    expect(root.querySelector('[data-cal-status="overdue"]')?.textContent).toBe('cal.status.overdue');
+    expect(root.querySelector('svg')).toBeNull();
     const loose = within(column('BASE-02')).getByRole('button');
     expect(loose.getAttribute('data-status-color')).toBe('gray');
-    expect(loose.textContent).toContain('ov.unattached');
-    expect(loose.querySelector('.ob-warn')).toBeNull();
+    expect(loose.querySelector('[data-usage="not_in_use"]')?.textContent).toBe('values.not_in_use');
+    expect(loose.querySelector('[data-cal-status]')).toBeNull();
     const sub = within(column('TESTER-01')).getByRole('button', { name: /DMM-2/ });
     expect(sub.textContent).toContain('ov.subType{"type":"DMM"}');
     expect(sub.getAttribute('data-root')).toBeNull();

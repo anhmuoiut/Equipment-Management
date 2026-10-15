@@ -1,6 +1,6 @@
 /**
  * Các danh sách của menu Configuration — dùng chung server (bảng, quy tắc)
- * và client (danh sách con, cột, trường). docs/APP_SHELL.md mục 3.
+ * và client (danh sách con, cột, trường). docs/UI.md.
  */
 import type { ConfigList, StatusColor } from '@/lib/types';
 
@@ -14,7 +14,10 @@ export type ConfigListDef = {
   hideable: boolean;
   /** Xóa thật (tags khi không còn dùng, calibration_configurations). */
   deletable: boolean;
+  /** Part Number: cột Mô tả (không bắt buộc, tối đa 1000 ký tự). */
   hasDescription?: boolean;
+  /** Part Number: cột Manufacturer (nhà sản xuất; không bắt buộc, tối đa 200 ký tự). */
+  hasManufacturer?: boolean;
   /** Part Number: Type bắt buộc — mọi thiết bị mang part number này có Type đó (đổi được khi chưa thiết bị nào dùng). */
   hasType?: boolean;
   /** Part Number: Level (không bắt buộc) chọn trong Configuration › Level; form Thêm thiết bị điền sẵn. */
@@ -30,9 +33,9 @@ export type ConfigListDef = {
 };
 
 export const CONFIG_LISTS: readonly ConfigListDef[] = [
-  { key: 'part-numbers', table: 'part_numbers', group: 'master', hideable: true, deletable: false, hasType: true, hasLevel: true },
+  { key: 'part-numbers', table: 'part_numbers', group: 'master', hideable: true, deletable: false, hasType: true, hasLevel: true, hasDescription: true, hasManufacturer: true },
   { key: 'locations', table: 'locations', group: 'master', hideable: true, deletable: false },
-  { key: 'types', table: 'types', group: 'master', hideable: true, deletable: false, hasDescription: true, hasGroup: true },
+  { key: 'types', table: 'types', group: 'master', hideable: true, deletable: false, hasGroup: true },
   { key: 'type-groups', table: 'type_groups', group: 'master', hideable: true, deletable: false, isTypeGroup: true },
   { key: 'tags', table: 'tags', group: 'master', hideable: false, deletable: true, isTag: true },
   { key: 'levels', table: 'levels', group: 'master', hideable: true, deletable: false },
@@ -44,10 +47,10 @@ export const CONFIG_LISTS: readonly ConfigListDef[] = [
 export const CONFIG_GROUPS: readonly ConfigGroup[] = ['master', 'calibration', 'system'];
 
 /**
- * 5 màu hệ thống admin chọn cho thẻ (docs/DATABASE_MODIFIED.md › tags).
- * Thứ tự hiển thị ở ô chọn màu: đèn giao thông trước, rồi xanh dương, xám.
+ * Database keys accepted by the API. The manual picker offers the same
+ * six pastel palettes through MANUAL_TAG_COLORS in lib/status.ts.
  */
-export const STATUS_COLORS = ['green', 'yellow', 'red', 'blue', 'gray'] as const satisfies readonly StatusColor[];
+export const STATUS_COLORS = ['green', 'yellow', 'red', 'blue', 'gray', 'purple'] as const satisfies readonly StatusColor[];
 
 /** Trang chỉ xem trong nhóm HỆ THỐNG. */
 export const ERROR_LOG_PATH = '/configuration/error-log';

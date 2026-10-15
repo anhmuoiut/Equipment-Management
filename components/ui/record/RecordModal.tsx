@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * RecordModal — modal của MỘT bản ghi (docs/DETAIL_MODEL.md mục 3): một màn hình hiện tại
+ * RecordModal — modal của MỘT bản ghi (docs/UI.md): một màn hình hiện tại
  * (chi tiết · sửa · thêm mới · thao tác · xóa), ngăn xếp quay lại bằng breadcrumb `← SN-001 › Sửa`,
  * footer chung, ‹ › và phím ← →, và "Hủy bỏ thay đổi?" ngay trong modal khi có thay đổi chưa lưu.
  *
@@ -112,6 +112,8 @@ export type RecordModalProps<R extends { id: string } & Audit> = {
   onDeleted?: (record: R) => void;
   /** Tải lại danh sách và bản ghi. */
   reload?: () => void;
+  /** Bản ghi vừa chọn còn đang tải, `record` vẫn là bản trước: khung giữ nguyên, bảng thông tin mờ đi và thao tác ở footer tạm khóa. */
+  switching?: boolean;
 };
 
 type View = { kind: 'detail' } | { kind: 'edit' } | { kind: 'create' } | { kind: 'action'; key: string } | { kind: 'delete' };
@@ -121,7 +123,7 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
   const {
     size, record, creating, loading, error, onRetry, heading, createTitle, sections, extraTabs, detailAsideTab, initialTab, historyUrl, historyFilter,
     historyLabels, canEdit, defaults, validate, beforeSave, onSave, savedScreen, actions = [], canDelete, deleteLabel, onDelete, deleteWarning,
-    nav, trail = [], onClose, onSaved, onDeleted, reload,
+    nav, trail = [], onClose, onSaved, onDeleted, reload, switching,
   } = props;
   const { t } = useTranslation();
   const phone = usePhone();
@@ -155,7 +157,9 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
 
   // Đổi bản ghi (‹ ›, mở bản ghi liên quan) / mở thêm mới → về màn hình ban đầu.
   useEffect(() => {
-    setTab(startTab);
+    // Bố cục hai cột (desktop): đổi bản ghi giữ nguyên tab đang xem (Thông tin / Lịch sử) nếu bản ghi mới còn tab đó; điện thoại vẫn về tab đầu.
+    if (!aside) setTab(startTab);
+    else setTab((current) => (current === 'info' || current === 'history' || extraTabs?.some((x) => x.key === current) ? current : startTab));
     setPending(null);
     setView(creating ? { kind: 'create' } : { kind: 'detail' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -373,7 +377,7 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
   } else if (activeTab !== 'info') {
     const extra = extraTabs?.find((x) => x.key === activeTab);
     body = extra ? extra.render(record)
-      : historyUrl ? <DetailHistory url={historyUrl(record)} fieldLabel={fieldLabel} filter={historyFilter} /> : null;
+      : historyUrl ? <DetailHistory key={record.id} url={historyUrl(record)} fieldLabel={fieldLabel} filter={historyFilter} /> : null;
   } else {
     body = (
       <div key={record.id} className="rm-info" data-mode="view">
@@ -400,13 +404,14 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
   if (aside && record && view.kind === 'detail' && activeTab === 'info') {
     body = (
       <div className="rm-detail-split">
+        <section className="rm-detail-pane rm-detail-fields" aria-label={t('dp.tabInfo')} tabIndex={0}
+          data-switching={switching || undefined} aria-busy={switching || undefined}>
+          <h3 className="rm-detail-pane-title">{t('dp.tabInfo')}</h3>
+          {body}
+        </section>
         <section className="rm-detail-pane rm-detail-tree" aria-label={aside.label} tabIndex={0}>
           <h3 className="rm-detail-pane-title">{aside.label}</h3>
           {aside.render(record)}
-        </section>
-        <section className="rm-detail-pane rm-detail-fields" aria-label={t('dp.tabInfo')} tabIndex={0}>
-          <h3 className="rm-detail-pane-title">{t('dp.tabInfo')}</h3>
-          {body}
         </section>
       </div>
     );
@@ -429,12 +434,12 @@ export function RecordModal<R extends { id: string } & Audit>(props: RecordModal
     ] : [];
     detailFooter = (
       <ModalFooter>
-        <div className="mf-left">{menu.length > 0 && <ActionMenu items={menu} busy={running} />}</div>
+        <div className="mf-left">{menu.length > 0 && <ActionMenu items={menu} busy={running || switching} />}</div>
         <div className="mf-right">
           {shown.length === 0
             ? <Button onClick={onClose}>{t('common.close')}</Button>
             : shown.map((b, i) => (
-              <Button key={b.key} variant={i === shown.length - 1 ? 'primary' : 'quiet'} disabled={running} onClick={b.onClick}>{b.icon}{b.label}</Button>
+              <Button key={b.key} variant={i === shown.length - 1 ? 'primary' : 'quiet'} disabled={running || switching} onClick={b.onClick}>{b.icon}{b.label}</Button>
             ))}
         </div>
       </ModalFooter>

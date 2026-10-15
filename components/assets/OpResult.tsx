@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Mục "Kết quả" của mọi màn hình thao tác (docs/DETAIL_MODEL.md 3.6): những gì thao tác SẼ làm, lấy từ
+ * Mục "Kết quả" của mọi màn hình thao tác (docs/UI.md): những gì thao tác SẼ làm, lấy từ
  * `dry_run` của hàm database — tài sản nào đổi Status, vị trí mới, ghi chú ("Theo thiết bị cha X"…). Lỗi của
  * database (đang In use, cùng cha và vị trí…) hiện ngay đây, trước khi bấm nút chính.
  */

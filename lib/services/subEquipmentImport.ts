@@ -13,7 +13,7 @@ import {
   readWorkbook, serialKey, type Entry, type ParentCandidate, type UploadedFile,
 } from './core/importKit';
 import { allSerials } from './equipmentImport';
-import { textFor, type Language } from '@/lib/i18n/text';
+import type { Language } from '@/lib/i18n/text';
 import { parentAllowed } from '@/lib/assetTree';
 import { SUB_IMPORT_COLUMNS, type SubImportColumnKey } from '@/lib/subEquipmentImport';
 import {
@@ -47,7 +47,6 @@ export function subImportChoices(lookups: Lookups): Choices {
 }
 
 export async function buildSubTemplate(lookups: Lookups, language: Language, now = new Date()): Promise<Buffer> {
-  const t = textFor(language);
   const choices = subImportChoices(lookups);
   // Cột "Tester part number" liệt kê part number của tester (khác cột Part number của chính sub-equipment).
   const testerParts = activeNames([...lookups.part_numbers.values()].filter((p) => kindOf(lookups, p.type_id) === 'tester'));
@@ -55,15 +54,6 @@ export async function buildSubTemplate(lookups: Lookups, language: Language, now
     columns: SUB_IMPORT_COLUMNS.map((c) => (c.key === 'tester_part_number' ? { ...c, list: 'tester_part_numbers' } : c)),
     choices: { ...choices, tester_part_numbers: testerParts },
     sheet: DATA_SHEET,
-    guideTitle: t('simp.tpl.guideTitle'),
-    steps: [
-      t('simp.tpl.step1', { sheet: DATA_SHEET }), t('imp.tpl.step2'), t('imp.tpl.step3'), t('simp.tpl.stepTester'),
-      t('simp.tpl.step4', { max: IMPORT_MAX_ROWS }),
-    ],
-    leadingNotes: (col, tr) => col.key === 'tester_serial' ? [tr('simp.tpl.testerSerial')]
-      : col.key === 'tester_part_number' ? [tr('imp.tpl.parentPart')] : [],
-    extraRules: (col, tr) => col.key === 'serial_number' ? [tr('imp.tpl.serialDuplicate')]
-      : col.key === 'type_id' ? [tr('imp.tpl.typeFromPart')] : [],
     lenientLists: ['tester_part_number'],
     language, now,
   });

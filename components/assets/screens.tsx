@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Màn hình thao tác chung của ba module tài sản (docs/DETAIL_MODEL.md 4.1): Đổi vị trí, Gắn vào / Đổi cha (Move),
+ * Màn hình thao tác chung của ba module tài sản (docs/UI.md): Đổi vị trí, Gắn vào / Đổi cha (Move),
  * Tách khỏi cha (Detach), Swap, Xóa, Check-out / Check-in. Mỗi màn hình xem trước bằng `dry_run` (mục "Kết quả")
  * — lỗi của database hiện ngay, trước khi bấm nút chính — rồi gọi lại thật và quay về chi tiết.
  */
