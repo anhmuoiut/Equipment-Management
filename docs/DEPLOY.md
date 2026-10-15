@@ -245,7 +245,7 @@ Look once a month; crossing a threshold means *optimise*, not necessarily upgrad
 | Vercel invocations | Vercel → Usage | 500k of 1M | Every API call and page open authenticates once; look for new polling |
 
 ### 10.10 Rebuild a development database
-Create a new project (or use a scratch one) and repeat §3. There is no destructive "reset the schema" script any more; to empty a *test* project keeping the Admin and the seeded lists use `database/tools/reset_after_testing.sql`.
+Create a new project (or use a scratch one) and repeat §3, or wipe the existing one with `reset_schema.sql` (below). To empty a *test* project keeping the Admin and the seeded lists use `database/tools/reset_after_testing.sql`.
 
 **Start over on a project that already has tables** (the baseline refuses to run twice): run [`database/tools/reset_schema.sql`](../database/tools/reset_schema.sql) in the SQL Editor after changing `'NO'` to `'WIPE'`. Only in the NEW or a scratch project, never production: it deletes every table, view and function in `public` with all their data, and leaves Supabase Auth users alone. Afterwards run the baseline, the seed, the Admin import and the §3 check again (the import is safe to repeat; to remove the Auth users too, run `delete from auth.users;` after the script).
 
