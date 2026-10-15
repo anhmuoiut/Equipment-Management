@@ -36,7 +36,7 @@ The browser never talks to Supabase directly. Every read and write goes through 
 | `components/ui` | Shared building blocks: `Masterlist`, `record/RecordModal`, `workspace/ModuleWorkspace`, `SearchableSelect`, `ActionMenu`, tags, `ImportModal`. |
 | `components/{equipment,calibration,golden,configuration,users,overview,dashboard,assets}` | Module screens built from the shared blocks. |
 | `src/i18n` | Client i18n setup and `locales/en.json`, `vi.json`. |
-| `database/` | Baseline migration, seed (system Types + Configuration lists), tools: Admin export / import and the reset script ([DATABASE.md](DATABASE.md), [DEPLOY.md](DEPLOY.md)). |
+| `database/` | Baseline migration, seed (system Types + Configuration lists), tools: Admin export / import, the post-test reset and the schema wipe ([DATABASE.md](DATABASE.md), [DEPLOY.md](DEPLOY.md)). |
 | `scripts/` | `seed-first-admin.ts` (first admin) and `bench-services.ts` (read-only timing against a real project). |
 | `.github/workflows` | Daily database backup; keepalive ping. |
 
