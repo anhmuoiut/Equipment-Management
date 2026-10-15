@@ -2,14 +2,20 @@
 
 /**
  * Trang Equipment: Masterlist full chiều rộng + modal bản ghi (docs/UI.md). Điện thoại hiện mỗi thiết bị
- * một thẻ (serial, Status, vị trí).
+ * một thẻ (serial, Status, vị trí). Danh sách phân trang ở server (usePagedList): mỗi lần một trang, tìm / lọc / sắp xếp trên toàn bộ dữ liệu;
+ * lựa chọn của các bộ lọc lấy từ Configuration (/api/options) và /api/filter-values.
  */
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CornerDownRight, ListTree, MapPin, Upload } from 'lucide-react';
 import { useCan } from '@/components/ViewerContext';
 import { RemarkCell, TagChips, UsageTag } from '@/components/ui/tags';
-import { ModuleWorkspace, useList } from '@/components/ui/workspace/ModuleWorkspace';
+import { ModuleWorkspace } from '@/components/ui/workspace/ModuleWorkspace';
+import { useOptions } from '@/lib/client/options';
+import { usePagedList } from '@/lib/client/usePagedList';
+import { useFilterValues } from '@/lib/client/filterValues';
+import { enumChoices, namedChoices, textChoices } from '@/lib/client/listChoices';
+import { USAGE_STATUSES } from '@/lib/status';
 import { ImportModal } from '@/components/ui/ImportModal';
 import type { Column } from '@/components/ui/masterlist/Masterlist';
 import { IMPORT_COLUMNS } from '@/lib/equipmentImport';
@@ -19,25 +25,30 @@ import type { EquipmentRow } from '@/lib/types';
 export function EquipmentWorkspace() {
   const { t } = useTranslation();
   const can = useCan();
-  const list = useList<EquipmentRow>('/api/equipment');
+  const list = usePagedList<EquipmentRow>('/api/equipment', { storageKey: 'equipment' });
+  const options = useOptions();
+  const filterValues = useFilterValues('equipment');
 
   // Status, rồi nó là gì (serial, part number, Type), ở đâu (Location), phần còn lại.
   // useMemo: Masterlist memo theo identity của columns / leading / mobileCard (cache chữ tìm kiếm, bộ lọc,
   // TableRow / Card memo) — tạo mảng mới mỗi lần render làm mất hết các cache đó.
   const columns = useMemo<Column<EquipmentRow>[]>(() => [
-    { key: 'usage', label: t('fields.usage'), value: (r) => t(`values.${r.usage}`), render: (r) => <UsageTag usage={r.usage} />, filter: true },
+    { key: 'usage', label: t('fields.usage'), value: (r) => t(`values.${r.usage}`), render: (r) => <UsageTag usage={r.usage} />, filter: true,
+      choices: enumChoices(USAGE_STATUSES, (v) => t(`values.${v}`)), searchByLabel: true },
     { key: 'serial_number', label: t('fields.serial_number'), value: (r) => r.serial_number, render: (r) => <strong>{r.serial_number}</strong> },
-    { key: 'part_number', label: t('fields.part_number'), value: (r) => r.part_number, filter: true },
-    { key: 'type', label: t('fields.type'), value: (r) => r.type, filter: true },
-    { key: 'location', label: t('fields.location'), value: (r) => r.location, filter: true },
+    { key: 'part_number', label: t('fields.part_number'), value: (r) => r.part_number, filter: true,
+      choices: namedChoices(options?.part_numbers.filter((p) => p.kind !== 'sub_equipment')) },
+    { key: 'type', label: t('fields.type'), value: (r) => r.type, filter: true,
+      choices: namedChoices(options?.types.filter((x) => x.kind !== 'sub_equipment')) },
+    { key: 'location', label: t('fields.location'), value: (r) => r.location, filter: true, choices: namedChoices(options?.locations) },
     { key: 'jabil_id', label: t('fields.jabil_id'), value: (r) => r.jabil_id },
     { key: 'asset', label: t('fields.asset'), value: (r) => r.asset },
-    { key: 'level', label: t('fields.level'), value: (r) => r.level, filter: true },
-    { key: 'parent', label: t('fields.parent'), value: (r) => r.parent_serial, filter: true },
+    { key: 'level', label: t('fields.level'), value: (r) => r.level, filter: true, choices: namedChoices(options?.levels), emptyChoice: true },
+    { key: 'parent', label: t('fields.parent'), value: (r) => r.parent_serial, filter: true, choices: textChoices(filterValues?.parent), emptyChoice: true },
     { key: 'tags', label: t('fields.tags'), value: (r) => r.tags.map((x) => x.display_name).join(', ') || null, filter: true,
-      render: (r) => <RemarkCell tags={r.tags} remark={null} /> },
+      render: (r) => <RemarkCell tags={r.tags} remark={null} />, choices: namedChoices(options?.tags), emptyChoice: true },
     { key: 'remark', label: t('fields.remark'), value: (r) => r.remark, wrap: true, width: 200 },
-  ], [t]);
+  ], [t, options, filterValues]);
 
   /** Có con / là con của thiết bị khác — cột đầu của bảng và thẻ trên điện thoại. */
   const relation = useCallback((r: EquipmentRow) => (r.has_children

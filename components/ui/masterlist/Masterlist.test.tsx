@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
@@ -9,6 +9,10 @@ vi.mock('react-i18next', () => ({
 class IO { observe() {} disconnect() {} }
 vi.stubGlobal('IntersectionObserver', IO);
 
+const exportToExcel = vi.hoisted(() => vi.fn());
+vi.mock('./exportExcel', () => ({ exportToExcel }));
+
+import { EMPTY_QUERY, type PagedState } from '@/lib/client/listState';
 import { Masterlist, RowCard, type Column } from './Masterlist';
 
 type Row = { id: string; serial: string; type: string | null; qty: number };
@@ -304,5 +308,159 @@ describe('Masterlist — speed: search index and row memoization', () => {
     fireEvent.click(screen.getByText('XYZ'));
     expect(second).toHaveBeenCalledWith('d');
     expect(first).not.toHaveBeenCalled();
+  });
+});
+
+describe('Masterlist — server mode: one page on screen, the query goes to the server', () => {
+  const typeChoices = [
+    { value: 't-tester', label: 'Tester' }, { value: 't-base', label: 'Base' }, { value: 't-spare', label: 'Spare (on no row of this page)' },
+  ];
+  const serverColumns: Column<Row>[] = [
+    { key: 'serial', label: 'Serial', value: (r) => r.serial },
+    { key: 'type', label: 'Type', value: (r) => r.type, filter: true, choices: typeChoices, emptyChoice: true },
+    { key: 'qty', label: 'Qty', value: (r) => r.qty, filter: true, choices: [{ value: 'overdue', label: 'Overdue' }, { value: 'valid', label: 'Valid' }], searchByLabel: true },
+  ];
+  const server = (over: Partial<PagedState<Row>> = {}): PagedState<Row> => ({
+    total: 120, page: 2, pageSize: 50, query: EMPTY_QUERY, fetching: false,
+    setPage: vi.fn(), setPageSize: vi.fn(), setQuery: vi.fn(), exportAll: vi.fn(async () => rows), ...over,
+  });
+  function mountServer(state: PagedState<Row>, props: { loading?: boolean; rows?: Row[] } = {}) {
+    return render(
+      <Masterlist<Row> title="Test" rows={props.rows ?? rows} loading={props.loading ?? false} error={null} columns={serverColumns}
+        storageKey={`s-${Math.random()}`} selectedId={null} onSelect={vi.fn()} exportName="test" server={state} />,
+    );
+  }
+  const lastQuery = (state: PagedState<Row>) => vi.mocked(state.setQuery).mock.calls.at(-1)?.[0];
+  const qCalls = (state: PagedState<Row>) => vi.mocked(state.setQuery).mock.calls.filter(([patch]) => 'q' in patch);
+  const openFilters = () => fireEvent.click(screen.getByRole('button', { name: /ml.filters/ }));
+
+  afterEach(() => { vi.useRealTimers(); exportToExcel.mockReset(); });
+
+  it('shows exactly the rows it was given: typing does not filter them on the client', () => {
+    vi.useFakeTimers();
+    mountServer(server());
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzz-nothing' } });
+    expect(bodyRows()).toHaveLength(4);
+  });
+
+  it('sends the search to the server once the typing pauses — not once per key', () => {
+    vi.useFakeTimers();
+    const state = server();
+    mountServer(state);
+    const box = screen.getByRole('searchbox');
+    for (const text of ['a', 'ab', 'abc']) {
+      fireEvent.change(box, { target: { value: text } });
+      act(() => { vi.advanceTimersByTime(100); });
+    }
+    expect(qCalls(state).filter(([patch]) => patch.q !== '')).toHaveLength(0); // still typing
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(qCalls(state).filter(([patch]) => patch.q !== '')).toEqual([[{ q: 'abc', enums: {} }]]);
+  });
+
+  it('text that matches the label of a Status also asks for that Status (so "over" finds Overdue rows)', () => {
+    vi.useFakeTimers();
+    const state = server();
+    mountServer(state);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'over' } });
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(qCalls(state).at(-1)![0]).toEqual({ q: 'over', enums: { qty: ['overdue'] } });
+  });
+
+  it('sorting goes to the server: ascending, descending, then back to the default', () => {
+    const state = server();
+    mountServer(state);
+    const header = screen.getByRole('button', { name: /Serial/ });
+    fireEvent.click(header);
+    expect(lastQuery(state)).toEqual({ filters: {}, sort: { key: 'serial', dir: 'asc' }, quick: null });
+    fireEvent.click(header);
+    expect(lastQuery(state)).toMatchObject({ sort: { key: 'serial', dir: 'desc' } });
+    fireEvent.click(header);
+    expect(lastQuery(state)).toMatchObject({ sort: null });
+  });
+
+  it('a filter lists the choices the column declares — also values on no row of this page — and sends the chosen value', () => {
+    const state = server();
+    mountServer(state);
+    openFilters();
+    fireEvent.click(screen.getByLabelText('Type'));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['ml.all', 'Tester', 'Base', 'Spare (on no row of this page)', 'ml.empty']);
+    fireEvent.click(screen.getByRole('option', { name: 'Spare (on no row of this page)' }));
+    expect(lastQuery(state)).toMatchObject({ filters: { type: 't-spare' } });
+    openFilters(); // close the panel: the chips of the active filters show under the toolbar
+    // the chip names the value, not the id that was sent to the server
+    expect(screen.getByRole('button', { name: /ml.removeFilter/ }).textContent).toContain('Spare (on no row of this page)');
+  });
+
+  it('"(empty)" asks for the rows where the column is empty', () => {
+    const state = server();
+    mountServer(state);
+    openFilters();
+    fireEvent.click(screen.getByLabelText('Type'));
+    fireEvent.click(screen.getByRole('option', { name: 'ml.empty' }));
+    expect(lastQuery(state)).toMatchObject({ filters: { type: '__empty' } });
+  });
+
+  it('the No column keeps counting across pages (page 2 of 50 starts at 51)', () => {
+    mountServer(server({ page: 2, pageSize: 50 }));
+    expect(bodyRows().map((r) => r.querySelector('.ml-col-no')?.textContent)).toEqual(['51', '52', '53', '54']);
+  });
+
+  it('shows the range and moves between pages with Previous / Next', () => {
+    const state = server({ page: 2 });
+    mountServer(state);
+    expect(screen.getByText('ml.range')).toBeTruthy();
+    expect(screen.getByText('ml.pageOf')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'ml.nextPage' }));
+    expect(state.setPage).toHaveBeenLastCalledWith(3);
+    fireEvent.click(screen.getByRole('button', { name: 'ml.prevPage' }));
+    expect(state.setPage).toHaveBeenLastCalledWith(1);
+  });
+
+  it('cannot go before the first or after the last page, nor while a page is loading', () => {
+    const first = mountServer(server({ page: 1 }));
+    expect((screen.getByRole('button', { name: 'ml.prevPage' }) as HTMLButtonElement).disabled).toBe(true);
+    first.unmount();
+    const last = mountServer(server({ page: 3 }));
+    expect((screen.getByRole('button', { name: 'ml.nextPage' }) as HTMLButtonElement).disabled).toBe(true);
+    last.unmount();
+    mountServer(server({ page: 2, fetching: true }), { loading: true });
+    expect((screen.getByRole('button', { name: 'ml.nextPage' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.querySelector('.ml-scroll')?.hasAttribute('data-fetching')).toBe(true); // the old page stays on screen, dimmed
+  });
+
+  it('offers 25 / 50 / 100 rows per page', () => {
+    const state = server();
+    mountServer(state);
+    fireEvent.click(screen.getByLabelText('ml.perPageLabel'));
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    fireEvent.click(screen.getAllByRole('option')[2]!);
+    expect(state.setPageSize).toHaveBeenCalledWith(100);
+  });
+
+  it('Export Excel exports ALL matching rows (asked from the server), not just the page on screen', async () => {
+    const state = server();
+    mountServer(state);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /ml.export/ })); });
+    expect(state.exportAll).toHaveBeenCalledTimes(1);
+    expect(exportToExcel).toHaveBeenCalledTimes(1);
+    expect(exportToExcel.mock.calls[0]![2]).toEqual(rows);
+  });
+
+  it('with no data at all it says so and has no pager; with a search that matches nothing it says that instead', () => {
+    const state = server({ total: 0, page: 1 });
+    render(
+      <Masterlist<Row> title="Test" rows={[]} loading={false} error={null} columns={serverColumns} storageKey="s-empty"
+        selectedId={null} onSelect={vi.fn()} exportName="test" server={state} />,
+    );
+    expect(screen.getByText('ml.emptyTitle')).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'ml.pagination' })).toBeNull();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'nothing' } });
+    expect(screen.getByText('ml.noMatch')).toBeTruthy();
+  });
+
+  it('while the first page loads it shows the skeleton and no pager', () => {
+    mountServer(server({ total: 0, page: 1, fetching: true }), { loading: true, rows: [] });
+    expect(screen.queryByRole('navigation', { name: 'ml.pagination' })).toBeNull();
+    expect(document.querySelector('.ml-table tbody tr')).toBeTruthy(); // skeleton rows
   });
 });

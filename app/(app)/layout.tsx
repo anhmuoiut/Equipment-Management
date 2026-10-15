@@ -4,6 +4,7 @@ import { loadLookups, toOptions } from '@/lib/services/core/lookups';
 import { AppShell } from '@/components/AppShell';
 import '../workspace.css';
 import '../mobile-workspace.css';
+import '../pager.css';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Danh sách chọn đọc song song với xác thực (nhớ trong tiến trình — thường 0 lần gọi Supabase) và đưa thẳng xuống AppShell,

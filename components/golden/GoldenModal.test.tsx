@@ -12,6 +12,7 @@ class IO { observe() {} disconnect() {} }
 vi.stubGlobal('IntersectionObserver', IO);
 
 import { goldenRows, options } from '@/lib/client/testing/assetFixtures';
+import { listCache, pagedCache } from '@/lib/client/cache';
 
 function respond(url: string): { data: unknown; meta?: Record<string, unknown> } {
   const [path] = url.split('?');
@@ -48,7 +49,7 @@ const openRow = async (serial: string) => {
   await waitFor(() => expect(title()).toBe(serial));
 };
 
-beforeEach(() => { resetUrl(); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); });
+beforeEach(() => { pagedCache.clear(); listCache.clear(); resetUrl(); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); });
 
 describe('Golden', () => {
   it('lists golden boards with Status first', async () => {

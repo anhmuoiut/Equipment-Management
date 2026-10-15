@@ -269,6 +269,22 @@ describe('Configuration', () => {
     if (list === 'calibration-setup') expect(screen.queryByLabelText(/fields.part_number/)).toBeNull();
   });
 
+  it('part numbers: the Manufacturer column is there — also for someone whose saved column choices were made before it existed', async () => {
+    localStorage.setItem('masterlist-columns:configuration-part-numbers', JSON.stringify({ order: ['display_name', 'type', 'level', 'sort_order', 'is_active'], hidden: ['sort_order'] }));
+    await mount(<ConfigWorkspace listKey="part-numbers" />);
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '');
+    expect(headers.some((h) => /fields.manufacturer/.test(h))).toBe(true);
+    expect(headers.some((h) => /fields.sort_order/.test(h))).toBe(false); // their own choice is kept
+    localStorage.clear();
+  });
+
+  it('part numbers: the Add form and the record both have the Manufacturer field', async () => {
+    await mount(<ConfigWorkspace listKey="part-numbers" />);
+    await click(screen.getAllByRole('button', { name: /ml.add/ })[0]!);
+    expect(screen.getByLabelText(/fields.manufacturer/)).toBeTruthy();
+    await click(within(footer()).getByRole('button', { name: 'common.cancel' }));
+  });
+
   it('part numbers: Type column and required Type, and no "needs a parent" setting any more', async () => {
     await mount(<ConfigWorkspace listKey="part-numbers" />);
     expect(screen.getByRole('columnheader', { name: /fields.type/ })).toBeTruthy();

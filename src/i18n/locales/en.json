@@ -145,7 +145,14 @@
     "no": "No",
     "count": "{{count}} of {{total}} records",
     "emptyTitle": "No records yet.",
-    "noMatch": "No records match the search or filters."
+    "noMatch": "No records match the search or filters.",
+    "pagination": "Pagination",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "perPage": "{{count}} / page",
+    "perPageLabel": "Rows per page",
+    "prevPage": "Previous page",
+    "nextPage": "Next page",
+    "pageOf": "Page {{page}} / {{pages}}"
   },
   "dp": {
     "showMore": "Show more",

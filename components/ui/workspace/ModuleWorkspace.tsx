@@ -10,20 +10,14 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
 import { useFetch } from '@/lib/client/useFetch';
+import type { ListState } from '@/lib/client/listState';
 import { useUrlParams } from '@/lib/client/useUrlParams';
 import { PageHeading } from '@/components/layout/PageHeading';
 import { Masterlist, type Column, type QuickFilter } from '@/components/ui/masterlist/Masterlist';
 import type { TrailItem } from '@/components/ui/record/RecordModal';
 import type { AssetType } from '@/lib/types';
 
-export type ListState<R> = {
-  rows: R[];
-  loading: boolean;
-  error: string | null;
-  reload: () => void;
-  upsert: (row: R) => void;
-  remove: (id: string) => void;
-};
+export type { ListState };
 
 /** Mảng rỗng cố định: `rows` phải giữ nguyên identity khi chưa có dữ liệu (Masterlist memo theo nó). */
 const NO_ROWS: never[] = [];
@@ -214,7 +208,7 @@ export function ModuleWorkspace<R extends { id: string }>({
 
   return (
     <div className="ws" data-open={open || undefined} data-add={canAdd || undefined}>
-      <PageHeading title={title} subtitle={list.loading ? undefined : t('ml.count', { count: viewIds.length, total: list.rows.length })} />
+      <PageHeading title={title} subtitle={(list.paged ? list.loading && list.rows.length === 0 : list.loading) ? undefined : t('ml.count', { count: viewIds.length, total: list.paged ? list.paged.total : list.rows.length })} />
       {beforeList}
       {/* Điện thoại: một nút + nổi cho mọi module (CSS ẩn nó trên desktop, nơi có nút + Thêm trên thanh công cụ). */}
       {canAdd && !open && (
@@ -230,7 +224,7 @@ export function ModuleWorkspace<R extends { id: string }>({
             columns={columns} mobileCard={mobileCard} storageKey={storageKey} defaultColumns={defaultColumns} exportName={exportName} quickFilters={quickFilters}
             leading={leading} rowTone={rowTone} selectedId={id} onSelect={select}
             onAdd={canAdd ? () => create() : undefined}
-            addLabel={addLabel} onViewChange={setViewIds} initialSearch={searchParams.get('q') ?? undefined}
+            addLabel={addLabel} onViewChange={setViewIds} initialSearch={searchParams.get('q') ?? undefined} server={list.paged}
             mobileFilterKeys={mobileFilterKeys} searchPlaceholder={searchPlaceholder} mobileEmptyState={mobileEmptyState}
             tools={tools?.map((x) => ({
               key: x.key, label: x.label, icon: x.icon, active: toolKey === x.key,

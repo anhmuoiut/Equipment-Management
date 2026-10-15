@@ -12,6 +12,7 @@ class IO { observe() {} disconnect() {} }
 vi.stubGlobal('IntersectionObserver', IO);
 
 import { audit, dmm1, options, subRows } from '@/lib/client/testing/assetFixtures';
+import { pagedResponse } from '@/lib/client/testing/pagedServer';
 import type { CalibrationRecord } from '@/lib/types';
 
 const records: CalibrationRecord[] = [
@@ -21,7 +22,13 @@ const records: CalibrationRecord[] = [
 function respond(url: string): { data: unknown; meta?: Record<string, unknown> } {
   const [path] = url.split('?');
   if (path === '/api/options') return { data: options };
-  if (path === '/api/calibration') return { data: subRows };
+  if (path === '/api/calibration') {
+    // The list is served one page at a time; the quick filters run on the server (here: the same rules as the database view).
+    return pagedResponse(subRows, url, { quick: {
+      overdue: (r) => r.status === 'overdue', due_soon: (r) => r.status === 'due_soon',
+      attention: (r) => r.status === 'not_calibrated' || r.status === 'failed',
+    } });
+  }
   const rec = path!.match(/^\/api\/calibration\/([^/]+)\/records$/);
   if (rec) return { data: records };
   const one = path!.match(/^\/api\/calibration\/([^/]+)$/);
@@ -36,6 +43,7 @@ vi.mock('@/lib/client/api', async (importOriginal) => {
 });
 
 import { api } from '@/lib/client/api';
+import { listCache, pagedCache } from '@/lib/client/cache';
 import { resetUrl } from '@/lib/client/testing/urlParamsMock';
 import { ViewerProvider } from '@/components/ViewerContext';
 import { CalibrationWorkspace } from './CalibrationWorkspace';
@@ -56,6 +64,7 @@ const openRow = async (serial: string) => {
 };
 
 beforeEach(() => {
+  pagedCache.clear(); listCache.clear();
   resetUrl(); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); vi.mocked(api.delete).mockReset();
   vi.mocked(window.matchMedia).mockReturnValue({ matches: false, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
 });
@@ -74,12 +83,16 @@ describe('Calibration — masterlist', () => {
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '');
     expect(headers[1]).toMatch(/cal.calibrationStatus/);
     expect(screen.getByText('DMM-1')).toBeTruthy();
+    // Opening the list asks for ONE page (50 rows), not the whole table.
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/calibration?page=1&pageSize=50');
     await click(screen.getByRole('button', { name: /cal.status.overdue/ }));
-    expect(screen.queryByText('DMM-1')).toBeNull();
+    // The quick filter is a server query (page 1 again): the rows that do not match are gone because the SERVER did not return them.
+    await waitFor(() => expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/calibration?page=1&pageSize=50&quick=overdue'));
+    await waitFor(() => expect(screen.queryByText('DMM-1')).toBeNull());
     expect(screen.getByText('DMM-2')).toBeTruthy();
     expect(document.querySelector('tr[data-tone="alert"]')).toBeTruthy();
     await click(screen.getByRole('button', { name: /cal.quickAttention/ }));
-    expect(screen.getByText('DMM-3')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('DMM-3')).toBeTruthy());
     expect(screen.queryByText('DMM-2')).toBeNull();
   });
 });

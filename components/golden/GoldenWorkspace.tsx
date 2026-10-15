@@ -6,7 +6,12 @@ import { useTranslation } from 'react-i18next';
 import { MapPin, Upload } from 'lucide-react';
 import { useCan } from '@/components/ViewerContext';
 import { RemarkCell, TagChips, UsageTag } from '@/components/ui/tags';
-import { ModuleWorkspace, useList } from '@/components/ui/workspace/ModuleWorkspace';
+import { ModuleWorkspace } from '@/components/ui/workspace/ModuleWorkspace';
+import { useOptions } from '@/lib/client/options';
+import { usePagedList } from '@/lib/client/usePagedList';
+import { useFilterValues } from '@/lib/client/filterValues';
+import { enumChoices, namedChoices, textChoices } from '@/lib/client/listChoices';
+import { USAGE_STATUSES } from '@/lib/status';
 import { ImportModal } from '@/components/ui/ImportModal';
 import { RowCard, type Column } from '@/components/ui/masterlist/Masterlist';
 import { GOLDEN_IMPORT_COLUMNS } from '@/lib/goldenImport';
@@ -16,22 +21,26 @@ import type { GoldenRow } from '@/lib/types';
 export function GoldenWorkspace() {
   const { t } = useTranslation();
   const can = useCan();
-  const list = useList<GoldenRow>('/api/golden');
+  // Danh sách phân trang ở server (usePagedList); lựa chọn bộ lọc từ Configuration và /api/filter-values.
+  const list = usePagedList<GoldenRow>('/api/golden', { storageKey: 'golden' });
+  const options = useOptions();
+  const filterValues = useFilterValues('golden');
 
   // useMemo / useCallback: Masterlist memo theo identity của các prop này (xem EquipmentWorkspace).
   const columns = useMemo<Column<GoldenRow>[]>(() => [
-    { key: 'usage', label: t('fields.usage'), value: (r) => t(`values.${r.usage}`), render: (r) => <UsageTag usage={r.usage} />, filter: true },
+    { key: 'usage', label: t('fields.usage'), value: (r) => t(`values.${r.usage}`), render: (r) => <UsageTag usage={r.usage} />, filter: true,
+      choices: enumChoices(USAGE_STATUSES, (v) => t(`values.${v}`)), searchByLabel: true },
     { key: 'serial_number', label: t('fields.serial_number'), value: (r) => r.serial_number, render: (r) => <strong>{r.serial_number}</strong> },
-    { key: 'part_number', label: t('fields.part_number'), value: (r) => r.part_number, filter: true },
+    { key: 'part_number', label: t('fields.part_number'), value: (r) => r.part_number, filter: true, choices: textChoices(filterValues?.part_number) },
     { key: 'utd_part_number', label: t('fields.utd_part_number'), value: (r) => r.utd_part_number },
-    { key: 'location', label: t('fields.location'), value: (r) => r.location, filter: true },
+    { key: 'location', label: t('fields.location'), value: (r) => r.location, filter: true, choices: namedChoices(options?.locations) },
     { key: 'purpose', label: t('fields.purpose'), value: (r) => r.purpose, wrap: true, width: 160 },
-    { key: 'origin', label: t('fields.origin'), value: (r) => r.origin, filter: true },
-    { key: 'parent', label: t('asset.attachedTo'), value: (r) => r.parent_serial, filter: true },
+    { key: 'origin', label: t('fields.origin'), value: (r) => r.origin, filter: true, choices: textChoices(filterValues?.origin), emptyChoice: true },
+    { key: 'parent', label: t('asset.attachedTo'), value: (r) => r.parent_serial, filter: true, choices: textChoices(filterValues?.parent), emptyChoice: true },
     { key: 'tags', label: t('fields.tags'), value: (r) => r.tags.map((x) => x.display_name).join(', ') || null, filter: true,
-      render: (r) => <RemarkCell tags={r.tags} remark={null} /> },
+      render: (r) => <RemarkCell tags={r.tags} remark={null} />, choices: namedChoices(options?.tags), emptyChoice: true },
     { key: 'remark', label: t('fields.remark'), value: (r) => r.remark, wrap: true, width: 200 },
-  ], [t]);
+  ], [t, options, filterValues]);
 
   const mobileCard = useCallback((r: GoldenRow) => (
     <RowCard

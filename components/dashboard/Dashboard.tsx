@@ -5,11 +5,12 @@
  * Golden board, Calibration Status (tự tính), sub-equipment quá hạn / sắp đến hạn hiệu chuẩn, phân bố theo thẻ / vị trí /
  * loại, và "Thay đổi gần đây" (view recent_actions: một thao tác của người dùng = một dòng) có bộ lọc.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { CalendarClock, CalendarDays, Cpu, Gauge, CircuitBoard, Search, TriangleAlert } from 'lucide-react';
+import { api, errorMessage } from '@/lib/client/api';
 import { useFetch } from '@/lib/client/useFetch';
 import { usePhone } from '@/lib/client/usePhone';
 import { useCan } from '@/components/ViewerContext';
@@ -199,6 +200,16 @@ function Bars({ title, scope, items, total, noneLabel }: {
   );
 }
 
+/** Một trang "Thay đổi gần đây" = bấy nhiêu thao tác (khớp mặc định của server). */
+const ACTIVITY_PAGE = 50;
+
+/** Trang đầu + các trang nối thêm; thao tác mới xuất hiện giữa hai lần tải có thể nằm ở cả hai trang → bỏ trùng (giữ lần đầu). */
+function mergeActions(first: RecentAction[], extra: RecentAction[]): RecentAction[] {
+  if (extra.length === 0) return first;
+  const seen = new Set(first.map((a) => a.id));
+  return [...first, ...extra.filter((a) => !seen.has(a.id) && seen.add(a.id))];
+}
+
 /** `initial`: trang đầu (không lọc, 50 thao tác) đi kèm `/api/dashboard` — dùng cho lần hiện đầu tiên, khỏi gọi thêm một request. */
 function RecentActivities({ initial }: { initial: RecentAction[] | undefined }) {
   const { t } = useTranslation();
@@ -211,28 +222,59 @@ function RecentActivities({ initial }: { initial: RecentAction[] | undefined }) 
   // Phones: the date range sits behind a "Dates" button (it is rarely needed and takes two rows).
   const phone = usePhone();
   const [datesOpen, setDatesOpen] = useState(false);
-  const [limit, setLimit] = useState(50);
   // Gõ xong mới tìm (không gọi server mỗi phím).
   useEffect(() => {
     const id = setTimeout(() => setQuery(search.trim()), 300);
     return () => clearTimeout(id);
   }, [search]);
-  const params = new URLSearchParams({ limit: String(limit) });
+  const params = new URLSearchParams({ limit: String(ACTIVITY_PAGE) });
   if (module) params.set('module', module);
   if (query) params.set('q', query);
   if (from) params.set('from', from);
   if (to) params.set('to', to);
-  // Bộ lọc mặc định và chưa từng đổi → dùng `initial`. Đổi bộ lọc / Tải thêm (kể cả sau đó quay về mặc định) thì gọi server như cũ.
-  const atDefault = !module && !query && !from && !to && limit === 50;
+  const base = params.toString();
+  // Bộ lọc mặc định và chưa từng đổi → dùng `initial`. Đổi bộ lọc (kể cả sau đó quay về mặc định) thì gọi server như cũ.
+  const atDefault = !module && !query && !from && !to;
   const [leftDefault, setLeftDefault] = useState(false);
   useEffect(() => { if (!atDefault) setLeftDefault(true); }, [atDefault]);
   const useInitial = atDefault && !leftDefault;
   // Đổi bộ lọc / Tải thêm: giữ danh sách cũ (mờ đi) tới khi danh sách mới về; phản hồi cũ bị bỏ qua.
-  const fetched = useFetch<RecentAction[]>(useInitial ? null : `/api/dashboard/activities?${params}`);
-  const rows = useInitial ? initial : fetched.data;
+  const fetched = useFetch<RecentAction[]>(useInitial ? null : `/api/dashboard/activities?${base}`);
+  const first = useInitial ? initial : fetched.data;
   const loading = !useInitial && fetched.loading;
   const error = useInitial ? null : fetched.error;
   const reload = fetched.reload;
+
+  // "Tải thêm": trang kế tiếp (đúng bộ lọc đó, bỏ qua số thao tác đã có) được NỐI vào sau trang đầu — không đọc lại các dòng đã có. Các
+  // trang nối chỉ thuộc về MỘT trang đầu cụ thể: đổi bộ lọc hoặc tải lại trang đầu (có thể có thao tác mới ở đầu) thì bỏ chúng.
+  const [more, setMore] = useState<{ first: RecentAction[] | null | undefined; base: string; rows: RecentAction[]; done: boolean }>(
+    { first: undefined, base: '', rows: [], done: false });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+  const latest = useRef({ first, base });
+  useEffect(() => { latest.current = { first, base }; }, [first, base]);
+  const mine = more.first === first && more.base === base;
+  const extra = mine ? more.rows : [];
+  const rows = first ? mergeActions(first, extra) : first;
+  const canLoadMore = !!first && first.length >= ACTIVITY_PAGE && !(mine && more.done);
+  async function loadMore() {
+    if (!first || loadingMore) return;
+    const asked = { first, base };
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const r = await api.get<RecentAction[]>(`/api/dashboard/activities?${base}&offset=${first.length + extra.length}`);
+      if (latest.current.first !== asked.first || latest.current.base !== asked.base) return; // đã đổi bộ lọc trong lúc chờ
+      setMore((previous) => ({
+        first: asked.first, base: asked.base, done: r.data.length < ACTIVITY_PAGE,
+        rows: [...(previous.first === asked.first && previous.base === asked.base ? previous.rows : []), ...r.data],
+      }));
+    } catch (e) {
+      setMoreError(errorMessage(e, t));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const modules: HistoryModule[] = can.admin
     ? ['equipment', 'sub_equipment', 'golden_board', 'configuration', 'user']
@@ -274,8 +316,9 @@ function RecentActivities({ initial }: { initial: RecentAction[] | undefined }) 
           : rows.length === 0 ? <p className="dash-empty">{query || module || from || to ? t('dash.noMatch') : t('hist.empty')}</p> : (
             <RecentActionsTable actions={rows} ariaLabel={t('dash.recent')} loading={loading} />
           )}
-      {rows && rows.length >= limit && limit < 500 && (
-        <Button size="sm" onClick={() => setLimit((l) => Math.min(l + 100, 500))}>{t('dash.loadMore')}</Button>
+      {moreError && <ErrorState message={moreError} onRetry={() => void loadMore()} />}
+      {canLoadMore && !moreError && (
+        <Button size="sm" loading={loadingMore} onClick={() => void loadMore()}>{t('dash.loadMore')}</Button>
       )}
     </section>
   );

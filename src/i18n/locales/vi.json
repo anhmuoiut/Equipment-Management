@@ -145,7 +145,14 @@
     "no": "No",
     "count": "{{count}} / {{total}} bản ghi",
     "emptyTitle": "Chưa có bản ghi nào.",
-    "noMatch": "Không có bản ghi khớp tìm kiếm / bộ lọc."
+    "noMatch": "Không có bản ghi khớp tìm kiếm / bộ lọc.",
+    "pagination": "Phân trang",
+    "range": "{{from}}–{{to}} / {{total}}",
+    "perPage": "{{count}} / trang",
+    "perPageLabel": "Số dòng mỗi trang",
+    "prevPage": "Trang trước",
+    "nextPage": "Trang sau",
+    "pageOf": "Trang {{page}} / {{pages}}"
   },
   "dp": {
     "showMore": "Xem thêm",

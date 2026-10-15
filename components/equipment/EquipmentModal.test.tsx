@@ -12,12 +12,22 @@ vi.mock('react-i18next', () => ({
 class IO { observe() {} disconnect() {} }
 vi.stubGlobal('IntersectionObserver', IO);
 
-import { base, equipmentRows, options, spare, tester, treeResponse } from '@/lib/client/testing/assetFixtures';
+import { base, equipment, equipmentRows, options, spare, tester, treeResponse } from '@/lib/client/testing/assetFixtures';
+import { pagedResponse } from '@/lib/client/testing/pagedServer';
+
+/** The rows the (fake) server pages through: the four of the fixture tree, or a big list when a test needs several pages. */
+let listRows = equipmentRows;
+const listUsage = (url: string) => new URL(url, 'http://x').searchParams.get('f.usage');
 
 function respond(url: string): { data: unknown; meta?: Record<string, unknown> } {
   const [path] = url.split('?');
   if (path === '/api/options') return { data: options };
-  if (path === '/api/equipment') return { data: equipmentRows };
+  if (path === '/api/equipment') {
+    return pagedResponse(listRows, url, {
+      filters: { usage: (r, v) => r.usage === v }, sort: { serial_number: (r) => r.serial_number },
+      search: (r, q) => [r.serial_number, r.part_number, r.location].some((v) => v?.toLowerCase().includes(q)),
+    });
+  }
   const one = path!.match(/^\/api\/equipment\/([^/]+)$/);
   if (one) return { data: equipmentRows.find((r) => r.id === one[1]) };
   if (path!.endsWith('/tree')) return { data: treeResponse };
@@ -32,6 +42,7 @@ vi.mock('@/lib/client/api', async (importOriginal) => {
 });
 
 import { ApiError, api } from '@/lib/client/api';
+import { listCache, pagedCache } from '@/lib/client/cache';
 import { resetUrl, currentSearch, historyDepth } from '@/lib/client/testing/urlParamsMock';
 import { ViewerProvider } from '@/components/ViewerContext';
 import { EquipmentWorkspace } from './EquipmentWorkspace';
@@ -62,7 +73,7 @@ const phone = (matches: boolean) => {
   vi.mocked(window.matchMedia).mockReturnValue({ matches, media: '', addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
 };
 
-beforeEach(() => { resetUrl(); phone(false); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); });
+beforeEach(() => { listRows = equipmentRows; pagedCache.clear(); listCache.clear(); resetUrl(); phone(false); push.mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(api.put).mockReset(); });
 
 describe('Equipment — masterlist', () => {
   it('shows the parent/child column, Status first, and the default columns', async () => {
@@ -405,3 +416,91 @@ describe('Equipment — editing', () => {
   });
 });
 
+/** Requests for the LIST (not a record, tree or history). */
+const listCalls = () => vi.mocked(api.get).mock.calls.map((c) => c[0] as string).filter((u) => u.startsWith('/api/equipment?'));
+const big = Array.from({ length: 130 }, (_, i) => equipment({ id: `e${i}`, serial_number: `SN-${String(i).padStart(3, '0')}`, usage: i % 2 ? 'in_use' : 'not_in_use' }));
+
+describe('Equipment — paged list', () => {
+  it('opens with ONE request for the first 50 rows of a 130-row table — not the whole table', async () => {
+    listRows = big;
+    vi.mocked(api.get).mockClear();
+    await mount();
+    expect(listCalls()).toEqual(['/api/equipment?page=1&pageSize=50']);
+    expect(document.querySelectorAll('.ml-table tbody tr[data-row-id]')).toHaveLength(50);
+    expect(screen.getByText('ml.count{"count":50,"total":130}')).toBeTruthy(); // 50 shown of 130 matching
+  });
+
+  it('Next asks only for the next page; Previous goes back from memory (no new request)', async () => {
+    listRows = big;
+    vi.mocked(api.get).mockClear();
+    await mount();
+    await click(screen.getByRole('button', { name: 'ml.nextPage' }));
+    await waitFor(() => expect(screen.getByText('SN-050')).toBeTruthy());
+    expect(listCalls()).toEqual(['/api/equipment?page=1&pageSize=50', '/api/equipment?page=2&pageSize=50']);
+    expect(screen.getAllByRole('cell').some((c) => c.textContent === '51')).toBe(true); // the No column continues
+    await click(screen.getByRole('button', { name: 'ml.prevPage' }));
+    await waitFor(() => expect(screen.getByText('SN-000')).toBeTruthy());
+    expect(listCalls()).toHaveLength(2);
+  });
+
+  it('searching finds a row that is NOT on the page on screen — one request after the typing stops', async () => {
+    listRows = big;
+    vi.mocked(api.get).mockClear();
+    await mount();
+    expect(screen.queryByText('SN-120')).toBeNull(); // on page 3
+    const box = screen.getByRole('searchbox');
+    for (const text of ['S', 'SN', 'SN-', 'SN-1', 'SN-12', 'SN-120']) await act(async () => { fireEvent.change(box, { target: { value: text } }); });
+    await waitFor(() => expect(screen.getByText('SN-120')).toBeTruthy(), { timeout: 3000 });
+    expect(listCalls().filter((u) => u.includes('q='))).toEqual(['/api/equipment?page=1&pageSize=50&q=SN-120']); // not one per key
+  });
+
+  it('a filter and a sort are server queries over the whole table, and the page goes back to 1', async () => {
+    listRows = big;
+    vi.mocked(api.get).mockClear();
+    await mount();
+    await click(screen.getByRole('button', { name: 'ml.nextPage' }));
+    await waitFor(() => expect(screen.getByText('SN-050')).toBeTruthy());
+    await click(screen.getByRole('button', { name: /fields.serial_number/ }));
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/equipment?page=1&pageSize=50&sort=serial_number&dir=asc'));
+    expect(listUsage(listCalls().at(-1)!)).toBeNull();
+    await click(screen.getByRole('button', { name: /ml.filters/ }));
+    await click(screen.getByLabelText('fields.usage'));
+    await click(screen.getByRole('option', { name: 'values.in_use' }));
+    await waitFor(() => expect(listCalls().at(-1)).toBe('/api/equipment?page=1&pageSize=50&sort=serial_number&dir=asc&f.usage=in_use'));
+    await waitFor(() => expect(screen.getByText('ml.count{"count":50,"total":65}')).toBeTruthy()); // 65 of the 130 are In use
+  });
+
+  it('opening and closing a record does not ask for the list again', async () => {
+    vi.mocked(api.get).mockClear();
+    await mount();
+    const before = listCalls().length;
+    await openRow('BASE-02');
+    await click(dialog().querySelector('.modal-close') as HTMLElement);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await openRow('TESTER-01');
+    expect(listCalls()).toHaveLength(before);
+  });
+
+  it('saving a record refreshes the page that is on screen once — nothing else of the list', async () => {
+    vi.mocked(api.put).mockResolvedValue({ data: { ...spare, asset: 'A-1', level_id: 'lv1', level: 'EOL' }, meta: {} });
+    vi.mocked(api.get).mockClear();
+    await mount();
+    await openRow('BASE-02');
+    const before = listCalls().length;
+    await click(within(footer()).getByRole('button', { name: 'common.edit' }));
+    await act(async () => { fireEvent.change(screen.getByLabelText(/fields.asset/), { target: { value: 'A-1' } }); });
+    await click(screen.getByLabelText(/fields.level/));
+    await click(screen.getByRole('option', { name: 'EOL' }));
+    await click(within(footer()).getByRole('button', { name: 'common.save' }));
+    await waitFor(() => expect(api.put).toHaveBeenCalled());
+    await waitFor(() => expect(listCalls()).toHaveLength(before + 1));
+    expect(listCalls().at(-1)).toBe('/api/equipment?page=1&pageSize=50');
+  });
+
+  it('an empty table says so (and offers the first record) instead of an empty page', async () => {
+    listRows = [];
+    await mount();
+    await waitFor(() => expect(screen.getByText('ml.emptyTitle')).toBeTruthy());
+    expect(screen.queryByRole('navigation', { name: 'ml.pagination' })).toBeNull();
+  });
+});
