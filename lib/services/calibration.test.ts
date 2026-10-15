@@ -68,7 +68,7 @@ describe('rows', () => {
     expect(fake.calls('range')).toEqual([[0, 49]]);
     expect(page).toMatchObject({ total: 2, page: 1, pageSize: 50 });
     expect(rows[0]).toMatchObject({
-      serial_number: 'DMM-1', part_number: 'DMM-100', type: 'DMM', manufacturer: 'Keysight', tester_serial: 'TESTER-01', location: 'B3F1', usage: 'in_use',
+      serial_number: 'DMM-1', part_number: 'DMM-100', type: 'DMM', manufacturer: 'Keysight', description: 'Digital multimeter', tester_serial: 'TESTER-01', location: 'B3F1', usage: 'in_use',
       status: 'valid', calibrated_at: '2026-01-01', due_date: '2027-01-01', result: 'pass', vendor: 'Acme', cert_no: 'C-1', interval_months: 12,
     });
     expect(rows[1]).toMatchObject({
@@ -77,7 +77,7 @@ describe('rows', () => {
   });
 
   it('a single sub-equipment reads its status row and its tester; unknown id is NOT_FOUND', async () => {
-    expect(await getSubEquipment('s1')).toMatchObject({ tester_serial: 'TESTER-01', status: 'valid' });
+    expect(await getSubEquipment('s1')).toMatchObject({ tester_serial: 'TESTER-01', status: 'valid', manufacturer: 'Keysight', description: 'Digital multimeter' });
     expect(m.selectOne).toHaveBeenCalledTimes(1); // one query for the row AND its tester
     expect(m.selectOne).toHaveBeenCalledWith('sub_equipment', 's1', expect.stringContaining('tester:tester_id(serial_number)'));
     m.selectOne.mockResolvedValue(null);

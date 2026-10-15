@@ -38,7 +38,9 @@ Every module (Equipment, Sub-Equipment, Golden, Configuration lists, Users) is t
 
 **Forms**: Add/Edit are views inside the modal with the same groups and order as the detail; labels above values. Buttons say what they do. One async action shows one loading indicator and cannot be submitted twice.
 
-**History tables** (record History tab and Dashboard *Recent changes*, shared `HistoryTable`): fixed columns *Time, By, Record, Action* + one *Changes* column showing only the fields changed in that event as `field: old → new` (first two, then *Show more*). CREATE and DELETE start with a summary and expand to the values. An import or a multi-record action is **one row** with a count. The Dashboard table scrolls inside a frame of at most `min(420px, 55svh)`.
+**Part Number Description** is maintained in Configuration → Part Number. Equipment and Sub-equipment show it as a read-only field in their detail modals and Add/Edit forms, following the selected Part Number. Sub-equipment also shows Description and Manufacturer as default list columns, in Excel exports and on phone cards; both values come from its Part Number. The server supports sorting/searching both fields and filtering by Manufacturer, including blank manufacturers.
+
+**History tables** (record History tab, shared `HistoryTable`): fixed columns *Time, By, Record, Action* + one *Changes* column showing only the fields changed in that event as `field: old → new` (first two, then *Show more*). CREATE and DELETE start with a summary and expand to the values. An import or a multi-record action is **one row** with a count.
 
 ## 4. Status tags
 
@@ -66,6 +68,8 @@ Cards grouped by Location, not a table or a tree. One **section** per Location (
 ## 6. Dashboard
 
 Compact cards with tabular values and restrained Picton charts. **Status overview** shows Equipment (In use / Not in use) and Calibration (calibration status) side by side with a stacked bar in fixed status colours and a legend (dot, name, count, percent). KPIs for Overdue / Due soon tint only when greater than zero. Location, Type and Tag breakdowns each cover **all assets once** (with *No type* and *Untagged* rows) so each adds up to the total, and every card states its scope. Do not invent metrics.
+
+**Recent changes** uses compact *Time, By, Activity* columns on desktop and tablet, with the clock above the date and Activity filling the remaining width. Below 768 px it uses exactly two columns: *Date / By* stacks the clock, date and author on the left, with Activity on the right. The action sentence leads, identifiers are semibold, and the module and context summary are secondary. Summaries longer than 180 characters use field/record counts; full values stay in the expanded details. Expanded record groups show full field values and audit notes, with primary records before related records and no repeated main action label. The detail grid uses two columns when the Activity content has at least 520 px available, otherwise one; phones always use one. This container query is local to the detail grid and does not change the shell breakpoint. Long names and details wrap. Show more/less animates with reduced-motion support and retains opened details while the row remains mounted. The table scrolls inside a frame of at most `min(420px, 55svh)`.
 
 ## 7. Where things live
 

@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL on Supabase. The schema is the baseline, [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql), plus the migrations after it (today [`20261016000000_list_views_and_dashboard_summary.sql`](../database/migrations/20261016000000_list_views_and_dashboard_summary.sql): the list views and `dashboard_summary`; and [`20261017000000_stop_configuration_history.sql`](../database/migrations/20261017000000_stop_configuration_history.sql): Configuration changes are no longer recorded), run in file-name order; required data (the system Types and this site's Configuration lists) is in [`database/seed.sql`](../database/seed.sql). To build a project from zero see [DEPLOY.md](DEPLOY.md).
+PostgreSQL on Supabase. The schema is the baseline, [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql), plus the migrations after it, run in file-name order: [`20261016000000_list_views_and_dashboard_summary.sql`](../database/migrations/20261016000000_list_views_and_dashboard_summary.sql) adds list views and `dashboard_summary`; [`20261017000000_stop_configuration_history.sql`](../database/migrations/20261017000000_stop_configuration_history.sql) stops Configuration auditing; [`20261018000000_sub_equipment_part_number_metadata.sql`](../database/migrations/20261018000000_sub_equipment_part_number_metadata.sql) adds Sub-equipment Description/Manufacturer search and sorting. Required data (the system Types and this site's Configuration lists) is in [`database/seed.sql`](../database/seed.sql). To build a project from zero see [DEPLOY.md](DEPLOY.md).
 
 **17 tables, 5 views, 56 functions, 47 triggers, 72 indexes. No enums, no RLS policies, no storage buckets, no cron jobs.** The comments inside the SQL are in Vietnamese; this document is the English reference.
 
@@ -148,6 +148,7 @@ Created by migration `20261016000000` (not part of the baseline).
 | Column | Meaning |
 | --- | --- |
 | `part_number`, `type`, `level`, `location`, `vendor` | Display names of the foreign keys (the screen still shows names from its cached Configuration; these exist for filtering and sorting). |
+| `description`, `manufacturer` (sub-equipment) | Live metadata from the Part Number, added by migration `20261018000000`. Included in `search_text`, with `description_nk` / `manufacturer_nk` for sorting and Manufacturer available as a text filter. |
 | `parent_serial` / `tester_serial` | Serial of the parent equipment / tester. |
 | `tags_text` | Tag names joined with `, ` in Configuration order — exactly the text of the Tags column. |
 | `has_children` (equipment) | Has a child in any of the three asset tables. |

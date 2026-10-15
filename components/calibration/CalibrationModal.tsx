@@ -60,6 +60,9 @@ export function useCalibrationModal(ctx: DetailCtx<SubEquipmentRow>, opts: { tre
           options: (_d, r) => toSelect(options?.part_numbers.filter((p) => p.kind === 'sub_equipment' || p.id === r?.part_number_id), r?.part_number_id, hidden) },
         { key: 'jabil_id', label: t('fields.jabil_id'), maxLength: 200 },
         { key: 'asset', label: t('fields.asset'), maxLength: 200 },
+        { key: 'part_number_description', label: t('fields.description'), readOnly: true, wide: true,
+          view: (r) => r.description,
+          draftView: (d) => options?.part_numbers.find((p) => p.id === d.part_number_id)?.description ?? null },
       ],
     },
     {

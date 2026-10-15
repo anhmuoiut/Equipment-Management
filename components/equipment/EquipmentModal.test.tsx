@@ -94,6 +94,9 @@ describe('Equipment — modal', () => {
     expect(dialog().classList.contains('modal-dialog--l')).toBe(true);
     expect(currentSearch()).toBe('id=e-base');
     expect(within(dialog()).getByText('P20001 · Base')).toBeTruthy();
+    expect(within(dialog()).getByText('fields.description')).toBeTruthy();
+    expect(within(dialog()).getByText('Base fixture assembly')).toBeTruthy();
+    expect(within(dialog()).queryByLabelText('fields.description')).toBeNull();
     // Nhóm Vị trí & quan hệ: chip cha, chip con (Fixture); Base không có sub-equipment / golden.
     await waitFor(() => expect(within(dialog()).getByRole('button', { name: /FIXTURE-01/ })).toBeTruthy());
     expect(within(dialog()).getByRole('button', { name: /TESTER-01/ })).toBeTruthy();

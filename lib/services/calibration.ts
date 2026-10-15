@@ -66,6 +66,7 @@ function toRow(s: WithTester, c: DbStatus | undefined, lookups: Lookups): SubEqu
     asset: s.asset,
     type_id: s.type_id, type: nameOf(lookups.types, s.type_id),
     manufacturer: lookups.part_numbers.get(s.part_number_id)?.manufacturer ?? null,
+    description: lookups.part_numbers.get(s.part_number_id)?.description ?? null,
     tester_id: s.tester_id, tester_serial: s.tester?.serial_number ?? null,
     location_id: s.location_id, location: nameOf(lookups.locations, s.location_id),
     usage: s.usage,
@@ -94,6 +95,7 @@ export const SUB_EQUIPMENT_LIST: ListSpec = {
     status: 'status', usage: 'usage', serial_number: 'serial_nk', part_number: 'part_nk', type: 'type_nk', tester: 'tester_nk',
     location: 'location_nk', calibrated_at: 'calibrated_at', due_date: 'due_date', vendor: 'vendor_nk', cert_no: 'cert_nk', result: 'result',
     jabil_id: 'jabil_nk', asset: 'asset_nk', tags: 'tags_text', remark: 'remark',
+    manufacturer: 'manufacturer_nk', description: 'description_nk',
   },
   defaultOrder: [['created_at', 'desc']],
   filters: {
@@ -105,6 +107,7 @@ export const SUB_EQUIPMENT_LIST: ListSpec = {
     location: { column: 'location_id', kind: 'id' },
     vendor: { column: 'vendor_id', kind: 'id', allowEmpty: true },
     result: { column: 'result', kind: 'enum', values: ['pass', 'fail'], allowEmpty: true },
+    manufacturer: { column: 'manufacturer', kind: 'text', allowEmpty: true },
     tags: { column: 'tag_ids', kind: 'tag' },
   },
   quick: {

@@ -39,6 +39,10 @@ export function CalibrationWorkspace() {
     { key: 'serial_number', label: t('fields.serial_number'), value: (r) => r.serial_number, render: (r) => <strong>{r.serial_number}</strong> },
     { key: 'part_number', label: t('fields.part_number'), value: (r) => r.part_number, filter: true,
       choices: namedChoices(options?.part_numbers.filter((p) => p.kind === 'sub_equipment')) },
+    { key: 'description', label: t('fields.description'), value: (r) => r.description, wrap: true, width: 220 },
+    { key: 'manufacturer', label: t('fields.manufacturer'), value: (r) => r.manufacturer, filter: true,
+      choices: textChoices([...new Set(options?.part_numbers.filter((p) => p.kind === 'sub_equipment')
+        .map((p) => p.manufacturer).filter((value): value is string => !!value))]), emptyChoice: true },
     { key: 'type', label: t('fields.type'), value: (r) => r.type, filter: true,
       choices: namedChoices(options?.types.filter((x) => x.kind === 'sub_equipment')) },
     { key: 'tester', label: t('fields.tester'), value: (r) => r.tester_serial, filter: true, choices: textChoices(filterValues?.tester), emptyChoice: true },
@@ -62,6 +66,8 @@ export function CalibrationWorkspace() {
       tag={<><UsageTag usage={r.usage} /><CalibrationStatusTag status={r.status} /></>}
       lines={[
         <><MapPin size={13} aria-hidden="true" /><span className="rc-place">{r.location ?? '—'}</span>{[r.part_number, r.type].filter(Boolean).map((x) => ` · ${x}`)}</>,
+        r.manufacturer ? <><span className="rc-key">{t('fields.manufacturer')}: </span>{r.manufacturer}</> : null,
+        r.description ? <><span className="rc-key">{t('fields.description')}: </span>{r.description}</> : null,
         r.due_date ? <><CalendarClock size={13} aria-hidden="true" /><DueDate date={r.due_date} status={r.status} /></> : t('cal.noRecordsYet'),
         r.tags.length ? <TagChips items={r.tags} /> : null,
       ]}
@@ -81,7 +87,7 @@ export function CalibrationWorkspace() {
       columns={columns}
       mobileCard={mobileCard}
       storageKey="calibration"
-      defaultColumns={['status', 'usage', 'serial_number', 'part_number', 'location', 'calibrated_at', 'due_date']}
+      defaultColumns={['status', 'usage', 'serial_number', 'part_number', 'description', 'manufacturer', 'location', 'calibrated_at', 'due_date']}
       exportName="calibration"
       canAdd={can.edit}
       addLabel={t('cal.add')}

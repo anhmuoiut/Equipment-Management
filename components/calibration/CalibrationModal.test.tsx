@@ -76,13 +76,20 @@ describe('Calibration — masterlist', () => {
     const card = screen.getByText('DMM-2').closest('.ml-card')!;
     expect(card.querySelector('[data-usage="in_use"]')?.textContent).toBe('values.in_use');
     expect(card.querySelector('[data-cal-status="overdue"]')?.textContent).toBe('cal.status.overdue');
+    expect(within(card as HTMLElement).getByText('Keysight')).toBeTruthy();
+    expect(within(card as HTMLElement).getByText('Digital multimeter')).toBeTruthy();
   });
 
   it('Calibration status leads the columns; quick filters for overdue / due soon / not calibrated; overdue rows are marked', async () => {
     await mount();
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '');
     expect(headers[1]).toMatch(/cal.calibrationStatus/);
+    expect(headers).toContain('fields.description');
+    expect(headers).toContain('fields.manufacturer');
     expect(screen.getByText('DMM-1')).toBeTruthy();
+    const firstRow = screen.getByText('DMM-1').closest('tr')!;
+    expect(within(firstRow).getByText('Digital multimeter')).toBeTruthy();
+    expect(within(firstRow).getByText('Keysight')).toBeTruthy();
     // Opening the list asks for ONE page (50 rows), not the whole table.
     expect(vi.mocked(api.get)).toHaveBeenCalledWith('/api/calibration?page=1&pageSize=50');
     await click(screen.getByRole('button', { name: /cal.status.overdue/ }));
@@ -113,6 +120,9 @@ describe('Calibration — modal', () => {
     expect(within(dialog()).getByRole('button', { name: /TESTER-01/ })).toBeTruthy(); // the chip reads "SN · Type"
     expect(within(dialog()).getByText('fields.manufacturer')).toBeTruthy(); // from the part number, read-only
     expect(within(dialog()).getByText('Keysight')).toBeTruthy();
+    expect(within(dialog()).getByText('fields.description')).toBeTruthy();
+    expect(within(dialog()).getByText('Digital multimeter')).toBeTruthy();
+    expect(within(dialog()).queryByLabelText('fields.description')).toBeNull();
     expect(within(dialog()).getByText('cal.groupCurrent')).toBeTruthy();
     expect(within(dialog()).getByText('C-1')).toBeTruthy();
     expect(within(dialog()).getByText('cal.months{"count":12}')).toBeTruthy();

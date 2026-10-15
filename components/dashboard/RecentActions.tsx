@@ -9,8 +9,8 @@ import { Fragment, useId, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { formatTime } from '@/lib/client/api';
-import { ReadonlyValue } from '@/components/ui/record/fields';
+import { formatDate } from '@/lib/client/api';
+import { usePhone } from '@/lib/client/usePhone';
 import { historyFieldLabel, rowChanges, useFormatHistoryValue, useFormatNote } from '@/components/ui/detail/DetailHistory';
 import type { ActionRecord, HistoryChange, HistoryModule, RecentAction } from '@/lib/types';
 
@@ -24,6 +24,10 @@ const LEAD_ORDER = ['SWAP', 'DELETE', 'MOVE', 'DETACH', 'CHANGE_LOCATION', 'CHEC
   'CALIBRATION_UPDATE', 'CALIBRATION_REMOVE', 'UPDATE', 'TAGS', 'ROLE_CHANGE', 'PASSWORD_RESET', 'DISABLE', 'ENABLE'];
 const SHIFT = ['MOVE', 'DETACH', 'CHANGE_LOCATION'];
 const CREATE_FIELDS = ['part_number', 'type', 'location', 'parent', 'tester'];
+// Match the audit date formatter's timezone, with the clock and date on separate lines.
+const CLOCK_FORMAT = new Intl.DateTimeFormat('vi-VN', {
+  hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
+});
 
 /** Một bản ghi sau khi gộp các dòng nhật ký của chính nó trong thao tác (sửa form có thể ghi hai dòng cho cùng một thiết bị). */
 type Merged = {
@@ -93,10 +97,6 @@ function describe(
 
   let sentence: ReactNode;
   let summary: string | null = null;
-  const pair = (key: string) => {
-    const [x, y] = [primary[0]?.changes[key]?.old, primary[1]?.changes[key]?.old];
-    return x == null && y == null || x === y ? null : `${format(x)} ⇄ ${format(y)}`;
-  };
   const changeLine = (m: Merged | undefined, code: string, mode: 'both' | 'new' = 'both') => (m
     ? rowChanges({ changes: m.changes, fromLocation: m.from, toLocation: m.to, actionCode: code }).slice(0, 2)
       .map(([key, change]) => `${historyFieldLabel(key, fieldLabel)}: ${mode === 'new' ? format(change.new) : `${format(change.old)} → ${format(change.new)}`}`)
@@ -106,8 +106,7 @@ function describe(
     case 'SWAP': {
       const partner = first?.notes.find((n) => n.startsWith('swap_with:'))?.slice('swap_with:'.length);
       sentence = fill(t('hist.act.swapped', slots), { a: link(first), b: primary[1] ? link(primary[1]) : <strong>{partner ?? '—'}</strong> });
-      // Hai bên: "cha A ⇄ cha B · vị trí A ⇄ vị trí B" (giá trị TRƯỚC khi đổi chỗ). Dòng cũ chỉ có một bên: hiện thay đổi của bên đó.
-      summary = (primary.length > 1 ? [pair('parent') ?? pair('tester'), pair('location')].filter(Boolean) : changeLine(first, lead)).join(' · ') || null;
+      summary = primary.length > 1 ? t('hist.act.swappedCount', { count: primary.length }) : changeLine(first, lead).join(' · ') || null;
       break;
     }
     case 'MOVE': {
@@ -188,21 +187,27 @@ function describe(
   return { lead, sentence, summary, merged, related };
 }
 
-function RecordDetails({ merged, hidden, fieldLabel }: { merged: Merged; hidden?: boolean; fieldLabel: (key: string) => string }) {
+/** Reusable detail group for every record/module; full values and audit notes remain visible. */
+function RecordDetails({ merged, primaryAction, fieldLabel }: {
+  merged: Merged; primaryAction: string; fieldLabel: (key: string) => string;
+}) {
   const { t } = useTranslation();
   const format = useFormatHistoryValue();
   const formatNote = useFormatNote();
+  const headingId = useId();
   const inserted = merged.actions.includes('CREATE') || merged.actions.includes('CALIBRATE');
   const deleted = merged.actions.includes('DELETE') || merged.actions.includes('CALIBRATION_REMOVE');
   const entries = rowChanges({ changes: merged.changes, fromLocation: merged.from, toLocation: merged.to, actionCode: merged.actions[0] });
   const path = MODULE_PATH[merged.module];
+  const additionalActions = merged.actions.filter((action) => action !== primaryAction);
   return (
-    <li className="act-rec" data-follower={merged.follower || undefined} hidden={hidden}>
+    <li className="act-rec" data-follower={merged.follower || undefined} aria-labelledby={headingId}>
       <div className="act-rec-head">
-        {path && !merged.actions.includes('DELETE')
-          ? <Link className="link" href={`${path}?id=${merged.object_id}`}>{merged.label}</Link> : <strong>{merged.label}</strong>}
-        <span className="act-rec-action">{merged.actions.map((a) => t(`hist.action.${a}`, { defaultValue: a })).join(' · ')}</span>
-        {merged.notes.map((note) => <span key={note} className="act-rec-note">{formatNote(note)}</span>)}
+        <h3 id={headingId} className="act-rec-title">
+          {path && !merged.actions.includes('DELETE')
+            ? <Link className="link" href={`${path}?id=${merged.object_id}`}>{merged.label}</Link> : merged.label}
+        </h3>
+        {additionalActions.length > 0 && <p className="act-rec-action">{additionalActions.map((a) => t(`hist.action.${a}`, { defaultValue: a })).join(' · ')}</p>}
       </div>
       {entries.length > 0 && (
         <dl className="hist-change-list">
@@ -211,57 +216,100 @@ function RecordDetails({ merged, hidden, fieldLabel }: { merged: Merged; hidden?
             return (
               <div key={key} className="hist-change">
                 <dt>{label}</dt>
-                <dd>
-                  <ReadonlyValue label={label}>
-                    {deleted ? <span>{format(change.old)}</span> : inserted ? <span className="hist-new">{format(change.new)}</span>
-                      : <><span className="hist-old">{format(change.old)}</span><span className="hist-arrow" aria-hidden="true"> → </span><span className="hist-new">{format(change.new)}</span></>}
-                  </ReadonlyValue>
+                <dd className="act-change-values">
+                  {deleted ? <span>{format(change.old)}</span> : inserted ? <span className="hist-new">{format(change.new)}</span>
+                    : <>
+                      <span className="hist-old"><span className="sr-only">{t('hist.act.previousValue')}: </span>{format(change.old)}</span>
+                      <span className="hist-arrow" aria-hidden="true"> → </span>
+                      <span className="hist-new"><span className="sr-only">{t('hist.act.newValue')}: </span>{format(change.new)}</span>
+                    </>}
                 </dd>
               </div>
             );
           })}
         </dl>
       )}
+      {merged.notes.map((note) => <p key={note} className="act-rec-note">{formatNote(note)}</p>)}
     </li>
   );
 }
 
-function ActionRow({ action }: { action: RecentAction }) {
+function ActionTimestamp({ createdAt }: { createdAt: string }) {
+  return (
+    <time className="act-timestamp" dateTime={createdAt}>
+      <span className="act-time">{CLOCK_FORMAT.format(new Date(createdAt))}</span>
+      <span className="act-date">{formatDate(createdAt)}</span>
+    </time>
+  );
+}
+
+function ActionRow({ action, phone }: { action: RecentAction; phone: boolean }) {
   const { t } = useTranslation();
   const format = useFormatHistoryValue();
   const contentId = useId();
-  const [expanded, setExpanded] = useState(false);
+  const [detailState, setDetailState] = useState<'unopened' | 'expanded' | 'collapsed'>('unopened');
+  const expanded = detailState === 'expanded';
   const fieldLabel = (key: string) => t(`fields.${key}`, { defaultValue: key });
   const { lead, sentence, summary, merged } = describe(action, t, format, fieldLabel);
   const hasDetails = merged.length > 1 || merged.some((m) => Object.keys(m.changes).length > 0 || m.notes.length > 0);
   const missing = Math.max(0, action.item_count - action.records.length);
   const actionName = t(`hist.action.${lead}`, { defaultValue: lead });
+  // Presentation order only: keep the primary pair together before records that followed them.
+  const primary = merged.filter((record) => !record.follower && record.actions.includes(lead));
+  const related = merged.filter((record) => record.follower || !record.actions.includes(lead));
+  const actor = action.created_by_name ?? t('hist.system');
+  // Long field values belong in the full details; keep the collapsed context useful and compact.
+  const context = summary && summary.length > 180 && hasDetails
+    ? [t('hist.act.fieldsChanged', { count: merged.reduce((count, record) => count + rowChanges({
+      changes: record.changes, fromLocation: record.from, toLocation: record.to, actionCode: record.actions[0],
+    }).length, 0) }), t('hist.act.recordsCount', { count: merged.length })].join(' · ')
+    : summary;
 
   return (
     <tr data-action={lead}>
-      <td className="hist-col-time"><time dateTime={action.created_at}>{formatTime(action.created_at)}</time></td>
-      <td><ReadonlyValue label={t('hist.columns.actor')}>{action.created_by_name ?? t('hist.system')}</ReadonlyValue></td>
-      <td className="act-cell">
-        <div className="act-head">
-          <span className="act-module" data-module={action.module}>{t(`dash.moduleName.${action.module}`)}</span>
-          <span className="act-sentence">{sentence}</span>
-        </div>
-        {summary && <p className="act-sub">{summary}</p>}
-        {hasDetails && (
-          <button type="button" className="hist-more" aria-expanded={expanded} aria-controls={contentId}
-            aria-label={t(expanded ? 'hist.showLess' : 'hist.showMore', { action: actionName })}
-            onClick={() => setExpanded((value) => !value)}>
-            {t(expanded ? 'dp.showLess' : 'dp.showMore')}
-          </button>
-        )}
-        {expanded && (
-          <div id={contentId}>
-            <ul className="act-records" aria-label={t('hist.act.records')}>
-              {merged.map((m) => <RecordDetails key={m.key} merged={m} fieldLabel={fieldLabel} />)}
-            </ul>
-            {missing > 0 && <p className="act-sub">{t('hist.act.moreRecords', { count: missing })}</p>}
+      {phone ? (
+        <td className="act-meta">
+          <ActionTimestamp createdAt={action.created_at} />
+          <div className="act-actor">
+            <span className="act-actor-label">{t('hist.columns.actor')}</span>
+            <span className="act-actor-name">{actor}</span>
           </div>
-        )}
+        </td>
+      ) : (
+        <>
+          <td className="act-meta"><ActionTimestamp createdAt={action.created_at} /></td>
+          <td className="act-actor-name">{actor}</td>
+        </>
+      )}
+      <td className="act-cell">
+        <div className="act-content">
+          <div className="act-head">
+            <p className="act-sentence">{sentence}</p>
+            <div className="act-context">
+              <span className="act-module" data-module={action.module}>{t(`dash.moduleName.${action.module}`)}</span>
+              {context && <p className="act-sub">{context}</p>}
+            </div>
+          </div>
+          {hasDetails && (
+            <button type="button" className="hist-more" aria-expanded={expanded} aria-controls={contentId}
+              aria-label={t(expanded ? 'hist.showLess' : 'hist.showMore', { action: actionName })}
+              onClick={() => setDetailState(expanded ? 'collapsed' : 'expanded')}>
+              {t(expanded ? 'dp.showLess' : 'dp.showMore')}
+            </button>
+          )}
+          {hasDetails && (
+            <div id={contentId} className="act-details" data-expanded={expanded || undefined} aria-hidden={!expanded} inert={!expanded}>
+              <div className="act-details-inner">
+                {detailState !== 'unopened' && <>
+                  <ul className="act-records" aria-label={t('hist.act.records')}>
+                    {[...primary, ...related].map((m) => <RecordDetails key={m.key} merged={m} primaryAction={lead} fieldLabel={fieldLabel} />)}
+                  </ul>
+                  {missing > 0 && <p className="act-sub">{t('hist.act.moreRecords', { count: missing })}</p>}
+                </>}
+              </div>
+            </div>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -269,18 +317,24 @@ function ActionRow({ action }: { action: RecentAction }) {
 
 export function RecentActionsTable({ actions, ariaLabel, loading }: { actions: RecentAction[]; ariaLabel: string; loading?: boolean }) {
   const { t } = useTranslation();
+  const phone = usePhone();
   return (
     <div className="hist-table-wrap" role="region" tabIndex={0} aria-label={ariaLabel} aria-busy={loading || undefined}>
-      <table className="hist-table act-table" aria-label={ariaLabel} style={{ minWidth: 166 + 144 + 360 }}>
-        <colgroup><col style={{ width: 166 }} /><col style={{ width: 144 }} /><col /></colgroup>
+      <table className="hist-table act-table" aria-label={ariaLabel}>
+        <colgroup>
+          {phone ? <col className="act-meta-col" /> : <><col className="act-time-col" /><col className="act-by-col" /></>}
+          <col />
+        </colgroup>
         <thead>
           <tr>
-            <th scope="col">{t('hist.columns.time')}</th>
-            <th scope="col">{t('hist.columns.actor')}</th>
+            {phone ? <th scope="col">{t('hist.act.dateBy')}</th> : <>
+              <th scope="col">{t('hist.columns.time')}</th>
+              <th scope="col">{t('hist.columns.actor')}</th>
+            </>}
             <th scope="col">{t('hist.act.column')}</th>
           </tr>
         </thead>
-        <tbody>{actions.map((action) => <ActionRow key={action.id} action={action} />)}</tbody>
+        <tbody>{actions.map((action) => <ActionRow key={action.id} action={action} phone={phone} />)}</tbody>
       </table>
     </div>
   );

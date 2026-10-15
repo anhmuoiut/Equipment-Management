@@ -124,6 +124,9 @@ export function useEquipmentModal(ctx: DetailCtx<EquipmentRow>, opts: {
           } },
         { key: 'jabil_id', label: t('fields.jabil_id'), maxLength: 200 },
         { key: 'asset', label: t('fields.asset'), maxLength: 200 },
+        { key: 'part_number_description', label: t('fields.description'), readOnly: true, wide: true,
+          view: (r) => partOption(r.part_number_id)?.description ?? null,
+          draftView: (d) => partOption(d.part_number_id)?.description ?? null },
       ],
     },
     {
