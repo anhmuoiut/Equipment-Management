@@ -33,8 +33,18 @@ describe('configuration payloads — Group of a Type and Level of a part number'
     expect(parse('part-numbers', 'update', { level_id: null }).success).toBe(true);
   });
 
+  it('a part number may carry a Manufacturer (free text, up to 200 characters, optional, clearable)', () => {
+    const base = { display_name: 'P1', sort_order: 0, is_active: true, type_id: UUID };
+    expect(parse('part-numbers', 'create', { ...base, manufacturer: 'Keysight' }).success).toBe(true);
+    expect(parse('part-numbers', 'create', { ...base, manufacturer: null }).success).toBe(true);
+    expect(parse('part-numbers', 'create', { ...base, manufacturer: 'x'.repeat(200) }).success).toBe(true);
+    expect(parse('part-numbers', 'create', { ...base, manufacturer: 'x'.repeat(201) }).success).toBe(false);
+    expect(parse('part-numbers', 'update', { manufacturer: null }).success).toBe(true);
+  });
+
   it('other lists did not gain these fields', () => {
     expect(parse('locations', 'create', { display_name: 'B3F1', sort_order: 0, is_active: true, level_id: UUID }).success).toBe(false);
     expect(parse('levels', 'create', { display_name: '1', sort_order: 0, is_active: true, group_id: UUID }).success).toBe(false);
+    expect(parse('types', 'create', { display_name: 'Scope', sort_order: 0, is_active: true, group_id: UUID, manufacturer: 'Keysight' }).success).toBe(false);
   });
 });

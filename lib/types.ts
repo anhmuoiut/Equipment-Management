@@ -255,6 +255,7 @@ export type ConfigRow = Audit & {
   sort_order: number;
   is_active: boolean;
   description?: string | null;                 // part-numbers
+  manufacturer?: string | null;                // part-numbers
   kind?: TypeKind;                            // types, type-groups (tester / base / fixture khóa; sub_equipment do Admin thêm)
   group_id?: string;                           // types
   group?: string | null;                       // types

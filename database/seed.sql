@@ -97,11 +97,11 @@ insert into public.calibration_vendors (id, display_name, sort_order, is_active)
 on conflict do nothing;
 
 -- part_numbers
-insert into public.part_numbers (id, display_name, type_id, description, level_id, sort_order, is_active) values
-  ('c564b903-a50c-4af8-bdce-d3df03a627e5', 'KEYTHLEI', '8d5d2f0b-c8a4-4ba8-b0ae-050fe9428f74', null, 'a7d0f223-7820-45dc-9cf3-5627cf1cbdc3', 0, true),
-  ('da0e4b69-1afe-472e-9b5a-ea375179b30e', 'FI-UNI-M20', '88e47919-74ad-4a11-92ec-282836b28ae3', null, 'a7d0f223-7820-45dc-9cf3-5627cf1cbdc3', 1, true),
-  ('7881fa85-7b54-4fb2-8eb7-d6a61e5e419d', 'ST-UNI-M10', '5f325a3d-3870-43b4-95e7-3f6fad6cedc4', null, 'a7d0f223-7820-45dc-9cf3-5627cf1cbdc3', 1, true),
-  ('995eb50d-f3d6-4aaa-99e5-dfd9e7f96a51', 'FX-2292-M12', 'c56359d1-16fd-4208-b8a6-4b263bc6d837', null, 'a7d0f223-7820-45dc-9cf3-5627cf1cbdc3', 3, true)
+insert into public.part_numbers (id, display_name, type_id, manufacturer, description, level_id, sort_order, is_active) values
+  ('c564b903-a50c-4af8-bdce-d3df03a627e5', 'KEYTHLEI', '8d5d2f0b-c8a4-4ba8-b0ae-050fe9428f74', null, null, 'a7d0f223-7820-45dc-9cf3-5627cf1cbdc3', 0, true),
+  ('da0e4b69-1afe-472e-9b5a-ea375179b30e', 'FI-UNI-M20', '88e47919-74ad-4a11-92ec-282836b28ae3', null, null, 'a7d0f223-7820-45dc-9cf3-5627cf1cbdc3', 1, true),
+  ('7881fa85-7b54-4fb2-8eb7-d6a61e5e419d', 'ST-UNI-M10', '5f325a3d-3870-43b4-95e7-3f6fad6cedc4', null, null, 'a7d0f223-7820-45dc-9cf3-5627cf1cbdc3', 1, true),
+  ('995eb50d-f3d6-4aaa-99e5-dfd9e7f96a51', 'FX-2292-M12', 'c56359d1-16fd-4208-b8a6-4b263bc6d837', null, null, 'a7d0f223-7820-45dc-9cf3-5627cf1cbdc3', 3, true)
 on conflict do nothing;
 
 -- calibration_configurations

@@ -295,6 +295,7 @@
     "purpose": "Purpose",
     "display_name": "Name",
     "description": "Description",
+    "manufacturer": "Manufacturer",
     "sort_order": "Order",
     "is_active": "In use",
     "applies_to": "Used for",

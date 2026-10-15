@@ -295,6 +295,7 @@
     "purpose": "Purpose",
     "display_name": "Tên",
     "description": "Mô tả",
+    "manufacturer": "Nhà sản xuất",
     "sort_order": "Thứ tự",
     "is_active": "Đang dùng",
     "applies_to": "Dùng cho",

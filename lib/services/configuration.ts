@@ -46,6 +46,7 @@ function toRow(list: ConfigListDef, r: DbRow, lookups: Lookups): ConfigRow {
     return {
       ...base, type_id: r.type_id as string, type: nameOf(lookups.types, r.type_id as string),
       level_id: levelId, level: nameOf(lookups.levels, levelId),
+      manufacturer: (r.manufacturer as string | null | undefined) ?? null,
       description: (r.description as string | null | undefined) ?? null,
     };
   }

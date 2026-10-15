@@ -6,7 +6,8 @@
 -- Paste the whole file and press Run. It is made of four steps, each in its own transaction, in this order; every step
 -- is safe to run again, so if anything stops half way just run the whole file again.
 --
---   Adds     : action_id columns + indexes, the recent_actions view, p_action_id on the ten write functions.
+--   Adds     : action_id columns + indexes, the recent_actions view, p_action_id on the ten write functions,
+--              the part_numbers.manufacturer column.
 --   Changes  : tags_color_check now allows the six colours; tags that still use the old key 'yellow' (which the old
 --              screen showed as purple) become 'purple' ONCE, keeping their ids, timestamps and history.
 --   Removes  : the unused functions overview_children / overview_unattached_count and the unused view recent_activities.
@@ -15,7 +16,7 @@
 --
 -- The last statement returns ONE row of checks; send it back (it contains no secrets). Expected:
 --   action_id_columns 3 · recent_actions 1 · functions_with_action_id 10 · old_overview_functions 0 · recent_activities 0
---   · tag_palette_ok true · write_history_triggers 14
+--   · tag_palette_ok true · write_history_triggers 14 · manufacturer_column 1
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -2009,8 +2010,11 @@ drop function if exists public.overview_unattached_count();
 commit;
 
 -- -----------------------------------------------------------------------------
--- FINISH: the unused legacy view goes (only once its replacement exists), then the checks.
+-- FINISH: the Manufacturer column of part numbers; the unused legacy view goes (only once its replacement exists); then the checks.
 -- -----------------------------------------------------------------------------
+alter table public.part_numbers add column if not exists manufacturer text;
+comment on column public.part_numbers.manufacturer is 'Nhà sản xuất của part number (Configuration › Part Number). Không bắt buộc, chữ tự do, tối đa 200 ký tự (app kiểm tra).';
+
 do $$
 begin
   if to_regclass('public.recent_actions') is not null then
@@ -2033,5 +2037,6 @@ select
   coalesce((select pg_get_constraintdef(oid) like '%purple%' and pg_get_constraintdef(oid) like '%red%'
               from pg_constraint where conrelid = 'public.tags'::regclass and conname = 'tags_color_check'), false) as tag_palette_ok,
   (select count(*) from pg_trigger where tgname ~ '_write_history$') as write_history_triggers,
+  (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'part_numbers' and column_name = 'manufacturer') as manufacturer_column,
   (select count(*) from public.equipment) as equipment_rows,
   (select count(*) from public.asset_logs) as asset_log_rows;

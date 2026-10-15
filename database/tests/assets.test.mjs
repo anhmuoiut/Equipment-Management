@@ -223,6 +223,13 @@ check('the part number history shows the Level by name', (await one(`select chan
   where table_name = 'part_numbers' and record_id = $1 and action = 'UPDATE' order by created_at desc limit 1`, [pn['PN-PSU']])).l === 'ICT');
 await w('part_numbers', 'update', pn['PN-PSU'], { level_id: null });
 check('…and the Level can be cleared again', (await one(`select level_id from public.part_numbers where id = $1`, [pn['PN-PSU']])).level_id === null);
+check('part_numbers.manufacturer is optional and starts empty', (await q(`select 1 from public.part_numbers where manufacturer is not null`)).length === 0);
+await w('part_numbers', 'update', pn['PN-PSU'], { manufacturer: 'Keysight' });
+check('a part number can carry a Manufacturer', (await one(`select manufacturer from public.part_numbers where id = $1`, [pn['PN-PSU']])).manufacturer === 'Keysight');
+check('the part number history shows the Manufacturer change', (await one(`select changes -> 'manufacturer' ->> 'new' as m from public.configuration_histories
+  where table_name = 'part_numbers' and record_id = $1 and action = 'UPDATE' order by created_at desc limit 1`, [pn['PN-PSU']])).m === 'Keysight');
+await w('part_numbers', 'update', pn['PN-PSU'], { manufacturer: null });
+check('…and the Manufacturer can be cleared again', (await one(`select manufacturer from public.part_numbers where id = $1`, [pn['PN-PSU']])).manufacturer === null);
 await expectError('a Level in use by a part number cannot be deleted', (async () => {
   await w('part_numbers', 'update', pn['PN-PSU'], { level_id: lvl2 });
   await w('levels', 'delete', lvl2, {});

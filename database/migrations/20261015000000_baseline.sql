@@ -162,6 +162,7 @@ create table public.part_numbers (
   display_name text not null,
   type_id      uuid not null references public.types (id),
   description  text,
+  manufacturer text,
   sort_order   integer not null default 0,
   is_active    boolean not null default true,
   created_by   uuid references public.user_profiles (id),
@@ -176,6 +177,7 @@ create trigger part_numbers_set_updated_at before update on public.part_numbers
   for each row execute function public.set_updated_at();
 
 comment on column public.part_numbers.type_id is 'Loại của mọi thiết bị mang part number này — database tự đặt type_id của equipment / sub_equipment theo. kind của loại quyết định thiết bị thuộc bảng nào. Chỉ đổi được khi chưa thiết bị nào dùng part number (PART_NUMBER_IN_USE).';
+comment on column public.part_numbers.manufacturer is 'Nhà sản xuất của part number (Configuration › Part Number). Không bắt buộc, chữ tự do, tối đa 200 ký tự (app kiểm tra).';
 comment on column public.types.kind is 'tester / base / fixture (hệ thống, khóa) → bảng equipment; sub_equipment → bảng sub_equipment. Luôn bằng type_groups.kind của group_id (database tự đặt).';
 comment on column public.types.group_id is 'Nhóm của Type (Configuration › Group). Admin chọn trong các nhóm kind = sub_equipment; 3 Type hệ thống giữ nhóm hệ thống tương ứng.';
 

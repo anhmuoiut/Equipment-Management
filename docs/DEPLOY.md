@@ -103,7 +103,7 @@ Run on the preview URL as an Admin unless stated. Use any three test serials. Ti
 **C. Configuration (Admin)**
 - [ ] Each list opens: Part Number, Location, Type, Group, Tag, Level, Department, Calibration Setup, Vendor, Error log.
 - [ ] Add, edit and hide one item per list; a hidden item is no longer selectable in forms but existing records still show it. A duplicate name (different case) is refused.
-- [ ] Tester / Base / Fixture Types and Groups cannot be hidden. A Part number needs a Type; description saves; Level optional.
+- [ ] Tester / Base / Fixture Types and Groups cannot be hidden. A Part number needs a Type; Manufacturer and description save; Level optional.
 - [ ] Tags offer six colours; deleting a tag in use is refused.
 
 **D. Equipment**

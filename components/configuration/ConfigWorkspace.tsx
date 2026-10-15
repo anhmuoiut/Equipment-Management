@@ -56,6 +56,7 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
     ...(def.hasType ? [
       { key: 'type', label: t('fields.type'), value: (r: ConfigRow) => r.type ?? null, filter: true },
     ] : []),
+    ...(def.hasManufacturer ? [{ key: 'manufacturer', label: t('fields.manufacturer'), value: (r: ConfigRow) => r.manufacturer ?? null, filter: true }] : []),
     ...(def.hasLevel ? [{ key: 'level', label: t('fields.level'), value: (r: ConfigRow) => r.level ?? null, filter: true }] : []),
     ...(def.hasGroup ? [{ key: 'group', label: t('fields.group'), value: (r: ConfigRow) => r.group ?? null, filter: true }] : []),
     ...(def.hasDescription ? [{ key: 'description', label: t('fields.description'), value: (r: ConfigRow) => r.description ?? null, wrap: true, width: 200 }] : []),
@@ -85,6 +86,8 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
       // Part Number → Type: equipment with this part number always gets this Type (the database keeps them in step).
       ...(def.hasType ? [{ key: 'type_id', label: t('fields.type'), kind: 'select' as const, required: true, view: (r: ConfigRow) => r.type,
         options: (_d: unknown, r: ConfigRow | null) => toSelect(options?.types, r?.type_id, ` (${t('cfg.hidden')})`) }] : []),
+      // Part Number → Manufacturer (không bắt buộc): chữ tự do, tối đa 200 ký tự.
+      ...(def.hasManufacturer ? [{ key: 'manufacturer', label: t('fields.manufacturer'), kind: 'text' as const, maxLength: 200 }] : []),
       // Part Number → Level (không bắt buộc): Level đang dùng; Level đã ẩn mà part number đang giữ thì vẫn hiện.
       ...(def.hasLevel ? [{ key: 'level_id', label: t('fields.level'), kind: 'select' as const, view: (r: ConfigRow) => r.level,
         options: (_d: unknown, r: ConfigRow | null) => toSelect(options?.levels, r?.level_id, ` (${t('cfg.hidden')})`) }] : []),

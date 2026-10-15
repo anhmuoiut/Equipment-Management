@@ -42,7 +42,7 @@ PostgreSQL on Supabase. The whole schema is one file, [`database/migrations/2026
 | --- | --- | --- |
 | `type_groups` | Group of a Type (Configuration › Group). Three system groups (`tester`, `base`, `fixture`) are locked; every group an admin adds has `kind = sub_equipment`. | `display_name`, `kind`, `sort_order`, `is_active` |
 | `types` | Equipment type. `kind` always equals the group's kind (trigger). Tester / Base / Fixture are locked system rows. | `display_name`, `kind`, `group_id` |
-| `part_numbers` | Part numbers. The Type of every device carrying it is derived from here. | `display_name`, `type_id`, `level_id` (optional default for new devices), `description` |
+| `part_numbers` | Part numbers. The Type of every device carrying it is derived from here. | `display_name`, `type_id`, `level_id` (optional default for new devices), `manufacturer` (optional), `description` |
 | `locations`, `levels`, `departments`, `calibration_vendors` | Plain lists. | `display_name`, `sort_order`, `is_active` |
 | `tags` | Condition tags with a pastel colour. | `display_name`, `sort_order`, `color` (`green`/`yellow`/`red`/`blue`/`gray`/`purple`) |
 | `calibration_configurations` | Calibration setup, one per sub-equipment part number. | `part_number_id` (unique), `interval_months`, `warning_days` |
