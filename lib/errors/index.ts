@@ -24,6 +24,7 @@ export const ERROR_CODES = {
   INACTIVE_OPTION:                { status: 400, message: 'Selected value is hidden.' },
   LOCK_TIMEOUT:                   { status: 409, message: 'Busy, try again.' },
   SERVER_ERROR:                   { status: 500, message: 'Server error.' },
+  DATABASE_OUT_OF_DATE:           { status: 503, message: 'Database is not up to date for this version of the app.' },
   // User Management
   USERNAME_ALREADY_EXISTS:        { status: 409, message: 'Username already exists.' },
   ADMIN_SELF_CHANGE:              { status: 409, message: 'Admins cannot lock, demote or reset their own account here.' },
@@ -83,6 +84,9 @@ const PG_STATE: Record<string, ErrorCode> = {
   '22007': 'VALIDATION_ERROR',  // invalid_datetime_format
 };
 
+/** PostgREST: PGRST200 quan hệ, 202 hàm, 204 cột, 205 bảng / view không có trong schema cache; Postgres: 42883 hàm, 42P01 bảng, 42703 cột. */
+const SCHEMA_BEHIND: ReadonlySet<string> = new Set(['PGRST200', 'PGRST202', 'PGRST204', 'PGRST205', '42883', '42P01', '42703']);
+
 type PgLikeError = { message?: string; code?: string; details?: string | null };
 
 /**
@@ -95,11 +99,12 @@ export function mapRpcError(error: PgLikeError | null): AppError {
   const diagnostic = { pg: raw.slice(0, 200), pg_code: error.code, ...(error.details ? { pg_detail: error.details } : {}) };
   if (raw in ERROR_CODES) return new AppError(raw as ErrorCode, {}, diagnostic);
   if (error.code && PG_STATE[error.code]) return new AppError(PG_STATE[error.code]!, {}, diagnostic);
-  // PostgREST không tìm thấy hàm / bảng: database chưa chạy đủ file trong database/.
-  if (error.code === 'PGRST202' || error.code === 'PGRST205' || error.code === '42883' || error.code === '42P01') {
-    return new AppError('SERVER_ERROR', {}, {
+  // PostgREST không tìm thấy hàm / bảng / view / cột: database chưa chạy đủ file trong database/migrations (app mới hơn database).
+  // Mã riêng (503) để màn hình nói đúng việc cần làm — Admin chạy migration mới nhất — thay vì "System error" chung.
+  if (error.code && SCHEMA_BEHIND.has(error.code)) {
+    return new AppError('DATABASE_OUT_OF_DATE', {}, {
       ...diagnostic,
-      hint: 'Database is missing functions or tables — run every file in database/migrations in order (see docs/DEPLOY.md).',
+      hint: 'Database is missing functions, tables, views or columns — run every file in database/migrations in order (see docs/DEPLOY.md).',
     });
   }
   return new AppError('SERVER_ERROR', {}, diagnostic);

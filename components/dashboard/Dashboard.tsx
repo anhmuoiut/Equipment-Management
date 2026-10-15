@@ -14,7 +14,7 @@ import { api, errorMessage } from '@/lib/client/api';
 import { useFetch } from '@/lib/client/useFetch';
 import { usePhone } from '@/lib/client/usePhone';
 import { useCan } from '@/components/ViewerContext';
-import { Button, ErrorState, Notice, Skeleton, Spinner } from '@/components/ui';
+import { Button, ErrorState, Notice, Skeleton, Spinner, splitRequestReference } from '@/components/ui';
 import { PageHeading } from '@/components/layout/PageHeading';
 import { DueDate } from '@/components/ui/tags';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
@@ -34,6 +34,7 @@ export function Dashboard() {
   const { t } = useTranslation();
   const denied = useSearchParams().get('denied') === '1';
   const { data, error, reload } = useFetch<DashboardData>('/api/dashboard');
+  const failure = error ? splitRequestReference(error) : null;
   const assetTotal = data ? data.equipment_total + data.sub_equipment_total + data.golden_total : undefined;
   // Mọi con số Quá hạn / Sắp đến hạn (KPI, tiêu đề danh sách, chú thích Status) đọc từ MỘT nơi: by_calibration_status.
   const calCount = (status: CalibrationStatus) => (data ? data.by_calibration_status.find((i) => i.id === status)?.count ?? 0 : undefined);
@@ -42,8 +43,31 @@ export function Dashboard() {
     <div className="dash">
       <PageHeading title={t('nav.dashboard')} />
       {denied && <Notice tone="warn">{t('dash.denied')}</Notice>}
-      {error ? <ErrorState message={error} onRetry={reload} /> : (
+      {error ? (
+        // The numbers failed, but the page is not blank: say so (with the reference and Retry), keep the tiles (as "—") and still show Recent
+        // changes, which loads on its own.
         <>
+          <Notice tone="warn">
+            <strong>{t('dash.unavailable')}</strong>
+            <span className="dash-unavailable-hint"> {t('dash.unavailableHint')}</span>
+            <p className="dash-unavailable-msg">
+              {failure?.text}
+              {failure?.reference && <> <code className="dash-unavailable-ref">{failure.reference}</code></>}
+            </p>
+            <Button size="sm" onClick={reload}>{t('common.retry')}</Button>
+          </Notice>
+          <div className="dash-kpis">
+            <Kpi icon={<Cpu size={16} />} label={t('dash.equipment')} scope={t('dash.scope.kpiEquipment')} value={null} href="/equipment" />
+            <Kpi icon={<Gauge size={16} />} label={t('dash.subEquipment')} scope={t('dash.scope.kpiSub')} value={null} href="/calibration" />
+            <Kpi icon={<TriangleAlert size={16} />} label={t('cal.status.overdue')} scope={t('dash.scope.kpiOverdue')} value={null} tone="alert" href="/calibration" />
+            <Kpi icon={<CalendarClock size={16} />} label={t('cal.status.due_soon')} scope={t('dash.scope.kpiDueSoon')} value={null} tone="warn" href="/calibration" />
+            <Kpi icon={<CircuitBoard size={16} />} label={t('dash.golden')} scope={t('dash.scope.kpiGolden')} value={null} href="/golden" />
+          </div>
+          <RecentActivities initial={null} />
+        </>
+      ) : (
+        <>
+          {assetTotal === 0 && <EmptySystem />}
           <div className="dash-kpis">
             <Kpi icon={<Cpu size={16} />} label={t('dash.equipment')} scope={t('dash.scope.kpiEquipment')} value={data?.equipment_total} href="/equipment" />
             <Kpi icon={<Gauge size={16} />} label={t('dash.subEquipment')} scope={t('dash.scope.kpiSub')} value={data?.sub_equipment_total} href="/calibration" />
@@ -75,13 +99,34 @@ export function Dashboard() {
   );
 }
 
+/** Nothing has been entered yet (all three asset tables empty): say what to do first instead of a wall of zeros. */
+function EmptySystem() {
+  const { t } = useTranslation();
+  const can = useCan();
+  const button = (primary: boolean) => `ui-button ui-button--sm ${primary ? 'ui-button--primary' : 'ui-button--quiet'} border font-medium px-2.5 py-1 text-[12px]`;
+  return (
+    <section className="dash-card dash-welcome">
+      <h2>{t('dash.welcomeTitle')}</h2>
+      <p>{can.edit ? t('dash.welcomeText') : t('dash.welcomeReadonly')}</p>
+      {can.edit && (
+        <div className="dash-welcome-actions">
+          {can.admin && <Link className={button(true)} href="/configuration">{t('dash.welcomeConfig')}</Link>}
+          <Link className={button(!can.admin)} href="/equipment?tool=import">{t('dash.welcomeImport')}</Link>
+          <Link className={button(false)} href="/equipment?new=1">{t('dash.welcomeAdd')}</Link>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** `value`: number; `undefined` = still loading (skeleton); `null` = could not be loaded ("—"). */
 function Kpi({ icon, label, scope, value, tone, href }: {
-  icon: React.ReactNode; label: string; scope: string; value: number | undefined; tone?: 'alert' | 'warn'; href: string;
+  icon: React.ReactNode; label: string; scope: string; value: number | null | undefined; tone?: 'alert' | 'warn'; href: string;
 }) {
   return (
     <Link href={href} className="kpi" data-tone={value ? tone : undefined}>
       <span className="kpi-icon" aria-hidden="true">{icon}</span>
-      <span className="kpi-value">{value === undefined ? <Skeleton className="h-7" style={{ width: 48 }} /> : value}</span>
+      <span className="kpi-value">{value === undefined ? <Skeleton className="h-7" style={{ width: 48 }} /> : value === null ? '—' : value}</span>
       <span className="kpi-label">{label}</span>
       <span className="kpi-scope">{scope}</span>
     </Link>
@@ -211,7 +256,7 @@ function mergeActions(first: RecentAction[], extra: RecentAction[]): RecentActio
 }
 
 /** `initial`: trang đầu (không lọc, 50 thao tác) đi kèm `/api/dashboard` — dùng cho lần hiện đầu tiên, khỏi gọi thêm một request. */
-function RecentActivities({ initial }: { initial: RecentAction[] | undefined }) {
+function RecentActivities({ initial }: { initial: RecentAction[] | null | undefined }) {
   const { t } = useTranslation();
   const can = useCan();
   const [module, setModule] = useState('');
@@ -237,10 +282,11 @@ function RecentActivities({ initial }: { initial: RecentAction[] | undefined }) 
   const atDefault = !module && !query && !from && !to;
   const [leftDefault, setLeftDefault] = useState(false);
   useEffect(() => { if (!atDefault) setLeftDefault(true); }, [atDefault]);
-  const useInitial = atDefault && !leftDefault;
+  // `initial === null`: the dashboard numbers failed, so there is no first page to reuse — ask for it directly.
+  const useInitial = atDefault && !leftDefault && initial !== null;
   // Đổi bộ lọc / Tải thêm: giữ danh sách cũ (mờ đi) tới khi danh sách mới về; phản hồi cũ bị bỏ qua.
   const fetched = useFetch<RecentAction[]>(useInitial ? null : `/api/dashboard/activities?${base}`);
-  const first = useInitial ? initial : fetched.data;
+  const first = useInitial ? (initial ?? undefined) : fetched.data;
   const loading = !useInitial && fetched.loading;
   const error = useInitial ? null : fetched.error;
   const reload = fetched.reload;

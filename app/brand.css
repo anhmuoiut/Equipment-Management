@@ -158,3 +158,22 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--machine); }
   .label-card { color: var(--jabil-prussian); background: var(--jabil-white); border-color: var(--jabil-prussian); }
   .label-heading, .label-field, .label-field strong { color: var(--jabil-prussian); }
 }
+
+/* Error card (ErrorState): icon, title, plain message, copyable reference, hint, Retry. */
+.ui-error { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 520px; margin: 0 auto; padding: 44px 20px; text-align: center; }
+.ui-error-icon { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: var(--alert-tint); color: var(--alert); }
+.ui-error-title { margin: 8px 0 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.ui-error-text { margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+.ui-error-ref { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin: 6px 0 0; font-size: 12px; color: var(--ink-3); }
+.ui-error-ref code { padding: 2px 7px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink-2); font-size: 11.5px; user-select: all; overflow-wrap: anywhere; }
+.ui-error-ref button { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); color: var(--ink-2); cursor: pointer; }
+.ui-error-ref button:hover { background: var(--machine-tint); }
+.ui-error-hint { margin: 0; max-width: 420px; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+/* Dashboard: numbers unavailable / empty system. */
+.dash-unavailable-hint { color: var(--ink-2); }
+.dash-unavailable-msg { margin: 4px 0 8px; color: var(--ink-2); overflow-wrap: anywhere; }
+.dash-unavailable-ref { padding: 1px 6px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); font-size: 11.5px; user-select: all; }
+.dash-welcome h2 { margin: 0 0 6px; }
+.dash-welcome p { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--ink-2); max-width: 640px; }
+.dash-welcome-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dash-welcome-actions a { text-decoration: none; }

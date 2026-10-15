@@ -152,7 +152,7 @@ describe('runList', () => {
   });
 
   it('a database error is mapped, not leaked', async () => {
-    m.from.mockImplementation(() => ({ select: () => ({ order: () => ({ order: () => ({ range: () => Promise.resolve({ data: null, count: null, error: { code: '42P01', message: 'relation "x" does not exist' } }) }) }) }) }));
+    m.from.mockImplementation(() => ({ select: () => ({ order: () => ({ order: () => ({ range: () => Promise.resolve({ data: null, count: null, error: { code: 'XX000', message: 'internal detail that must not reach the client' } }) }) }) }) }));
     await expect(runList(SPEC, parse(''))).rejects.toMatchObject({ code: 'SERVER_ERROR' });
   });
 });

@@ -71,7 +71,7 @@ describe('filterValues', () => {
 
   it('a database error is reported and not remembered', async () => {
     m.from.mockImplementationOnce(() => ({
-      select: () => ({ not: () => ({ eq: () => ({ in: () => ({ limit: () => Promise.resolve({ data: null, error: { code: '42P01', message: 'x' } }) }) }) }) }),
+      select: () => ({ not: () => ({ eq: () => ({ in: () => ({ limit: () => Promise.resolve({ data: null, error: { code: 'XX000', message: 'x' } }) }) }) }) }),
     }));
     await expect(filterValues('equipment')).rejects.toMatchObject({ code: 'SERVER_ERROR' });
     serve({ equipment_list: [{ serial_number: 'T-1' }] });
