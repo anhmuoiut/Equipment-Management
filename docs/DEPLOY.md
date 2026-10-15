@@ -39,7 +39,7 @@ All SQL is pasted into **SQL Editor** of the new project and run with **Run**. E
 | Step | File | Result |
 | --- | --- | --- |
 | 1 | [`database/migrations/20261015000000_baseline.sql`](../database/migrations/20261015000000_baseline.sql) | 18 tables, 2 views, 54 functions, triggers, RLS, grants. |
-| 2 | [`database/seed.sql`](../database/seed.sql) | The system rows the app cannot work without: Types Tester / Base / Fixture and their four Groups. Safe to re-run. Everything else in Configuration is entered by the Admin afterwards (§8 step 7); it contains no devices, users or logs. |
+| 2 | [`database/seed.sql`](../database/seed.sql) | The three system Types (Tester / Base / Fixture) and their Groups, plus this site's Configuration lists (Locations, Levels, Departments, Tags, Vendor, Part numbers, calibration setup, the sub-equipment Type), exported from the old project on 2026-10-15. Safe to re-run. **Edit it first if the lists should differ**; it contains no devices, users or logs. |
 | 3 | the first Admin (below) | One Admin who can sign in. |
 | 4 | the check query below | One row of numbers that must match. |
 
@@ -59,11 +59,11 @@ select
   (select count(*) from pg_proc where pronamespace = 'public'::regnamespace) as functions,                                -- 54
   (select count(*) from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and not c.relrowsecurity) as tables_without_rls, -- 0
   (select count(*) from public.type_groups) as type_groups,                                                               -- 4
-  (select count(*) from public.types) as types,                                                                           -- 3
+  (select count(*) from public.types) as types,                                                                           -- 4
   (select count(*) from public.user_profiles where role = 'admin' and is_active) as active_admins;                        -- 1
 ```
 
-The Admin move keeps the account's department only if it exists in the new project; after the move it is empty (choose it again in Users once Departments exist).
+The Admin move keeps the account's department only if it is in the new project (it is, when it is one of the seeded Departments); otherwise it is left empty.
 
 ## 4. Vercel
 
@@ -93,16 +93,16 @@ Goal: exercise the new database with the real code **while production keeps usin
    CLI equivalent: `vercel env add NEXT_PUBLIC_SUPABASE_URL preview chore/new-supabase-cleanup` (repeat for the other two).
 3. Push the branch. Vercel builds a Preview and gives its URL (also shown on the commit/PR).
 4. Work through the [checklist](#7-manual-test-checklist) on that URL.
-5. When done, run [`database/tools/reset_after_testing.sql`](../database/tools/reset_after_testing.sql) in the new project (§8 step 2) so no test data survives. It also removes the Configuration values you entered for the test.
+5. When done, run [`database/tools/reset_after_testing.sql`](../database/tools/reset_after_testing.sql) in the new project (§8 step 2) so no test data survives. It also puts the Configuration lists back exactly as in `seed.sql`.
 
-> The repository may be **public**. `database/` holds only the schema and the system rows, no site data; still never commit `.env.local` or an Admin export (`admin_export*.json`, `*.filled.sql`).
+> The repository may be **public**. `database/seed.sql` holds your real Configuration lists (bay names, part numbers). Decide before pushing: make the repository private, or keep that file out of the push. Never commit `.env.local` or an Admin export (`admin_export*.json`, `*.filled.sql`).
 
 ## 7. Manual test checklist
 
-Run on the preview URL as an Admin unless stated. Use any three test serials. Tick everything; note the browser and screen size. Nothing is seeded except the three system Types, so first enter test values in Configuration (section C; the reset removes them again): a Location, a Level, a Department, a Tag, one Part number per Tester / Base / Fixture, and a sub-equipment Type and Part number with a 6-month calibration setup and 15-day warning. The names below (`ST-UNI-M10` Tester, `FI-UNI-M20` Base, `FX-2292-M12` Fixture, `KEYTHLEI` sub-equipment) are examples; use yours.
+Run on the preview URL as an Admin unless stated. Use any three test serials. Tick everything; note the browser and screen size. Seeded lists to expect: Types `Station` (the Tester type, renamed in the old project), `Base`, `Fixture`, `Device` (sub-equipment); Locations `B3F5 - Bay 8A/8B/9A/9B`; Part numbers `ST-UNI-M10` (Tester), `FI-UNI-M20` (Base), `FX-2292-M12` (Fixture), `KEYTHLEI` (sub-equipment, 6-month calibration setup, 15-day warning), `33210A` (sub-equipment); 9 Levels; Departments QE/TE/ME; Vendor `Internal vendor`; Tags Normal, Upcoming receive, Wait for registration, Deactivated.
 
 **A. Database and access**
-- [ ] The check query in §3 returns 18 / 2 / 54 / 0 / 4 / 3 / 1.
+- [ ] The check query in §3 returns 18 / 2 / 54 / 0 / 4 / 4 / 1.
 - [ ] `GET <preview>/api/health` → 200 without signing in.
 - [ ] `GET <preview>/api/equipment` signed out → 401. Opening `/equipment` signed out → redirected to `/login`.
 - [ ] Publishable key straight at Supabase gives nothing: `curl "<SUPABASE_URL>/rest/v1/equipment?select=*" -H "apikey: <publishable key>"` → empty list or permission error, and `…/rest/v1/rpc/app_write` (POST) is refused.
@@ -116,7 +116,7 @@ Run on the preview URL as an Admin unless stated. Use any three test serials. Ti
 - [ ] Admin cannot lock or demote themselves (refused). With one active Admin, locking/demoting that Admin is refused.
 
 **C. Configuration (Admin)**
-- [ ] Each list opens: Part Number, Location, Type, Group, Tag, Level, Department, Calibration Setup, Vendor, Error log. Start by adding the test values described above.
+- [ ] Each list opens: Part Number, Location, Type, Group, Tag, Level, Department, Calibration Setup, Vendor, Error log.
 - [ ] Add, edit and hide one item per list; a hidden item is no longer selectable in forms but existing records still show it. A duplicate name (different case) is refused.
 - [ ] Tester / Base / Fixture Types and Groups cannot be hidden. A Part number needs a Type; Manufacturer and description save; Level optional.
 - [ ] Tags offer six colours; deleting a tag in use is refused.
@@ -168,19 +168,19 @@ Run on the preview URL as an Admin unless stated. Use any three test serials. Ti
 - [ ] Phone width (< 768 px): lists become cards, filters open as a sheet, the modal is full screen, a floating **+** adds a record.
 
 **L. Close-out**
-- [ ] Error log (Admin) opens. Run `reset_after_testing.sql`, then the §3 check query again (same numbers); every Configuration list except Type and Group is empty and you can still sign in as the Admin.
+- [ ] Error log (Admin) opens. Run `reset_after_testing.sql`, then the §3 check query again (same numbers); the Configuration lists are exactly the seeded ones (test values gone) and you can still sign in as the Admin.
 
 ## 8. Go live
 
 Preconditions: the new project is built; the preview checklist passed; nobody needs the old data (the decision for this move is to start with an empty system).
 
 1. **Tag the rollback point**: `git tag pre-new-supabase main` (the last commit that works with the old project).
-2. **Reset the new project**: run `database/tools/reset_after_testing.sql` (set `ADMIN_USERNAME`), then the §3 check query. Only the Admin and the three system Types / four Groups remain.
+2. **Reset the new project**: run `database/tools/reset_after_testing.sql` (set `ADMIN_USERNAME`), then the §3 check query. Only the Admin and the seeded lists remain.
 3. **Switch Production variables** in Vercel to the new project (all three). Do **not** redeploy yet.
 4. **Drop the temporary compatibility commits, then merge the branch into `main`** (pull request). List them with `git log --grep="^Temporary:" --oneline` and `git revert` each (newest first); see [§11](#11-local-development). The Production build now picks up the new code *and* the new variables together. The merged code requires the new schema, so never deploy it against the old project.
 5. **Update GitHub**: secret `SUPABASE_DB_URL` → the new project; check `APP_URL`.
 6. **Smoke test production**: open the URL, sign in as the Admin, check Dashboard (empty), Configuration lists, `/api/health`.
-7. **Enter real data** as the Admin, in this order: Configuration lists (Locations, Levels, Departments, Tags, Vendors, sub-equipment Types, Part numbers, calibration Setup), then Users, then devices (Excel import per module is the fast way).
+7. **Enter real data** as the Admin: adjust Configuration if needed, add Users, then devices (Excel import per module is the fast way).
 8. **Old project**: **pause** it (Supabase → Project Settings → General → Pause project). Do not delete it until you have confirmed the new one works over a real working period. Before pausing you can keep the draft data by using each module's **Export Excel** in the old app.
 
 **Rollback** (before real data is entered): set Production variables back to the old project, redeploy `pre-new-supabase`, restore the old project if it was paused. After real data exists in the new project a rollback loses it, so decide early.
@@ -190,7 +190,7 @@ Preconditions: the new project is built; the preview checklist passed; nobody ne
 - Code changes: pull request → Vercel Preview → merge to `main` → Production.
 - Database changes: add `database/migrations/YYYYMMDDHHMMSS_name.sql` ([DATABASE.md](DATABASE.md) §9), test on the preview project first, run it in the production SQL Editor, then deploy the code that needs it. For a change the **old** code cannot live with, run it in the order that keeps the site working (usually: additive migration → deploy → cleanup migration).
 - Before merging: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
-- If you change the system rows in `database/seed.sql`, make the same change in the matching block (step 3) of `database/tools/reset_after_testing.sql`.
+- If you change `database/seed.sql`, make the same change in step 3 of `database/tools/reset_after_testing.sql` (it holds a copy of the seed rows).
 
 ## 10. Operations runbook
 
@@ -243,7 +243,7 @@ Look once a month; crossing a threshold means *optimise*, not necessarily upgrad
 | Vercel invocations | Vercel → Usage | 500k of 1M | Every API call and page open authenticates once; look for new polling |
 
 ### 10.10 Rebuild a development database
-Create a new project (or use a scratch one) and repeat §3. There is no destructive "reset the schema" script any more; to empty a *test* project keeping the Admin and the system rows use `database/tools/reset_after_testing.sql`.
+Create a new project (or use a scratch one) and repeat §3. There is no destructive "reset the schema" script any more; to empty a *test* project keeping the Admin and the seeded lists use `database/tools/reset_after_testing.sql`.
 
 ## 11. Local development
 
