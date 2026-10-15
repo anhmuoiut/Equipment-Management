@@ -5,7 +5,7 @@ import 'server-only';
  * (Equipment, Sub-equipment, Golden board) và Calibration Status, theo thẻ / vị trí / loại, sub-equipment quá hạn và sắp
  * đến hạn hiệu chuẩn, thay đổi gần đây.
  */
-import { db, selectAll } from './core/db';
+import { db, rpc } from './core/db';
 import { withActorNames } from './core/history';
 import { loadLookups, nameOf } from './core/lookups';
 import { mapRpcError } from '@/lib/errors';
@@ -16,78 +16,94 @@ import type {
   StatusCountItem, Usage,
 } from '@/lib/types';
 
-/** `type_id` chỉ có ở equipment / sub-equipment — golden board không có Type. */
-type Basic = { usage: Usage; location_id: string; tag_ids: string[] | null; type_id?: string | null };
-type DbSub = Basic & {
-  id: string; serial_number: string; part_number_id: string; type_id: string; tester_id: string | null; tester: { serial_number: string } | null;
+/** Một dòng của danh sách Quá hạn / Sắp đến hạn do hàm dashboard_summary trả (chỉ id — tên do server ghép từ Configuration đã nhớ). */
+type DueRow = {
+  id: string; serial_number: string; part_number_id: string; type_id: string; location_id: string;
+  tester_serial: string | null; due_date: string | null; status: CalibrationStatus;
+};
+type Counted = { id: string | null; count: number };
+/** Kết quả của hàm dashboard_summary (migration 20261016000000). */
+type Summary = {
+  totals: Record<AssetType, number>;
+  usage: Record<AssetType, Record<Usage, number>>;
+  calibration: Partial<Record<CalibrationStatus, number>>;
+  locations: Counted[];
+  types: Counted[];
+  tags: Counted[];
+  untagged: number;
+  overdue: DueRow[];
+  due_soon: DueRow[];
 };
 
-function countBy(keys: (string | null)[], label: (id: string | null) => string | null): CountItem[] {
-  const counts = new Map<string | null, number>();
-  keys.forEach((k) => counts.set(k, (counts.get(k) ?? 0) + 1));
-  return [...counts.entries()]
-    .map(([id, count]) => ({ id, label: label(id), count }))
-    .sort((a, b) => b.count - a.count);
+/** Dashboard chỉ vẽ vài dòng đầu của mỗi danh sách (15 trên máy tính, 5 trên điện thoại); số đầy đủ lấy từ `calibration`. */
+const DUE_LIST_LIMIT = 15;
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+/** Nhiều nhất trước; bằng nhau thì theo tên (không có tên — "No type", "Untagged" — xếp cuối) cho thứ tự ổn định. */
+function ranked(items: CountItem[]): CountItem[] {
+  return items.sort((x, y) => y.count - x.count || collator.compare(x.label ?? '\uffff', y.label ?? '\uffff'));
 }
 
 /**
  * Đếm theo Status (do hệ thống quản, thứ tự và màu cố định): mỗi Status luôn ở cùng một chỗ, kể cả khi
  * số lượng là 0. `label` để trống — màn hình dịch `id` ra chữ.
  */
-function countByStatus<K extends string>(keys: readonly K[], color: Record<K, StatusColor>, values: K[]): StatusCountItem[] {
-  return keys.map((key) => ({ id: key, label: null, color: color[key], count: values.filter((v) => v === key).length }));
+function countByStatus<K extends string>(keys: readonly K[], color: Record<K, StatusColor>, counts: Partial<Record<K, number>>): StatusCountItem[] {
+  return keys.map((key) => ({ id: key, label: null, color: color[key], count: counts[key] ?? 0 }));
 }
 
-const byDue = (a: CalibrationAlert, b: CalibrationAlert) => (a.due_date ?? '').localeCompare(b.due_date ?? '');
-
+/**
+ * Mọi con số của Dashboard đến từ MỘT lần gọi hàm dashboard_summary (đếm ở database, vài KB) — không còn đọc cả ba bảng tài sản và view
+ * Calibration về để đếm trong JavaScript. MỘT nguồn cho mọi con số hiệu chuẩn: số theo Calibration Status, hai danh sách Quá hạn / Sắp đến
+ * hạn và các KPI đều từ cùng view sub_equipment_calibration trong cùng câu truy vấn — không thể lệch nhau.
+ */
 export async function getDashboard(): Promise<DashboardData> {
-  const [equipment, subs, golden, statuses, lookups] = await Promise.all([
-    selectAll<Basic & { id: string; type_id: string }>('equipment', 'id, usage, location_id, type_id, tag_ids'),
-    selectAll<DbSub>('sub_equipment', 'id, serial_number, part_number_id, type_id, tester_id, usage, location_id, tag_ids, tester:tester_id(serial_number)'),
-    selectAll<Basic & { id: string }>('golden_boards', 'id, usage, location_id, tag_ids'),
-    selectAll<{ sub_equipment_id: string; due_date: string | null; status: CalibrationStatus }>(
-      'sub_equipment_calibration', 'sub_equipment_id, due_date, status', 'sub_equipment_id'),
+  const [summary, lookups] = await Promise.all([
+    rpc<Summary>('dashboard_summary', { p_list_limit: DUE_LIST_LIMIT }),
     loadLookups(),
   ]);
 
-  const statusOf = new Map(statuses.map((s) => [s.sub_equipment_id, s]));
-  // MỘT nguồn cho mọi con số hiệu chuẩn: Calibration Status của từng sub-equipment được tính đúng một lần ở đây, rồi cả số đếm theo
-  // Status lẫn hai danh sách Quá hạn / Sắp đến hạn (và các KPI) đều lấy từ nó — không thể lệch nhau.
-  const statusFor = (s: DbSub): CalibrationStatus => statusOf.get(s.id)?.status ?? 'not_calibrated';
-
-  const alert = (s: DbSub, status: CalibrationStatus, due: string | null): CalibrationAlert => ({
-    id: s.id, serial_number: s.serial_number, part_number: nameOf(lookups.part_numbers, s.part_number_id),
-    type: nameOf(lookups.types, s.type_id), tester_serial: s.tester?.serial_number ?? null,
-    location: nameOf(lookups.locations, s.location_id), due_date: due, status,
+  const alert = (row: DueRow): CalibrationAlert => ({
+    id: row.id, serial_number: row.serial_number, part_number: nameOf(lookups.part_numbers, row.part_number_id),
+    type: nameOf(lookups.types, row.type_id), tester_serial: row.tester_serial,
+    location: nameOf(lookups.locations, row.location_id), due_date: row.due_date, status: row.status,
   });
-  const alerts = (which: CalibrationStatus) => subs
-    .filter((s) => statusFor(s) === which)
-    .map((s) => alert(s, which, statusOf.get(s.id)?.due_date ?? null))
-    .sort(byDue);
-
-  const usage = (rows: Basic[]) => countByStatus(USAGE_STATUSES, USAGE_STATUS_COLOR, rows.map((r) => r.usage));
+  const usage = (counts: Record<Usage, number>) => countByStatus(USAGE_STATUSES, USAGE_STATUS_COLOR, counts);
   // Location / Type / Tag cùng một phạm vi: TẤT CẢ tài sản (Equipment + Sub-equipment + Golden board), mỗi tài sản đếm một lần.
   // Tài sản không có Type (golden board) và tài sản chưa gắn thẻ có dòng riêng (id = null) để tổng các dòng luôn bằng tổng tài sản.
-  const all: Basic[] = [...equipment, ...subs, ...golden];
-  const tagsOf = (r: Basic) => (r.tag_ids ?? []).filter((id) => lookups.tags.has(id));
-  const tagCounts = countBy(all.flatMap(tagsOf), (id) => (id ? lookups.tags.get(id)?.display_name ?? null : null));
-  const untagged = all.filter((r) => tagsOf(r).length === 0).length;
+  const named = (rows: Counted[], names: Map<string, { display_name: string }>): CountItem[] =>
+    rows.map((r) => ({ id: r.id, label: nameOf(names, r.id), count: r.count }));
 
   return {
-    equipment_total: equipment.length,
-    sub_equipment_total: subs.length,
-    golden_total: golden.length,
-    by_usage: { equipment: usage(equipment), sub_equipment: usage(subs), golden_board: usage(golden) } satisfies Record<AssetType, StatusCountItem[]>,
-    by_calibration_status: countByStatus(CALIBRATION_STATUSES, CALIBRATION_STATUS_COLOR, subs.map(statusFor)),
-    by_tag: (untagged > 0 ? [...tagCounts, { id: null, label: null, count: untagged }] : tagCounts).sort((a, b) => b.count - a.count),
-    by_location: countBy(all.map((r) => r.location_id), (id) => nameOf(lookups.locations, id)),
-    by_type: countBy(all.map((r) => r.type_id ?? null), (id) => nameOf(lookups.types, id)),
-    overdue: alerts('overdue'),
-    due_soon: alerts('due_soon'),
+    equipment_total: summary.totals.equipment,
+    sub_equipment_total: summary.totals.sub_equipment,
+    golden_total: summary.totals.golden_board,
+    by_usage: {
+      equipment: usage(summary.usage.equipment), sub_equipment: usage(summary.usage.sub_equipment), golden_board: usage(summary.usage.golden_board),
+    } satisfies Record<AssetType, StatusCountItem[]>,
+    by_calibration_status: countByStatus(CALIBRATION_STATUSES, CALIBRATION_STATUS_COLOR, summary.calibration),
+    by_tag: ranked([
+      ...named(summary.tags, lookups.tags),
+      ...(summary.untagged > 0 ? [{ id: null, label: null, count: summary.untagged }] : []),
+    ]),
+    by_location: ranked(named(summary.locations, lookups.locations)),
+    by_type: ranked(named(summary.types, lookups.types)),
+    overdue: summary.overdue.map(alert),
+    due_soon: summary.due_soon.map(alert),
   };
 }
 
-export type ActivityFilter = { module?: HistoryModule; userId?: string; search?: string; from?: string; to?: string; limit?: number };
+export type ActivityFilter = {
+  module?: HistoryModule; userId?: string; search?: string; from?: string; to?: string;
+  /** Số thao tác một trang (tối đa MAX_ACTIVITY_PAGE). */
+  limit?: number;
+  /** Bỏ qua bấy nhiêu thao tác đầu (trang kế tiếp: offset = số thao tác đã có). */
+  offset?: number;
+};
+
+/** Một trang "Thay đổi gần đây" tối đa bấy nhiêu thao tác; xem tiếp bằng `offset`. */
+export const MAX_ACTIVITY_PAGE = 100;
+const MAX_ACTIVITY_OFFSET = 10_000;
 
 const ASSET_MODULES: HistoryModule[] = ['equipment', 'sub_equipment', 'golden_board'];
 /** % _ \ trong chữ gõ vào là ký tự thường (ilike). */
@@ -99,11 +115,12 @@ const likePattern = (text: string) => `%${text.replace(/[\\%_]/g, '\\$&')}%`;
  * ghi nào trong thao tác. Configuration / User chỉ Admin thấy.
  */
 export async function recentActivities(role: Role, filter: ActivityFilter): Promise<RecentAction[]> {
-  const limit = Math.min(Math.max(filter.limit ?? 50, 1), 500);
+  const limit = Math.min(Math.max(Math.floor(filter.limit ?? 50), 1), MAX_ACTIVITY_PAGE);
+  const offset = Math.min(Math.max(Math.floor(filter.offset ?? 0), 0), MAX_ACTIVITY_OFFSET);
   let query = db().from('recent_actions')
     .select('id, module, modules, action, source, created_by, created_at, item_count, records')
     .order('created_at', { ascending: false }).order('id')
-    .limit(limit);
+    .range(offset, offset + limit - 1);
   if (role !== 'admin') query = query.containedBy('modules', ASSET_MODULES);
   if (filter.module) query = query.contains('modules', [filter.module]);
   if (filter.userId) query = query.eq('created_by', filter.userId);
@@ -112,7 +129,7 @@ export async function recentActivities(role: Role, filter: ActivityFilter): Prom
   if (filter.to) query = query.lte('created_at', filter.to);
   const { data, error } = await query;
   // TẠM THỜI: database dựng trước baseline (project cũ) chưa có view recent_actions → dùng view cũ. Xem docs/DEPLOY.md §8.
-  if (error && (error.code === '42P01' || error.code === 'PGRST205')) return legacyActivities(role, filter, limit);
+  if (error && (error.code === '42P01' || error.code === 'PGRST205')) return legacyActivities(role, filter, limit, offset);
   if (error) throw mapRpcError(error);
   return withActorNames((data ?? []) as Omit<RecentAction, 'created_by_name'>[]);
 }
@@ -129,7 +146,7 @@ export async function recentActivities(role: Role, filter: ActivityFilter): Prom
 const LEGACY_ROWS = 1000;
 const FOLLOWER = /^(via_parent|parent_deleted):/;
 
-async function legacyActivities(role: Role, filter: ActivityFilter, limit: number): Promise<RecentAction[]> {
+async function legacyActivities(role: Role, filter: ActivityFilter, limit: number, offset: number): Promise<RecentAction[]> {
   // Bộ lọc cùng một giá trị cho mọi dòng của một thao tác (người, thời gian) lọc ở database; module / chữ tìm lọc sau khi gộp.
   let query = db().from('recent_activities')
     .select('module, object_id, label, action, changes, created_by, created_at, note, source, item_count')
@@ -173,6 +190,6 @@ async function legacyActivities(role: Role, filter: ActivityFilter, limit: numbe
     .filter((a) => !filter.module || a.modules.includes(filter.module))
     .filter((a) => !needle || a.labels.some((label) => label.includes(needle)))
     .filter((a) => role === 'admin' || a.modules.every((m) => ASSET_MODULES.includes(m)))
-    .slice(0, limit);
+    .slice(offset, offset + limit);
   return withActorNames(visible.map(({ labels: _labels, ...action }) => action));
 }

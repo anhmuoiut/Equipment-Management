@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
-const m = vi.hoisted(() => ({ selectAll: vi.fn(), selectIn: vi.fn(), from: vi.fn() }));
-vi.mock('./core/db', () => ({ selectAll: m.selectAll, selectIn: m.selectIn, db: () => ({ from: m.from }) }));
+const m = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
+vi.mock('./core/db', () => ({ rpc: m.rpc, db: () => ({ from: m.from }) }));
 vi.mock('./core/history', () => ({
   withActorNames: async (rows: Record<string, unknown>[]) => rows.map((r) => ({ ...r, created_by_name: 'Ann' })),
 }));
@@ -14,30 +14,40 @@ vi.mock('./core/lookups', async (importOriginal) => ({
 import { chain } from './testing/chain';
 import { getDashboard, recentActivities } from './dashboard';
 
+/**
+ * What the database function dashboard_summary returns for these 7 assets (the database does the counting; its numbers are checked against
+ * the old JavaScript counting on PGlite with the real baseline):
+ *   equipment  e1 (in use, loc-0, type-0, tag tg1) · e2 (not in use, loc-1, type-1)
+ *   sub-equip  s1 (in use, loc-0, tags tg1+tg2, overdue) · s2 (not in use, loc-1, due soon) · s3 (in use, loc-0, valid) · s4 (not in use, loc-1, never calibrated)
+ *   golden     g1 (in use, loc-0, tag tg2)
+ */
+const SUMMARY = {
+  totals: { equipment: 2, sub_equipment: 4, golden_board: 1 },
+  usage: {
+    equipment: { in_use: 1, not_in_use: 1 }, sub_equipment: { in_use: 2, not_in_use: 2 }, golden_board: { in_use: 1, not_in_use: 0 },
+  },
+  calibration: { overdue: 1, due_soon: 1, valid: 1, not_calibrated: 1 },
+  locations: [{ id: 'loc-1', count: 3 }, { id: 'loc-0', count: 4 }],
+  types: [{ id: null, count: 1 }, { id: 'type-1', count: 1 }, { id: 'type-3', count: 4 }, { id: 'type-0', count: 1 }],
+  tags: [{ id: 'tg2', count: 2 }, { id: 'tg1', count: 2 }],
+  untagged: 4,
+  overdue: [{ id: 's1', serial_number: 'DMM-1', part_number_id: 'pn-4', type_id: 'type-3', location_id: 'loc-0', tester_serial: 'TESTER-01', due_date: '2026-09-01', status: 'overdue' }],
+  due_soon: [{ id: 's2', serial_number: 'DMM-2', part_number_id: 'pn-4', type_id: 'type-3', location_id: 'loc-1', tester_serial: null, due_date: '2026-10-20', status: 'due_soon' }],
+};
+
 beforeEach(() => {
   vi.resetAllMocks();
-  m.selectAll.mockImplementation(async (table: string) => ({
-    equipment: [
-      { id: 'e1', usage: 'in_use', location_id: 'loc-0', type_id: 'type-0', tag_ids: ['tg1'] },
-      { id: 'e2', usage: 'not_in_use', location_id: 'loc-1', type_id: 'type-1', tag_ids: [] },
-    ],
-    sub_equipment: [
-      { id: 's1', serial_number: 'DMM-1', part_number_id: 'pn-4', type_id: 'type-3', tester_id: 'e1', tester: { serial_number: 'TESTER-01' }, usage: 'in_use', location_id: 'loc-0', tag_ids: ['tg1', 'tg2'] },
-      { id: 's2', serial_number: 'DMM-2', part_number_id: 'pn-4', type_id: 'type-3', tester_id: null, tester: null, usage: 'not_in_use', location_id: 'loc-1', tag_ids: [] },
-      { id: 's3', serial_number: 'DMM-3', part_number_id: 'pn-4', type_id: 'type-3', tester_id: 'e1', tester: { serial_number: 'TESTER-01' }, usage: 'in_use', location_id: 'loc-0', tag_ids: [] },
-      { id: 's4', serial_number: 'DMM-4', part_number_id: 'pn-4', type_id: 'type-3', tester_id: null, tester: null, usage: 'not_in_use', location_id: 'loc-1', tag_ids: [] },
-    ],
-    golden_boards: [{ id: 'g1', usage: 'in_use', location_id: 'loc-0', tag_ids: ['tg2'] }],
-    // s4 chưa hiệu chuẩn lần nào → không có dòng trong view? (view có dòng cho mọi sub-equipment, status not_calibrated)
-    sub_equipment_calibration: [
-      { sub_equipment_id: 's1', due_date: '2026-09-01', status: 'overdue' },
-      { sub_equipment_id: 's2', due_date: '2026-10-20', status: 'due_soon' },
-      { sub_equipment_id: 's3', due_date: '2027-05-01', status: 'valid' },
-    ],
-  }[table] ?? []));
+  m.rpc.mockResolvedValue(SUMMARY);
 });
 
 describe('getDashboard', () => {
+  it('is ONE database call that returns the counts — no table is read to count in JavaScript', async () => {
+    await getDashboard();
+    expect(m.rpc).toHaveBeenCalledTimes(1);
+    expect(m.rpc).toHaveBeenCalledWith('dashboard_summary', { p_list_limit: 15 });
+    expect(m.from).not.toHaveBeenCalled();
+  });
+
   it('counts every Status in a fixed order and colour, zeros included', async () => {
     const d = await getDashboard();
     expect([d.equipment_total, d.sub_equipment_total, d.golden_total]).toEqual([2, 4, 1]);
@@ -47,31 +57,48 @@ describe('getDashboard', () => {
     expect(d.by_usage.sub_equipment.map((i) => i.count)).toEqual([2, 2]);
     expect(d.by_usage.golden_board.map((i) => i.count)).toEqual([1, 0]);
     expect(d.by_calibration_status).toEqual([
-      { id: 'not_calibrated', label: null, color: 'gray', count: 1 }, // s4: không có dòng trong view
+      { id: 'not_calibrated', label: null, color: 'gray', count: 1 }, // s4
       { id: 'failed', label: null, color: 'red', count: 0 }, { id: 'overdue', label: null, color: 'red', count: 1 },
       { id: 'due_soon', label: null, color: 'yellow', count: 1 }, { id: 'valid', label: null, color: 'green', count: 1 },
     ]);
   });
 
-  it('counts by tag, location and type over ALL assets; no-type and untagged assets get their own row so the totals reconcile', async () => {
+  it('a status with no sub-equipment is still a row (count 0), so the bar never changes shape', async () => {
+    m.rpc.mockResolvedValue({ ...SUMMARY, calibration: {} });
+    expect((await getDashboard()).by_calibration_status.map((i) => i.count)).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it('counts by tag, location and type over ALL assets, biggest first; no-type and untagged assets get their own row so the totals reconcile', async () => {
     const d = await getDashboard();
     // 7 assets: s1 carries two tags, so the tag rows add up to 8 here (a legacy multi-tag asset); with one tag each they add up to 7.
+    // Biggest first; equal counts are ordered by name (Repair before Spare) — a stable order.
     expect(d.by_tag).toEqual([{ id: null, label: null, count: 4 }, { id: 'tg1', label: 'Repair', count: 2 }, { id: 'tg2', label: 'Spare', count: 2 }]);
     expect(d.by_location).toEqual([{ id: 'loc-0', label: 'B3F1', count: 4 }, { id: 'loc-1', label: 'B3F2', count: 3 }]);
     expect(d.by_location.reduce((n, i) => n + i.count, 0)).toBe(d.equipment_total + d.sub_equipment_total + d.golden_total);
     // the golden board has no Type: it is the "No type" row (id null), so the Type rows also add up to all 7 assets.
-    expect(d.by_type).toEqual([{ id: 'type-3', label: 'DMM', count: 4 }, { id: 'type-0', label: 'Tester', count: 1 }, { id: 'type-1', label: 'Fixture', count: 1 }, { id: null, label: null, count: 1 }]);
+    expect(d.by_type).toEqual([
+      { id: 'type-3', label: 'DMM', count: 4 }, { id: 'type-1', label: 'Fixture', count: 1 }, { id: 'type-0', label: 'Tester', count: 1 }, { id: null, label: null, count: 1 },
+    ]);
     expect(d.by_type.reduce((n, i) => n + i.count, 0)).toBe(7);
   });
 
-  it('lists overdue and due-soon sub-equipment with their tester, soonest due first', async () => {
+  it('no "untagged" row when every asset has a tag', async () => {
+    m.rpc.mockResolvedValue({ ...SUMMARY, untagged: 0 });
+    expect((await getDashboard()).by_tag.some((i) => i.id === null)).toBe(false);
+  });
+
+  it('lists overdue and due-soon sub-equipment with their tester, names filled in from Configuration', async () => {
     const d = await getDashboard();
-    expect(m.selectIn).not.toHaveBeenCalled(); // testers' serials are embedded in the sub-equipment query
     expect(d.overdue).toEqual([{
       id: 's1', serial_number: 'DMM-1', part_number: 'DMM-100', type: 'DMM', tester_serial: 'TESTER-01', location: 'B3F1',
       due_date: '2026-09-01', status: 'overdue',
     }]);
     expect(d.due_soon).toEqual([expect.objectContaining({ id: 's2', tester_serial: null, due_date: '2026-10-20', status: 'due_soon' })]);
+  });
+
+  it('a database error is reported, not turned into zeros', async () => {
+    m.rpc.mockRejectedValue(new Error('rpc failed'));
+    await expect(getDashboard()).rejects.toThrow('rpc failed');
   });
 });
 
@@ -83,7 +110,7 @@ describe('recentActivities', () => {
     expect(m.from).toHaveBeenCalledWith('recent_actions');
     expect(c.call('containedBy')).toEqual(['modules', ['equipment', 'sub_equipment', 'golden_board']]);
     expect(c.call('contains')).toEqual(['modules', ['sub_equipment']]);
-    expect(c.call('limit')).toEqual([20]);
+    expect(c.call('range')).toEqual([0, 19]); // the first page of 20
     // search matches the name / serial of ANY record of the action
     expect(c.call('ilike')).toEqual(['search_text', '%a\\_b%']);
     expect(rows[0]).toMatchObject({ id: 'act-1', created_by_name: 'Ann', item_count: 2 });
@@ -92,6 +119,20 @@ describe('recentActivities', () => {
     m.from.mockReturnValue(admin.proxy);
     await recentActivities('admin', {});
     expect(admin.names()).not.toContain('containedBy');
+  });
+
+  it('pages the history in the database: the next page starts after the actions already shown; one page is never more than 100', async () => {
+    const c = chain({ data: [] });
+    m.from.mockReturnValue(c.proxy);
+    await recentActivities('admin', { limit: 50, offset: 100 });
+    expect(c.call('range')).toEqual([100, 149]);
+    expect(c.names()).not.toContain('limit');
+    const big = chain({ data: [] });
+    m.from.mockReturnValue(big.proxy);
+    await recentActivities('admin', { limit: 500, offset: -5 });
+    expect(big.call('range')).toEqual([0, 99]);
+    // newest first with the id as tie-breaker, so two pages never overlap or skip an action created at the same instant
+    expect(big.calls.filter(([n]) => n === 'order').map(([, a]) => a[0])).toEqual(['created_at', 'id']);
   });
 
   // TEMPORARY compatibility with a database built before the baseline (the old project). Delete with legacyActivities().
@@ -139,6 +180,7 @@ describe('recentActivities', () => {
       expect((await run('admin', { module: 'sub_equipment' })).out.map((a) => a.action)).toEqual(['TAGS']);
       expect((await run('admin', { search: 'fixture-3' })).out.map((a) => a.action)).toEqual(['SWAP']); // a follower record matches
       expect((await run('admin', { limit: 1 })).out).toHaveLength(1);
+      expect((await run('admin', { limit: 1, offset: 1 })).out.map((a) => a.action)).toEqual(['TAGS']); // the second action
       const { legacy } = await run('admin', { userId: 'u1', from: '2026-10-01', to: '2026-10-31' });
       expect(legacy.call('eq')).toEqual(['created_by', 'u1']);
       expect(legacy.call('gte')).toEqual(['created_at', '2026-10-01']);
@@ -154,8 +196,8 @@ describe('recentActivities', () => {
 
     it('when the read is cut at 1000 rows the oldest action (possibly cut in half) is dropped, not shown incomplete', async () => {
       const many = Array.from({ length: 1000 }, (_, i) => row({ label: `S-${i}`, created_at: `2026-10-01T00:00:00.${String(Math.floor(i / 2)).padStart(6, '0')}+00:00` }));
-      const { out } = await run('admin', { limit: 500 }, many);
-      expect(out).toHaveLength(499); // 500 actions of 2 rows were read; the 500th may be incomplete
+      const { out } = await run('admin', { limit: 100, offset: 400 }, many);
+      expect(out).toHaveLength(99); // 500 actions of 2 rows were read; the 500th may be incomplete, so 499 remain
       expect(out.every((a) => a.item_count === 2)).toBe(true);
     });
   });

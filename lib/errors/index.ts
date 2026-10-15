@@ -99,7 +99,7 @@ export function mapRpcError(error: PgLikeError | null): AppError {
   if (error.code === 'PGRST202' || error.code === 'PGRST205' || error.code === '42883' || error.code === '42P01') {
     return new AppError('SERVER_ERROR', {}, {
       ...diagnostic,
-      hint: 'Database is missing functions or tables — run database/migrations/*_baseline.sql (see docs/DEPLOY.md).',
+      hint: 'Database is missing functions or tables — run every file in database/migrations in order (see docs/DEPLOY.md).',
     });
   }
   return new AppError('SERVER_ERROR', {}, diagnostic);

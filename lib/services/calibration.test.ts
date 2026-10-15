@@ -5,9 +5,9 @@ vi.mock('server-only', () => ({}));
  * Service Calibration (sub-equipment + các lần hiệu chuẩn) với database giả. Calibration Status và due_date do database tính
  * (view sub_equipment_calibration, trigger calibration_compute_due) — kiểm tra service đọc đúng và ghi đúng, không tính lại.
  */
-const m = vi.hoisted(() => ({ appWrite: vi.fn(), selectAll: vi.fn(), selectIn: vi.fn(), selectOne: vi.fn(), from: vi.fn() }));
+const m = vi.hoisted(() => ({ appWrite: vi.fn(), selectOne: vi.fn(), from: vi.fn() }));
 vi.mock('./core/db', () => ({
-  appWrite: m.appWrite, selectAll: m.selectAll, selectIn: m.selectIn, selectOne: m.selectOne, db: () => ({ from: m.from }),
+  appWrite: m.appWrite, selectOne: m.selectOne, db: () => ({ from: m.from }),
 }));
 const assets = vi.hoisted(() => ({ applyTreeEdit: vi.fn(), previewTreeEdit: vi.fn(), assetLog: vi.fn() }));
 vi.mock('./core/assets', () => assets);
@@ -17,10 +17,12 @@ vi.mock('./core/lookups', async (importOriginal) => ({
 }));
 
 import { chain } from './testing/chain';
+import { fakeListDb } from './testing/listBuilder';
 import { AppError } from '@/lib/errors';
+import { parseListParams } from './core/listQuery';
 import {
   addCalibration, createSubEquipment, deleteCalibration, getSubEquipment, listCalibrations, listSubEquipment, subEquipmentHistory,
-  updateCalibration, updateSubEquipment,
+  SUB_EQUIPMENT_LIST, updateCalibration, updateSubEquipment,
 } from './calibration';
 
 const audit = { created_at: '2026-10-01T00:00:00Z', created_by: 'u1', updated_at: '2026-10-01T00:00:00Z', updated_by: null };
@@ -47,15 +49,24 @@ beforeEach(() => {
 });
 
 describe('rows', () => {
-  it('lists every sub-equipment with its latest calibration and Calibration Status; no calibration yet = not_calibrated', async () => {
-    m.selectAll.mockImplementation(async (table: string) => (table === 'sub_equipment'
-      ? [sub(), sub({ id: 's2', serial_number: 'DMM-2', tester_id: null, tester: null, location_id: 'loc-1' })]
-      : [status()]));
-    const rows = await listSubEquipment();
-    // The tester's serial comes in the same query (embedded) — no second round trip to read the testers.
-    expect(m.selectAll).toHaveBeenCalledWith('sub_equipment', expect.stringContaining('tester:tester_id(serial_number)'));
-    expect(m.selectIn).not.toHaveBeenCalled();
-    expect(m.selectAll).toHaveBeenCalledWith('sub_equipment_calibration', '*', 'sub_equipment_id');
+  it('lists one page of sub-equipment with its latest calibration and Calibration Status; no calibration yet = not_calibrated', async () => {
+    // What the sub_equipment_list view returns: the sub-equipment, its tester's serial and the calibration columns/status in ONE row.
+    const { tester: _tester, ...s1 } = sub();
+    const { tester: _none, ...s2 } = sub({ id: 's2', serial_number: 'DMM-2', tester_id: null, tester: null, location_id: 'loc-1' });
+    const { sub_equipment_id: _id, ...calibration } = status();
+    const none = { calibration_id: null, calibrated_at: null, due_date: null, vendor_id: null, cert_no: null, cert_file_url: null, result: null, interval_months: null, warning_days: null, status: 'not_calibrated' };
+    const fake = fakeListDb([
+      { ...s1, tester_serial: 'TESTER-01', ...calibration },
+      { ...s2, tester_serial: null, ...none },
+    ]);
+    m.from.mockImplementation(fake.from);
+    const page = await listSubEquipment(parseListParams(new URLSearchParams(''), SUB_EQUIPMENT_LIST));
+    const rows = page.rows;
+    // ONE query on the view (the tester serial and the status are already in it) — nothing else is read.
+    expect(m.from).toHaveBeenCalledTimes(1);
+    expect(fake.queries[0]!.view).toBe('sub_equipment_list');
+    expect(fake.calls('range')).toEqual([[0, 49]]);
+    expect(page).toMatchObject({ total: 2, page: 1, pageSize: 50 });
     expect(rows[0]).toMatchObject({
       serial_number: 'DMM-1', part_number: 'DMM-100', type: 'DMM', manufacturer: 'Keysight', tester_serial: 'TESTER-01', location: 'B3F1', usage: 'in_use',
       status: 'valid', calibrated_at: '2026-01-01', due_date: '2027-01-01', result: 'pass', vendor: 'Acme', cert_no: 'C-1', interval_months: 12,

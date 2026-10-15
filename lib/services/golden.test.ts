@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
-const m = vi.hoisted(() => ({ appWrite: vi.fn(), selectAll: vi.fn(), selectIn: vi.fn(), selectOne: vi.fn() }));
+const m = vi.hoisted(() => ({ appWrite: vi.fn(), selectOne: vi.fn(), db: vi.fn() }));
 vi.mock('./core/db', () => m);
 const assets = vi.hoisted(() => ({ applyTreeEdit: vi.fn(), previewTreeEdit: vi.fn(), assetLog: vi.fn() }));
 vi.mock('./core/assets', () => assets);
@@ -11,7 +11,9 @@ vi.mock('./core/lookups', async (importOriginal) => ({
 }));
 
 import { AppError } from '@/lib/errors';
-import { createGolden, getGolden, goldenHistory, listGolden, updateGolden } from './golden';
+import { parseListParams } from './core/listQuery';
+import { fakeListDb } from './testing/listBuilder';
+import { createGolden, getGolden, GOLDEN_LIST, goldenHistory, listGolden, updateGolden } from './golden';
 
 const golden = (over: Record<string, unknown> = {}) => ({
   id: 'g1', part_number: 'GB-1', serial_number: 'G-7', utd_part_number: null, origin: null, purpose: null, parent_id: 'fixture',
@@ -26,12 +28,18 @@ beforeEach(() => {
 });
 
 describe('rows', () => {
-  it('lists golden boards with the serial of their tester / fixture, Status and tags', async () => {
-    m.selectAll.mockResolvedValue([golden(), golden({ id: 'g2', parent_id: null, parent: null, location_id: 'loc-1', usage: 'in_use' })]);
-    const rows = await listGolden();
-    // The parent's serial comes in the same query (embedded) — no second round trip to read the parents.
-    expect(m.selectAll).toHaveBeenCalledWith('golden_boards', expect.stringContaining('parent:parent_id(serial_number)'));
-    expect(m.selectIn).not.toHaveBeenCalled();
+  it('lists one page of golden boards with the serial of their tester / fixture, Status and tags', async () => {
+    // What the golden_list view returns: the golden board and its parent's serial in ONE row.
+    const { parent: _p, ...g1 } = golden();
+    const { parent: _q, ...g2 } = golden({ id: 'g2', parent_id: null, parent: null, location_id: 'loc-1', usage: 'in_use' });
+    const fake = fakeListDb([{ ...g1, parent_serial: 'FIXTURE-01' }, { ...g2, parent_serial: null }]);
+    m.db.mockReturnValue({ from: fake.from });
+    const page = await listGolden(parseListParams(new URLSearchParams('pageSize=25'), GOLDEN_LIST));
+    const rows = page.rows;
+    expect(fake.queries).toHaveLength(1);
+    expect(fake.queries[0]!.view).toBe('golden_list');
+    expect(fake.calls('range')).toEqual([[0, 24]]);
+    expect(page).toMatchObject({ total: 2, pageSize: 25 });
     expect(rows[0]).toMatchObject({ serial_number: 'G-7', parent_serial: 'FIXTURE-01', location: 'B3F1', usage: 'not_in_use', tags: [{ display_name: 'Repair' }] });
     expect(rows[1]).toMatchObject({ parent_id: null, parent_serial: null, location: 'B3F2', usage: 'in_use' });
   });

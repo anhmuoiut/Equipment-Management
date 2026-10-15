@@ -6,12 +6,12 @@ import 'server-only';
  * Thao tác trên cây (Đổi vị trí, Move, Swap, Detach, Check-out / Check-in, Xóa) dùng chung cho cả ba loại tài sản:
  * lib/services/core/assets.ts và route /api/assets.
  */
-import { appWrite, rpc, selectAll, selectOne } from './core/db';
-import {
-  assetLog, assetOps, changeAssetLocation, equipmentWithLeafChildren,
-} from './core/assets';
+import { appWrite, rpc, selectOne } from './core/db';
+import { assetLog, assetOps, changeAssetLocation } from './core/assets';
+import { runList, type ListPage, type ListParams, type ListSpec } from './core/listQuery';
 import { assertActive, assertTags, auditOf, kindOf, loadLookups, nameOf, tagItems, type Lookups } from './core/lookups';
 import { AppError } from '@/lib/errors';
+import { USAGE_STATUSES } from '@/lib/status';
 import type { AssetKind, AssetType, CalibrationStatus, EquipmentRow, EquipmentTree, HistoryEntry, TreeNode, Usage } from '@/lib/types';
 
 type DbEquipment = {
@@ -52,11 +52,36 @@ function toRow(e: DbEquipment, lookups: Lookups, parentSerial: string | null, ha
   };
 }
 
-export async function listEquipment(): Promise<EquipmentRow[]> {
-  const [rows, lookups, withLeaves] = await Promise.all([selectAll<DbEquipment>('equipment'), loadLookups(), equipmentWithLeafChildren()]);
-  const serials = new Map(rows.map((r) => [r.id, r.serial_number]));
-  const parents = new Set(rows.flatMap((r) => (r.parent_id ? [r.parent_id] : [])));
-  return rows.map((r) => toRow(r, lookups, r.parent_id ? serials.get(r.parent_id) ?? null : null, parents.has(r.id) || withLeaves.has(r.id)));
+/**
+ * Masterlist: MỘT trang của view equipment_list (migration 20261016000000) — phân trang, tìm, lọc, sắp xếp chạy ở database. `parent_serial` và
+ * `has_children` (con ở cả ba bảng) do view tính sẵn, nên không còn phải đọc cả bảng equipment và hai bảng con để suy ra.
+ */
+export const EQUIPMENT_LIST: ListSpec = {
+  view: 'equipment_list',
+  select: 'id, jabil_id, part_number_id, serial_number, asset, type_id, usage, level_id, location_id, remark, tag_ids, parent_id, '
+    + 'created_at, created_by, updated_at, updated_by, parent_serial, has_children',
+  sort: {
+    usage: 'usage', serial_number: 'serial_nk', part_number: 'part_nk', type: 'type_nk', location: 'location_nk', jabil_id: 'jabil_nk',
+    asset: 'asset_nk', level: 'level_nk', parent: 'parent_nk', tags: 'tags_text', remark: 'remark',
+  },
+  defaultOrder: [['created_at', 'desc']],
+  filters: {
+    usage: { column: 'usage', kind: 'enum', values: USAGE_STATUSES },
+    part_number: { column: 'part_number_id', kind: 'id' },
+    type: { column: 'type_id', kind: 'id' },
+    location: { column: 'location_id', kind: 'id' },
+    level: { column: 'level_id', kind: 'id', allowEmpty: true },
+    parent: { column: 'parent_serial', kind: 'text', allowEmpty: true },
+    tags: { column: 'tag_ids', kind: 'tag' },
+  },
+  searchEnums: { usage: USAGE_STATUSES },
+};
+
+type ListRow = DbEquipment & { parent_serial: string | null; has_children: boolean };
+
+export async function listEquipment(params: ListParams): Promise<ListPage<EquipmentRow>> {
+  const [page, lookups] = await Promise.all([runList<ListRow>(EQUIPMENT_LIST, params), loadLookups()]);
+  return { ...page, rows: page.rows.map((r) => toRow(r, lookups, r.parent_serial, r.has_children)) };
 }
 
 /**

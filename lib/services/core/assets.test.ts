@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
-const m = vi.hoisted(() => ({ rpc: vi.fn(), selectAll: vi.fn(), from: vi.fn() }));
-vi.mock('./db', () => ({ rpc: m.rpc, selectAll: m.selectAll, db: () => ({ from: m.from }) }));
+const m = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
+vi.mock('./db', () => ({ rpc: m.rpc, db: () => ({ from: m.from }) }));
 vi.mock('./history', () => ({
   withActorNames: async (rows: Record<string, unknown>[]) => rows.map((r) => ({ ...r, created_by_name: r.created_by ? 'Ann' : null })),
 }));
@@ -14,7 +14,7 @@ vi.mock('./lookups', async () => ({
 import { chain } from '../testing/chain';
 import { AppError } from '@/lib/errors';
 import {
-  applyTreeEdit, assetLog, assetOps, changeAssetLocation, equipmentWithLeafChildren, logChanges,
+  applyTreeEdit, assetLog, assetOps, changeAssetLocation, logChanges,
   parseAssetType, previewTreeEdit, serialMatches, swapCandidates, validParents,
 } from './assets';
 
@@ -99,18 +99,6 @@ describe('tra cứu cho màn hình thao tác', () => {
     expect((await serialMatches('SN', { type: 'equipment', id: 'e' }))).toHaveLength(1);
     expect(m.rpc).toHaveBeenCalledWith('serial_matches', { p_serial: 'SN', p_exclude_type: 'equipment', p_exclude_id: 'e' });
   });
-});
-
-describe('cờ "có con"', () => {
-  it('equipmentWithLeafChildren lists every equipment that is the parent of a sub-equipment or golden board (equipment children are known from the list itself)', async () => {
-    m.selectAll.mockImplementation(async (table: string) => ({
-      sub_equipment: [{ tester_id: 't2' }, { tester_id: null }],
-      golden_boards: [{ parent_id: 'f' }, { parent_id: null }],
-    }[table]));
-    expect([...(await equipmentWithLeafChildren())].sort()).toEqual(['f', 't2']);
-    expect(m.selectAll.mock.calls.map((c) => c[0]).sort()).toEqual(['golden_boards', 'sub_equipment']); // the equipment table is not read again
-  });
-
 });
 
 describe('nhật ký tài sản', () => {

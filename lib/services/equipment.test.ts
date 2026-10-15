@@ -18,10 +18,10 @@ const rows = [
   created_at: '2026-10-01T00:00:00Z', created_by: null, updated_at: '2026-10-01T00:00:00Z', updated_by: null, ...r,
 }));
 
-const db = vi.hoisted(() => ({ appWrite: vi.fn(), selectAll: vi.fn(), selectOne: vi.fn(), selectIn: vi.fn(), rpc: vi.fn() }));
+const db = vi.hoisted(() => ({ appWrite: vi.fn(), selectOne: vi.fn(), rpc: vi.fn(), db: vi.fn() }));
 vi.mock('./core/db', () => db);
 const assets = vi.hoisted(() => ({
-  assetOps: { move: vi.fn(), detach: vi.fn() }, changeAssetLocation: vi.fn(), equipmentWithLeafChildren: vi.fn(),
+  assetOps: { move: vi.fn(), detach: vi.fn() }, changeAssetLocation: vi.fn(),
   assetLog: vi.fn(),
 }));
 vi.mock('./core/assets', () => assets);
@@ -31,15 +31,15 @@ vi.mock('./core/lookups', async (importOriginal) => ({
 }));
 
 import { AppError } from '@/lib/errors';
-import { createEquipment, equipmentHistory, equipmentTree, getEquipment, listEquipment, updateEquipment } from './equipment';
+import { parseListParams } from './core/listQuery';
+import { fakeListDb } from './testing/listBuilder';
+import { createEquipment, EQUIPMENT_LIST, equipmentHistory, equipmentTree, getEquipment, listEquipment, updateEquipment } from './equipment';
 
 beforeEach(() => {
   vi.resetAllMocks();
   db.selectOne.mockImplementation(selectOneWithEmbeds(rows));
-  db.selectAll.mockImplementation(async () => rows);
   db.appWrite.mockResolvedValue({ id: 'loose' }); // dòng vừa tạo — getEquipment đọc lại nó
   leafChildren = {};
-  assets.equipmentWithLeafChildren.mockResolvedValue(new Set());
   assets.assetOps.move.mockResolvedValue({});
   assets.assetOps.detach.mockResolvedValue({});
   assets.changeAssetLocation.mockResolvedValue({});
@@ -76,21 +76,42 @@ function selectOneWithEmbeds<T extends { id: string; parent_id: string | null }>
   };
 }
 
+/** What the equipment_list view returns for the four devices: the row plus `parent_serial` and `has_children` computed by the database. */
+const viewRows = rows.map((r) => ({
+  ...r,
+  parent_serial: r.parent_id ? rows.find((p) => p.id === r.parent_id)!.serial_number : null,
+  has_children: rows.some((c) => c.parent_id === r.id),
+}));
+const listParams = (query = '') => parseListParams(new URLSearchParams(query), EQUIPMENT_LIST);
+
 describe('rows', () => {
-  it('shows the kind of the Type, the parent serial, the child flag, and sorts tags by their configured order', async () => {
-    const list = await listEquipment();
-    const byId = Object.fromEntries(list.map((r) => [r.id, r]));
+  it('shows the kind of the Type, the parent serial and the child flag (both come from the view)', async () => {
+    const fake = fakeListDb(viewRows);
+    db.db.mockReturnValue({ from: fake.from });
+    const page = await listEquipment(listParams());
+    const byId = Object.fromEntries(page.rows.map((r) => [r.id, r]));
     expect(byId.tester).toMatchObject({ kind: 'tester', part_number: 'P12316', type: 'Tester', location: 'B3F1', level: '1', has_children: true, parent_serial: null });
     expect(byId.fixture).toMatchObject({ kind: 'fixture', parent_serial: 'BASE', has_children: false });
     expect(byId.base).toMatchObject({ kind: 'base', has_children: true });
     expect(byId.loose).toMatchObject({ has_children: false });
-    // The flag comes from the list itself (equipment children) + the leaf tables — the equipment table is read ONCE.
-    expect(db.selectAll.mock.calls.filter((c) => c[0] === 'equipment')).toHaveLength(1);
+    expect(page).toMatchObject({ total: 4, page: 1, pageSize: 50 });
   });
 
-  it('a device whose only children are sub-equipment or golden boards still has the child flag', async () => {
-    assets.equipmentWithLeafChildren.mockResolvedValue(new Set(['loose']));
-    expect((await listEquipment()).find((r) => r.id === 'loose')).toMatchObject({ has_children: true });
+  it('reads one page of the equipment_list view with only the columns the table needs — never the whole table', async () => {
+    const fake = fakeListDb(viewRows);
+    db.db.mockReturnValue({ from: fake.from });
+    await listEquipment(listParams('pageSize=25&sort=serial_number'));
+    expect(fake.queries).toHaveLength(1);
+    expect(fake.queries[0]!.view).toBe('equipment_list');
+    expect(fake.calls('select')[0]![0]).toBe(EQUIPMENT_LIST.select);
+    expect(String(fake.calls('select')[0]![0])).not.toContain('*');
+    expect(fake.calls('range')).toEqual([[0, 24]]);
+    expect(fake.calls('order')[0]).toEqual(['serial_nk', { ascending: true }]);
+  });
+
+  it('the filters the screen offers are the ones the database can apply', () => {
+    expect(Object.keys(EQUIPMENT_LIST.filters).sort()).toEqual(['level', 'location', 'parent', 'part_number', 'tags', 'type', 'usage']);
+    expect(Object.keys(EQUIPMENT_LIST.sort)).toEqual(expect.arrayContaining(['usage', 'serial_number', 'part_number', 'type', 'location', 'jabil_id', 'asset', 'level', 'parent', 'tags', 'remark']));
   });
 
   it('a single row counts its children across the three tables — in the same query as the row', async () => {

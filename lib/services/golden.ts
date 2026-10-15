@@ -5,10 +5,12 @@ import 'server-only';
  * Gắn vào tester hoặc fixture (parent_id); có cha thì vị trí và Status theo cha (database). Nhật ký ghi vào asset_logs.
  * Xóa, Swap, Move, Detach, Đổi vị trí, Check-out / Check-in: route dùng chung /api/assets.
  */
-import { appWrite, selectAll, selectOne } from './core/db';
+import { appWrite, selectOne } from './core/db';
+import { runList, type ListPage, type ListParams, type ListSpec } from './core/listQuery';
 import { applyTreeEdit, assetLog, previewTreeEdit } from './core/assets';
 import { assertActive, assertTags, auditOf, loadLookups, nameOf, tagItems, type Lookups } from './core/lookups';
 import { AppError } from '@/lib/errors';
+import { USAGE_STATUSES } from '@/lib/status';
 import type { GoldenRow, HistoryEntry, Usage } from '@/lib/types';
 
 type DbGolden = {
@@ -39,9 +41,30 @@ function toRow(g: WithParent, lookups: Lookups): GoldenRow {
   };
 }
 
-export async function listGolden(): Promise<GoldenRow[]> {
-  const [rows, lookups] = await Promise.all([selectAll<WithParent>('golden_boards', WITH_PARENT), loadLookups()]);
-  return rows.map((r) => toRow(r, lookups));
+/** Masterlist: MỘT trang của view golden_list (migration 20261016000000) — phân trang, tìm, lọc, sắp xếp chạy ở database. */
+export const GOLDEN_LIST: ListSpec = {
+  view: 'golden_list',
+  select: 'id, part_number, serial_number, utd_part_number, origin, purpose, parent_id, location_id, usage, remark, tag_ids, '
+    + 'created_at, created_by, updated_at, updated_by, parent_serial',
+  sort: {
+    usage: 'usage', serial_number: 'serial_nk', part_number: 'part_nk', utd_part_number: 'utd_nk', location: 'location_nk', purpose: 'purpose',
+    origin: 'origin_nk', parent: 'parent_nk', tags: 'tags_text', remark: 'remark',
+  },
+  defaultOrder: [['created_at', 'desc']],
+  filters: {
+    usage: { column: 'usage', kind: 'enum', values: USAGE_STATUSES },
+    part_number: { column: 'part_number', kind: 'text' },
+    location: { column: 'location_id', kind: 'id' },
+    origin: { column: 'origin', kind: 'text', allowEmpty: true },
+    parent: { column: 'parent_serial', kind: 'text', allowEmpty: true },
+    tags: { column: 'tag_ids', kind: 'tag' },
+  },
+  searchEnums: { usage: USAGE_STATUSES },
+};
+
+export async function listGolden(params: ListParams): Promise<ListPage<GoldenRow>> {
+  const [page, lookups] = await Promise.all([runList<DbGolden & { parent_serial: string | null }>(GOLDEN_LIST, params), loadLookups()]);
+  return { ...page, rows: page.rows.map((r) => toRow({ ...r, parent: r.parent_serial ? { serial_number: r.parent_serial } : null }, lookups)) };
 }
 
 export async function getGolden(id: string): Promise<GoldenRow> {

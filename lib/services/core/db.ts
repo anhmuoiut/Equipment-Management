@@ -12,6 +12,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { AppError, mapRpcError } from '@/lib/errors';
 import { currentActionId } from './actionContext';
 import { invalidateLookups, LOOKUP_TABLES } from './lookupCache';
+import { invalidateReads } from './readCache';
 
 export const db = supabaseAdmin;
 
@@ -97,6 +98,7 @@ export async function appWrite<T = Record<string, unknown>>(
   });
   // Sau MỌI lần ghi (kể cả lỗi — an toàn hơn đoán): dữ liệu gốc dùng chung đọc lại ở lần dùng kế tiếp (lookupCache.ts).
   if (LOOKUP_TABLES.has(table)) invalidateLookups();
+  invalidateReads();
   if (error) throw mapRpcError(error);
   if (!result) throw new AppError('NOT_FOUND');
   return result as T;
@@ -104,6 +106,7 @@ export async function appWrite<T = Record<string, unknown>>(
 
 export async function rpc<T = unknown>(fn: string, args: Record<string, unknown>): Promise<T> {
   const { data, error } = await callRpc(fn, args);
+  if (ACTION_RPCS.has(fn)) invalidateReads(); // thao tác ghi (Move, Swap, Import…): dữ liệu đọc dùng chung đọc lại ở lần sau
   if (error) throw mapRpcError(error);
   return data as T;
 }
