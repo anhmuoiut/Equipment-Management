@@ -63,6 +63,7 @@ function toRow(s: WithTester, c: DbStatus | undefined, lookups: Lookups): SubEqu
     serial_number: s.serial_number,
     asset: s.asset,
     type_id: s.type_id, type: nameOf(lookups.types, s.type_id),
+    manufacturer: lookups.part_numbers.get(s.part_number_id)?.manufacturer ?? null,
     tester_id: s.tester_id, tester_serial: s.tester?.serial_number ?? null,
     location_id: s.location_id, location: nameOf(lookups.locations, s.location_id),
     usage: s.usage,

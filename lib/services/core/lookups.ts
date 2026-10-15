@@ -10,8 +10,8 @@ import { AppError } from '@/lib/errors';
 import type { OptionItem, Options, PartNumberOption, TagItem, TagOption, TypeGroupOption, TypeKind, TypeOption } from '@/lib/types';
 
 type Named = { id: string; display_name: string; sort_order: number; is_active: boolean };
-/** `type_id`: Type của mọi thiết bị mang part number này; `level_id`: Level của part number (không bắt buộc). */
-type PartNumber = Named & { type_id: string; level_id: string | null };
+/** `type_id`: Type của mọi thiết bị mang part number này; `level_id`: Level của part number (không bắt buộc); `manufacturer`: nhà sản xuất (không bắt buộc). */
+type PartNumber = Named & { type_id: string; level_id: string | null; manufacturer: string | null };
 /** `group_id`: nhóm của Type; `kind` luôn bằng kind của nhóm. */
 type TypeRow = Named & { kind: TypeKind; group_id: string };
 type TypeGroupRow = Named & { kind: TypeKind };
@@ -38,7 +38,7 @@ export const loadLookups = (): Promise<Lookups> => cachedLookups(readLookups);
 
 async function readLookups(): Promise<Lookups> {
   const [part_numbers, locations, types, type_groups, levels, departments, calibration_vendors, tags, users] = await Promise.all([
-    selectAll<PartNumber>('part_numbers', `${BASIC}, type_id, level_id`),
+    selectAll<PartNumber>('part_numbers', `${BASIC}, type_id, level_id, manufacturer`),
     selectAll<Named>('locations', BASIC),
     selectAll<TypeRow>('types', `${BASIC}, kind, group_id`),
     selectAll<TypeGroupRow>('type_groups', `${BASIC}, kind`),

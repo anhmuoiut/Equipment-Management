@@ -69,6 +69,8 @@ export function useCalibrationModal(ctx: DetailCtx<SubEquipmentRow>, opts: { tre
             const typeId = options?.part_numbers.find((p) => p.id === d.part_number_id)?.type_id;
             return typeId ? options?.types.find((x) => x.id === typeId)?.display_name ?? '—' : '—';
           } },
+        { key: 'manufacturer', label: t('fields.manufacturer'), readOnly: true, view: (r) => r.manufacturer,
+          draftView: (d) => options?.part_numbers.find((p) => p.id === d.part_number_id)?.manufacturer ?? null },
         { key: 'usage', label: t('fields.usage'), readOnly: true, hideInCreate: true, view: (r) => <UsageTag usage={r.usage} /> },
       ],
     },

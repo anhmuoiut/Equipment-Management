@@ -29,7 +29,7 @@ export type TypeOption = OptionItem & { kind: TypeKind; group_id: string };
 /** Nhóm của Type: Admin chọn trong các nhóm `kind = sub_equipment` (3 nhóm hệ thống khóa). */
 export type TypeGroupOption = OptionItem & { kind: TypeKind };
 /** Part number + Type mà mọi thiết bị mang part number này có (kind quyết định thiết bị thuộc bảng nào) + Level (không bắt buộc; điền sẵn khi thêm thiết bị). */
-export type PartNumberOption = OptionItem & { type_id: string; kind: TypeKind; level_id: string | null };
+export type PartNumberOption = OptionItem & { type_id: string; kind: TypeKind; level_id: string | null; manufacturer: string | null };
 /** Shared color keys; purple is an explicit manual tag palette. */
 export type StatusColor = 'green' | 'yellow' | 'red' | 'blue' | 'gray' | 'purple';
 /** Thẻ (Configuration › Tag) để chọn trong phần Remark của Equipment / Calibration / Golden. */
@@ -143,6 +143,8 @@ export type SubEquipmentRow = Audit & {
   asset: string | null;
   type_id: string | null;
   type: string | null;
+  /** Nhà sản xuất của part number (Configuration › Part Number); chỉ xem. */
+  manufacturer: string | null;
   tester_id: string | null;
   tester_serial: string | null;
   location_id: string;

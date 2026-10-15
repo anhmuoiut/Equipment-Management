@@ -57,7 +57,7 @@ describe('rows', () => {
     expect(m.selectIn).not.toHaveBeenCalled();
     expect(m.selectAll).toHaveBeenCalledWith('sub_equipment_calibration', '*', 'sub_equipment_id');
     expect(rows[0]).toMatchObject({
-      serial_number: 'DMM-1', part_number: 'DMM-100', type: 'DMM', tester_serial: 'TESTER-01', location: 'B3F1', usage: 'in_use',
+      serial_number: 'DMM-1', part_number: 'DMM-100', type: 'DMM', manufacturer: 'Keysight', tester_serial: 'TESTER-01', location: 'B3F1', usage: 'in_use',
       status: 'valid', calibrated_at: '2026-01-01', due_date: '2027-01-01', result: 'pass', vendor: 'Acme', cert_no: 'C-1', interval_months: 12,
     });
     expect(rows[1]).toMatchObject({
