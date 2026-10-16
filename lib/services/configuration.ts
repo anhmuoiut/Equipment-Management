@@ -48,6 +48,7 @@ function toRow(list: ConfigListDef, r: DbRow, lookups: Lookups): ConfigRow {
       level_id: levelId, level: nameOf(lookups.levels, levelId),
       manufacturer: (r.manufacturer as string | null | undefined) ?? null,
       description: (r.description as string | null | undefined) ?? null,
+      remark: (r.remark as string | null | undefined) ?? null,
     };
   }
   if (list.isTag) return { ...base, color: (r.color as ConfigRow['color']) ?? 'gray' };

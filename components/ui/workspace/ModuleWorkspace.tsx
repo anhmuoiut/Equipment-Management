@@ -80,7 +80,7 @@ export type WorkspaceTool = {
 
 export function ModuleWorkspace<R extends { id: string }>({
   title, list, columns, storageKey, defaultColumns, exportName, quickFilters, leading, rowTone, canAdd, addLabel,
-  tools, recordUrl, renderDetail, beforeList, mobileCard, mobileFilterKeys, searchPlaceholder, mobileEmptyState,
+  tools, onExport, recordUrl, renderDetail, beforeList, mobileCard, mobileFilterKeys, searchPlaceholder, mobileEmptyState,
 }: {
   title: string;
   list: ListState<R>;
@@ -94,6 +94,8 @@ export function ModuleWorkspace<R extends { id: string }>({
   /** Cột hiện sẵn, theo thứ tự này; cột khác ẩn (mở ở Tùy chọn hiển thị). */
   defaultColumns?: string[];
   exportName: string;
+  /** Thay cách xuất mặc định của Masterlist (xem Masterlist.onExport). */
+  onExport?: () => Promise<void>;
   quickFilters?: QuickFilter<R>[];
   leading?: { header: ReactNode; label: string; render: (row: R) => ReactNode };
   rowTone?: (row: R) => 'alert' | 'warn' | undefined;
@@ -221,7 +223,7 @@ export function ModuleWorkspace<R extends { id: string }>({
         <div className="ws-list">
           <Masterlist
             title={title} rows={list.rows} loading={list.loading} error={list.error} onRetry={list.reload}
-            columns={columns} mobileCard={mobileCard} storageKey={storageKey} defaultColumns={defaultColumns} exportName={exportName} quickFilters={quickFilters}
+            columns={columns} mobileCard={mobileCard} storageKey={storageKey} defaultColumns={defaultColumns} exportName={exportName} onExport={onExport} quickFilters={quickFilters}
             leading={leading} rowTone={rowTone} selectedId={id} onSelect={select}
             onAdd={canAdd ? () => create() : undefined}
             addLabel={addLabel} onViewChange={setViewIds} initialSearch={searchParams.get('q') ?? undefined} server={list.paged}

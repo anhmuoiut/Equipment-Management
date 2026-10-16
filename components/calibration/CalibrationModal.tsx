@@ -63,6 +63,9 @@ export function useCalibrationModal(ctx: DetailCtx<SubEquipmentRow>, opts: { tre
         { key: 'part_number_description', label: t('fields.description'), readOnly: true, wide: true,
           view: (r) => r.description,
           draftView: (d) => options?.part_numbers.find((p) => p.id === d.part_number_id)?.description ?? null },
+        { key: 'part_number_remark', label: t('fields.part_number_remark'), readOnly: true, wide: true,
+          view: (r) => r.part_number_remark,
+          draftView: (d) => options?.part_numbers.find((p) => p.id === d.part_number_id)?.remark ?? null },
       ],
     },
     {

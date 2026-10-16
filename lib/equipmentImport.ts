@@ -68,7 +68,11 @@ export type ImportIssueCode =
   /** Part number thuộc loại khác (ví dụ part number của sub-equipment trong file Equipment). */
   | 'wrong_kind'
   /** Cha / tester không đúng loại theo cây tài sản (ví dụ Base dưới Base, Fixture dưới Golden). */
-  | 'parent_type_invalid';
+  | 'parent_type_invalid'
+  /** Configuration: tên đã ghi ở dòng `count` trước đó của file (tên không phân biệt hoa thường). */
+  | 'name_in_file'
+  /** Configuration: ô Order không phải số nguyên 0–100000, hoặc ô In use không phải In use / Hidden. */
+  | 'invalid_value';
 
 /**
  * Lỗi của một ô. `value`: chữ trong ô (location_follows_parent / level_follows_parent: vị trí / Level của thiết bị cha;
@@ -92,6 +96,8 @@ export type ImportReport = {
   duplicates: number;
   committed: boolean;
   created: number;
+  /** Configuration: số dòng có sẵn đã được ghi đè (chỉ khi chọn ghi đè dòng trùng tên). */
+  updated?: number;
   /** Cột có trong file nhưng không nhận ra (bỏ qua). */
   ignored_columns: string[];
   /** Chỉ các dòng có lỗi hoặc cảnh báo. */

@@ -18,6 +18,8 @@ export type ConfigListDef = {
   hasDescription?: boolean;
   /** Part Number: cột Manufacturer (nhà sản xuất; không bắt buộc, tối đa 200 ký tự). */
   hasManufacturer?: boolean;
+  /** Part Number: cột Remark (ghi chú; không bắt buộc, tối đa 1000 ký tự) — hiện chỉ xem ở modal Equipment / Sub-equipment. */
+  hasRemark?: boolean;
   /** Part Number: Type bắt buộc — mọi thiết bị mang part number này có Type đó (đổi được khi chưa thiết bị nào dùng). */
   hasType?: boolean;
   /** Part Number: Level (không bắt buộc) chọn trong Configuration › Level; form Thêm thiết bị điền sẵn. */
@@ -33,7 +35,7 @@ export type ConfigListDef = {
 };
 
 export const CONFIG_LISTS: readonly ConfigListDef[] = [
-  { key: 'part-numbers', table: 'part_numbers', group: 'master', hideable: true, deletable: false, hasType: true, hasLevel: true, hasDescription: true, hasManufacturer: true },
+  { key: 'part-numbers', table: 'part_numbers', group: 'master', hideable: true, deletable: false, hasType: true, hasLevel: true, hasDescription: true, hasManufacturer: true, hasRemark: true },
   { key: 'locations', table: 'locations', group: 'master', hideable: true, deletable: false },
   { key: 'types', table: 'types', group: 'master', hideable: true, deletable: false, hasGroup: true },
   { key: 'type-groups', table: 'type_groups', group: 'master', hideable: true, deletable: false, isTypeGroup: true },

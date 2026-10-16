@@ -21,8 +21,23 @@ export type ImportModalProps = {
   title: string;
   /** Mô tả bước 1 (file mẫu có những danh sách chọn nào). */
   templateDesc: string;
+  /** Tiêu đề cột nhận dạng dòng trong bảng lỗi (mặc định "Serial"; Configuration: "Name"). */
+  rowLabel?: string;
+  /** Có nút tải về file báo lỗi (dòng lỗi tô đỏ, dòng trùng tô vàng, cột Problem) — server hỗ trợ `report=1`. */
+  checkFile?: boolean;
+  /**
+   * Dòng trùng với dữ liệu có sẵn (Configuration: trùng tên) — báo cho người dùng và hỏi giữ bản gốc hay ghi đè. `skip`: giá trị của lựa chọn
+   * bỏ qua các dòng đó (số dòng trên nút Import trừ đi chúng); chỉ một lựa chọn (hoặc không có) thì không hỏi. Gửi lên server là `on_duplicate`.
+   */
+  duplicates?: {
+    skip: string;
+    choices: { value: string; label: string }[];
+    statLabel: string;
+    rowText: string;
+    notice: (count: number) => string;
+  };
   importLabel: (count: number) => string;
-  doneLabel: (count: number) => string;
+  doneLabel: (count: number, updated: number) => string;
   onClose: () => void;
   onImported: () => void;
 };
@@ -31,14 +46,15 @@ function formatSize(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function ImportModal({ endpoint, columns, title, templateDesc, importLabel, doneLabel, onClose, onImported }: ImportModalProps) {
+export function ImportModal({ endpoint, columns, title, templateDesc, rowLabel, checkFile, duplicates, importLabel, doneLabel, onClose, onImported }: ImportModalProps) {
   const { t, i18n } = useTranslation();
   const language = i18n.language === 'vi' ? 'vi' : 'en';
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
-  const [busy, setBusy] = useState<'download' | 'check' | 'import' | null>(null);
+  const [busy, setBusy] = useState<'download' | 'check' | 'import' | 'checkfile' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState(duplicates?.skip ?? '');
   const headers = new Map(columns.map((c) => [c.key, c.header]));
 
   /** Lỗi khi gửi file (kiểm tra / import). */
@@ -59,6 +75,7 @@ export function ImportModal({ endpoint, columns, title, templateDesc, importLabe
     const form = new FormData();
     form.append('file', selected);
     if (commit) form.append('commit', '1');
+    if (duplicates) form.append('on_duplicate', mode);
     return (await api.upload<ImportReport>(endpoint, form)).data;
   }
 
@@ -85,8 +102,25 @@ export function ImportModal({ endpoint, columns, title, templateDesc, importLabe
       setReport(result);
       if (result.committed) {
         onImported();
-        toast.success(doneLabel(result.created));
+        toast.success(doneLabel(result.created, result.updated ?? 0));
       }
+    } catch (e) {
+      setError(describe(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function downloadCheckFile() {
+    if (!file) return;
+    setError(null);
+    setBusy('checkfile');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('report', '1');
+      form.append('lang', language);
+      await api.uploadForFile(endpoint, form);
     } catch (e) {
       setError(describe(e));
     } finally {
@@ -110,10 +144,12 @@ export function ImportModal({ endpoint, columns, title, templateDesc, importLabe
     column: headers.get(issue.column) ?? issue.column, value: issue.value ?? '', max: issue.max ?? '', count: issue.count ?? '',
   });
   const duplicateText = (row: ImportRowReport) => (row.duplicate_of === 'existing'
-    ? t('imp.duplicateExisting') : t('imp.duplicateFile', { row: row.duplicate_of }));
+    ? duplicates?.rowText ?? t('imp.duplicateExisting') : t('imp.duplicateFile', { row: row.duplicate_of }));
 
   const committed = !!report?.committed;
-  const canImport = !!report && !committed && report.invalid === 0 && report.valid > 0;
+  // Dòng trùng bị bỏ qua (giữ bản gốc) thì không được tính vào số dòng sẽ import.
+  const importCount = report ? report.valid - (duplicates && mode === duplicates.skip ? report.duplicates : 0) : 0;
+  const canImport = !!report && !committed && report.invalid === 0 && importCount > 0;
 
   return (
     <Modal
@@ -125,7 +161,7 @@ export function ImportModal({ endpoint, columns, title, templateDesc, importLabe
           {!committed && (
             <Button variant="primary" loading={busy === 'import'} disabled={!canImport || (busy !== null && busy !== 'import')}
               onClick={() => void commit()}>
-              {importLabel(report?.valid ?? 0)}
+              {importLabel(importCount)}
             </Button>
           )}
         </>
@@ -173,25 +209,48 @@ export function ImportModal({ endpoint, columns, title, templateDesc, importLabe
               <div><dt>{t('imp.total')}</dt><dd>{report.total}</dd></div>
               <div data-tone="ok"><dt>{t('imp.valid')}</dt><dd>{report.valid}</dd></div>
               <div data-tone={report.invalid ? 'alert' : undefined}><dt>{t('imp.invalid')}</dt><dd>{report.invalid}</dd></div>
-              <div data-tone={report.duplicates ? 'warn' : undefined}><dt>{t('imp.duplicates')}</dt><dd>{report.duplicates}</dd></div>
+              <div data-tone={report.duplicates ? 'warn' : undefined}><dt>{duplicates?.statLabel ?? t('imp.duplicates')}</dt><dd>{report.duplicates}</dd></div>
             </dl>
             {committed
-              ? <Notice tone="info">{doneLabel(report.created)}</Notice>
+              ? <Notice tone="info">{doneLabel(report.created, report.updated ?? 0)}</Notice>
               : report.invalid
                 ? <Notice tone="alert">{t('imp.hasErrors', { count: report.invalid })}</Notice>
                 : <Notice tone="info">{t('imp.allGood', { count: report.total })}</Notice>}
+            {duplicates && !committed && report.duplicates > 0 && (
+              <>
+                <Notice tone="warn">{duplicates.notice(report.duplicates)}</Notice>
+                {duplicates.choices.length > 1 && (
+                  <div className="dp-radios" role="radiogroup">
+                    {duplicates.choices.map((c) => (
+                      <label key={c.value}>
+                        <input type="radio" name="imp-duplicate-mode" checked={mode === c.value} onChange={() => setMode(c.value)} />
+                        {c.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
             {report.ignored_columns.length > 0 && (
               <Notice tone="warn">{t('imp.ignoredColumns', { columns: report.ignored_columns.join(', ') })}</Notice>
+            )}
+            {checkFile && !committed && report.rows.length > 0 && (
+              <div>
+                <Button size="sm" loading={busy === 'checkfile'} disabled={busy !== null && busy !== 'checkfile'} onClick={() => void downloadCheckFile()}>
+                  <Download size={14} aria-hidden="true" />{t('imp.checkFile')}
+                </Button>
+              </div>
             )}
             {report.rows.length > 0 && (
               <div className="imp-table-wrap">
                 <table className="imp-table">
                   <thead>
-                    <tr><th>{t('imp.colRow')}</th><th>{t('imp.colSerial')}</th><th>{t('imp.colProblem')}</th></tr>
+                    <tr><th>{t('imp.colRow')}</th><th>{rowLabel ?? t('imp.colSerial')}</th><th>{t('imp.colProblem')}</th></tr>
                   </thead>
                   <tbody>
-                    {report.rows.map((r) => (
-                      <tr key={r.row}>
+                    {/* Dòng lỗi lên trước (nền đỏ), rồi tới dòng chỉ cảnh báo (nền vàng) — cùng thứ tự số dòng trong file. */}
+                    {[...report.rows].sort((a, b) => Number(b.issues.length > 0) - Number(a.issues.length > 0) || a.row - b.row).map((r) => (
+                      <tr key={r.row} data-tone={r.issues.length > 0 ? 'alert' : 'warn'}>
                         <td className="imp-num">{r.row}</td>
                         <td className="imp-serial">{r.serial_number ?? '—'}</td>
                         <td>
