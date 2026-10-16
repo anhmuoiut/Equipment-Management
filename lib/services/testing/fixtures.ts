@@ -31,7 +31,7 @@ export const TYPE_OF_PART: Record<string, string> = Object.fromEntries(PART_NUMB
 export function makeLookups(over: Partial<Lookups> = {}): Lookups {
   return {
     part_numbers: new Map(PART_NUMBERS.map(([name, type_id, active], i) => [
-      `pn-${i}`, { id: `pn-${i}`, display_name: name, sort_order: i, is_active: active, type_id, level_id: null, manufacturer: name === 'DMM-100' ? 'Keysight' : null, description: name === 'DMM-100' ? 'Digital multimeter' : null },
+      `pn-${i}`, { id: `pn-${i}`, display_name: name, sort_order: i, is_active: active, type_id, level_id: null, manufacturer: name === 'DMM-100' ? 'Keysight' : null, description: name === 'DMM-100' ? 'Digital multimeter' : null, remark: null },
     ])),
     types: new Map(TYPES.map(([name, kind, group_id], i) => [
       `type-${i}`, { id: `type-${i}`, display_name: name, sort_order: i, is_active: true, kind, group_id },

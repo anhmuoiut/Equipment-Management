@@ -127,6 +127,14 @@ async function download(path: string): Promise<void> {
   saveBlob(await res.blob(), name);
 }
 
+/** Gửi file (multipart) và nhận về một file (xlsx…): file báo lỗi import. Lỗi vẫn theo chuẩn { code, message }. */
+async function uploadForFile(path: string, form: FormData): Promise<void> {
+  const res = await send(path, { method: 'POST', body: form }, UPLOAD_TIMEOUT_MS);
+  if (!res.ok) throw toApiError(path, res, await res.json().catch(() => null));
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'import-check.xlsx';
+  saveBlob(await res.blob(), name);
+}
+
 export const api = {
   get,
   post: <T>(path: string, body?: unknown) => write<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
@@ -135,6 +143,7 @@ export const api = {
   /** Gửi file (multipart/form-data). */
   upload: <T>(path: string, form: FormData) => write<T>(path, { method: 'POST', body: form }, UPLOAD_TIMEOUT_MS),
   download,
+  uploadForFile,
 };
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;

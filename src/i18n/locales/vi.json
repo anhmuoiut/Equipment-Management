@@ -318,6 +318,7 @@
     "display_name": "Tên",
     "description": "Mô tả",
     "manufacturer": "Nhà sản xuất",
+    "part_number_remark": "Ghi chú part number",
     "sort_order": "Thứ tự",
     "is_active": "Đang dùng",
     "applies_to": "Dùng cho",
@@ -466,7 +467,9 @@
       "parent_type_invalid": "{{column}}: \"{{value}}\" không làm cha được ở đây (Tester ⊃ Base ⊃ Fixture; sub-equipment và golden board nằm dưới Tester / Fixture).",
       "usage_invalid": "{{column}}: \"{{value}}\" không phải Status — chỉ nhận In use hoặc Not in use.",
       "usage_follows_parent": "{{column}}: thiết bị con theo Status của cha ({{value}}) — để trống ô này.",
-      "usage_needs_parent": "{{column}}: chỉ Tester được In use khi không có cha — hãy gắn vào cha, hoặc chọn Not in use."
+      "usage_needs_parent": "{{column}}: chỉ Tester được In use khi không có cha — hãy gắn vào cha, hoặc chọn Not in use.",
+      "invalid_value": "{{column}}: \"{{value}}\" không hợp lệ.",
+      "name_in_file": "{{column}}: \"{{value}}\" đã có ở dòng {{count}} của file này — xóa dòng này."
     },
     "file": {
       "required": "Chưa chọn file.",
@@ -484,6 +487,8 @@
       "errorList": "Chỉ chọn giá trị trong danh sách. Thiếu giá trị thì nhờ Admin thêm ở Configuration rồi tải lại mẫu.",
       "errorText": "Tối đa {{max}} ký tự."
     },
+    "checkFile": "Tải file đã đánh dấu dòng có vấn đề",
+    "checkSheet": "Kết quả kiểm tra",
     "importing": "Đang import…"
   },
   "cal": {
@@ -536,6 +541,20 @@
     "step1Desc": "File mẫu có sẵn danh sách thả xuống cho Location và Parent part number, lấy từ Configuration lúc tải. Configuration đổi thì tải lại file mẫu.",
     "import": "Import {{count}} golden board",
     "done": "Đã import {{count}} golden board."
+  },
+  "cimp": {
+    "title": "Import {{list}} từ Excel",
+    "step1Desc": "File mẫu có đúng các cột của bảng, kể cả Thứ tự và Đang dùng. Tên không phân biệt hoa thường. Thứ tự để trống = 0, Đang dùng để trống = đang dùng.",
+    "step1DescLists": "File mẫu có đúng các cột của bảng, kể cả Thứ tự và Đang dùng, với danh sách thả xuống (Type, Level, Group, Đang dùng) lấy từ Configuration lúc tải. Tên không phân biệt hoa thường. Thứ tự để trống = 0, Đang dùng để trống = đang dùng. Configuration đổi thì tải lại file mẫu.",
+    "colName": "Tên",
+    "duplicates": "Đã có",
+    "duplicateRow": "Đã có trong Configuration.",
+    "duplicateNotice": "{{count}} dòng đã có trong Configuration (trùng tên). Chọn cách xử lý các dòng này trước khi import.",
+    "keep": "Giữ bản gốc (bỏ qua các dòng này)",
+    "overwrite": "Ghi đè bản gốc bằng file (ô trống giữ nguyên giá trị hiện tại)",
+    "import": "Import {{count}} dòng",
+    "done": "Đã thêm {{count}} dòng mới.",
+    "doneUpdated": "Đã thêm {{count}} dòng mới và cập nhật {{updated}} dòng có sẵn."
   },
   "gs": {
     "add": "Thêm golden sample",

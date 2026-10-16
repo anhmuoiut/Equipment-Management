@@ -12,11 +12,13 @@
  */
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Upload } from 'lucide-react';
 import { api } from '@/lib/client/api';
 import { refreshOptions, toSelect, useOptions } from '@/lib/client/options';
 import { toast } from '@/components/ui';
 import { configList } from '@/lib/configuration';
+import { configImportColumns } from '@/lib/configurationImport';
+import { ImportModal } from '@/components/ui/ImportModal';
 import { manualTagColor } from '@/lib/status';
 import { StatusTag, ToneTag } from '@/components/ui/tags';
 import { ManualTagColorPicker } from '@/components/ui/TagPicker';
@@ -27,7 +29,7 @@ import type { Column } from '@/components/ui/masterlist/Masterlist';
 import type { ConfigList, ConfigRow, StatusColor } from '@/lib/types';
 
 export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const def = configList(listKey)!;
   const options = useOptions();
   const list = useList<ConfigRow>(`/api/configuration/${listKey}`);
@@ -60,6 +62,7 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
     ...(def.hasLevel ? [{ key: 'level', label: t('fields.level'), value: (r: ConfigRow) => r.level ?? null, filter: true }] : []),
     ...(def.hasGroup ? [{ key: 'group', label: t('fields.group'), value: (r: ConfigRow) => r.group ?? null, filter: true }] : []),
     ...(def.hasDescription ? [{ key: 'description', label: t('fields.description'), value: (r: ConfigRow) => r.description ?? null, wrap: true, width: 200 }] : []),
+    ...(def.hasRemark ? [{ key: 'remark', label: t('fields.remark'), value: (r: ConfigRow) => r.remark ?? null, wrap: true, width: 200 }] : []),
     { key: 'sort_order', label: t('fields.sort_order'), value: (r) => r.sort_order },
     { key: 'is_active', label: t('fields.is_active'), value: (r) => (r.is_active ? t('cfg.active') : t('cfg.hidden')),
       render: (r) => <ToneTag text={r.is_active ? t('cfg.active') : t('cfg.hidden')} tone={r.is_active ? 'ok' : 'neutral'} />, filter: true },
@@ -97,6 +100,7 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
           options?.type_groups.filter((g) => g.kind === 'sub_equipment' || g.id === r?.group_id), r?.group_id, ` (${t('cfg.hidden')})`),
         lock: (r: ConfigRow | null) => (r && r.kind !== 'sub_equipment' ? t('cfg.groupLocked') : null) }] : []),
       ...(def.hasDescription ? [{ key: 'description', label: t('fields.description'), kind: 'textarea' as const, wide: true, maxLength: 1000 }] : []),
+      ...(def.hasRemark ? [{ key: 'remark', label: t('fields.remark'), kind: 'textarea' as const, wide: true, maxLength: 1000 }] : []),
       { key: 'sort_order', label: t('fields.sort_order'), kind: 'number', required: true, min: 0 },
       { key: 'is_active', label: t('fields.is_active'), kind: 'boolean',
         // 3 loại hệ thống (Tester, Base, Fixture) và 3 nhóm hệ thống cùng tên không ẩn được.
@@ -111,6 +115,8 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
 
   // Dữ liệu gốc vừa đổi → mọi form cần danh sách chọn mới. Thay đổi đã lưu; chỉ báo nếu chưa tải lại được.
   const refresh = () => { refreshOptions().catch(() => toast.warning(t('cfg.optionsStale'))); };
+  // Import Excel: Tags và Hiệu chuẩn › Setup không có (configImportColumns trả null).
+  const importColumns = configImportColumns(def, (key) => t(key));
 
   // 3 loại hệ thống của Types (Tester, Base, Fixture) và 3 nhóm hệ thống của Group không ẩn được.
   const isSystemType = (r: ConfigRow) => (def.hasGroup || def.isTypeGroup) && r.kind !== undefined && r.kind !== 'sub_equipment';
@@ -132,7 +138,25 @@ export function ConfigWorkspace({ listKey }: { listKey: ConfigList }) {
       storageKey={`configuration-${listKey}`}
       exportName={listKey}
       canAdd
+      // Export = đúng file mẫu import (cùng cột, cùng tiêu đề) điền sẵn MỌI dòng của danh sách — sửa rồi import lại được.
+      onExport={importColumns ? () => api.download(`/api/configuration/${listKey}/export?lang=${i18n.language === 'vi' ? 'vi' : 'en'}`) : undefined}
       addLabel={t('ml.add')}
+      tools={importColumns ? [{
+        key: 'import', label: t('imp.button'), icon: <Upload size={14} aria-hidden="true" />,
+        render: ({ onClose, reload }) => (
+          <ImportModal
+            endpoint={`/api/configuration/${listKey}/import`} columns={importColumns} title={t('cimp.title', { list: listName })}
+            templateDesc={t(def.hasType || def.hasGroup ? 'cimp.step1DescLists' : 'cimp.step1Desc')} rowLabel={t('cimp.colName')} checkFile
+            duplicates={{
+              skip: 'keep', statLabel: t('cimp.duplicates'), rowText: t('cimp.duplicateRow'), notice: (count) => t('cimp.duplicateNotice', { count }),
+              choices: [{ value: 'keep', label: t('cimp.keep') }, { value: 'overwrite', label: t('cimp.overwrite') }],
+            }}
+            importLabel={(count) => t('cimp.import', { count })}
+            doneLabel={(count, updated) => t(updated ? 'cimp.doneUpdated' : 'cimp.done', { count, updated })}
+            onClose={onClose} onImported={() => { reload(); refresh(); onClose(); }}
+          />
+        ),
+      }] : undefined}
       recordUrl={(id) => `/api/configuration/${listKey}/${id}`}
       renderDetail={(ctx) => (
         <RecordModal<ConfigRow>

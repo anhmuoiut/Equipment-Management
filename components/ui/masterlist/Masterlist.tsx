@@ -168,7 +168,7 @@ const Card = memo(CardView) as typeof CardView;
 
 export function Masterlist<R extends { id: string }>({
   title, rows, loading, error, onRetry, columns, storageKey, defaultColumns, selectedId, onSelect,
-  onAdd, addLabel, tools, exportName, quickFilters, leading, onViewChange, rowTone, mobileCard, initialSearch,
+  onAdd, addLabel, tools, exportName, onExport, quickFilters, leading, onViewChange, rowTone, mobileCard, initialSearch,
   mobileFilterKeys, searchPlaceholder, mobileEmptyState, server,
 }: {
   title: string;
@@ -188,6 +188,8 @@ export function Masterlist<R extends { id: string }>({
   addLabel?: string;
   tools?: ListTool[];
   exportName: string;
+  /** Thay cách xuất mặc định (các cột đang hiện): Configuration xuất đúng file mẫu import, đầy đủ dữ liệu. */
+  onExport?: () => Promise<void>;
   quickFilters?: QuickFilter<R>[];
   /** Cột đầu trước `No` (Equipment: quan hệ cha–con). */
   leading?: { header: ReactNode; label: string; render: (row: R) => ReactNode };
@@ -345,6 +347,7 @@ export function Masterlist<R extends { id: string }>({
   async function doExport() {
     setExporting(true);
     try {
+      if (onExport) { await onExport(); return; }
       // Chế độ server: xuất MỌI dòng khớp bộ tìm / lọc (không chỉ trang đang xem) — một request riêng, chỉ khi người dùng bấm.
       const exportRows = server ? await server.exportAll() : view;
       await exportToExcel(exportName, [

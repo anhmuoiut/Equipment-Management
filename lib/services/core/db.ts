@@ -104,6 +104,30 @@ export async function appWrite<T = Record<string, unknown>>(
   return result as T;
 }
 
+/**
+ * Thêm nhiều dòng vào một bảng Configuration bằng MỘT câu lệnh (một giao dịch: tất cả hoặc không). Bảng cấu hình không ghi nhật ký
+ * nên không cần app_write; người thao tác ghi thẳng vào created_by / updated_by.
+ */
+export async function insertMany(table: string, rows: Record<string, unknown>[], actor: string): Promise<number> {
+  const { error } = await db().from(table).insert(rows.map((r) => ({ ...r, created_by: actor, updated_by: actor })));
+  if (LOOKUP_TABLES.has(table)) invalidateLookups();
+  invalidateReads();
+  if (error) throw mapRpcError(error);
+  return rows.length;
+}
+
+/**
+ * Sửa nhiều dòng Configuration có sẵn bằng MỘT câu lệnh (upsert theo id, mọi dòng cùng bộ cột). Chỉ các cột trong `rows` bị ghi
+ * (created_* giữ nguyên); trigger của bảng vẫn chạy như khi sửa tay (ví dụ part number đã có thiết bị dùng thì không đổi Type được).
+ */
+export async function updateMany(table: string, rows: ({ id: string } & Record<string, unknown>)[], actor: string): Promise<number> {
+  const { error } = await db().from(table).upsert(rows.map((r) => ({ ...r, updated_by: actor })), { onConflict: 'id' });
+  if (LOOKUP_TABLES.has(table)) invalidateLookups();
+  invalidateReads();
+  if (error) throw mapRpcError(error);
+  return rows.length;
+}
+
 export async function rpc<T = unknown>(fn: string, args: Record<string, unknown>): Promise<T> {
   const { data, error } = await callRpc(fn, args);
   if (ACTION_RPCS.has(fn)) invalidateReads(); // thao tác ghi (Move, Swap, Import…): dữ liệu đọc dùng chung đọc lại ở lần sau

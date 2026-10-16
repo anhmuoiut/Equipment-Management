@@ -59,7 +59,7 @@ export function headerKeys<K extends string>(columns: readonly { key: K; header:
 // Đọc file
 // ---------------------------------------------------------------------------
 
-export type SheetTable = { headers: string[]; rows: { row: number; cells: string[] }[] };
+export type SheetTable = { headers: string[]; rows: { row: number; cells: string[] }[]; /** Dòng chứa tiêu đề cột (để dựng file báo lỗi đúng số dòng). */ headerRow?: number };
 
 /** Chữ trong ô — số, công thức, rich text, link đều về chuỗi đã cắt khoảng trắng. */
 export function cellText(value: ExcelJS.CellValue | undefined): string {
@@ -82,8 +82,9 @@ export function cellText(value: ExcelJS.CellValue | undefined): string {
 /**
  * Sheet có cột Serial number trong 5 dòng đầu; dòng đó là tiêu đề, dữ liệu ở các dòng bên dưới (bỏ dòng trống).
  * File mẫu hiện tại: tiêu đề ở dòng 1. File mẫu cũ (dòng 1 ghi chú, dòng 2 tiêu đề) vẫn đọc được.
+ * `anchor`: cột đánh dấu dòng tiêu đề (mặc định serial_number; Configuration dùng display_name).
  */
-export async function readWorkbook(buffer: Buffer, keys: Map<string, string>): Promise<SheetTable> {
+export async function readWorkbook(buffer: Buffer, keys: Map<string, string>, anchor = 'serial_number'): Promise<SheetTable> {
   const wb = new ExcelJS.Workbook();
   try {
     await wb.xlsx.load(buffer as unknown as ArrayBuffer);
@@ -95,7 +96,7 @@ export async function readWorkbook(buffer: Buffer, keys: Map<string, string>): P
       const row = ws.getRow(r);
       const headers: string[] = [];
       for (let c = 1; c <= row.cellCount; c++) headers.push(cellText(row.getCell(c).value));
-      if (!headers.some((h) => keys.get(normalize(h)) === 'serial_number')) continue;
+      if (!headers.some((h) => keys.get(normalize(h)) === anchor)) continue;
 
       const rows: SheetTable['rows'] = [];
       ws.eachRow({ includeEmpty: false }, (dataRow, number) => {
@@ -103,7 +104,7 @@ export async function readWorkbook(buffer: Buffer, keys: Map<string, string>): P
         const cells = headers.map((_h, c) => cellText(dataRow.getCell(c + 1).value));
         if (cells.some(Boolean)) rows.push({ row: number, cells });
       });
-      return { headers, rows };
+      return { headers, rows, headerRow: r };
     }
   }
   return { headers: [], rows: [] };
@@ -197,6 +198,8 @@ export type TemplateSpec = {
   lenientLists?: readonly string[];
   language: Language;
   now?: Date;
+  /** Dòng dữ liệu điền sẵn từ dòng 2 (khóa = TemplateColumn.key; giá trị rỗng = ô trống): file XUẤT dùng đúng bố cục file mẫu. */
+  rows?: Record<string, string>[];
 };
 
 export async function buildImportTemplate(spec: TemplateSpec): Promise<Buffer> {
@@ -214,7 +217,7 @@ export async function buildImportTemplate(spec: TemplateSpec): Promise<Buffer> {
   // ---- Sheet nhập: dòng 1 là tiêu đề (`*` = bắt buộc), nhập từ dòng 2. Chỉ có ô thả xuống / kiểm tra độ dài — không ghi chú, không hướng dẫn.
   const ws = wb.addWorksheet(spec.sheet, { views: [{ state: 'frozen', ySplit: 1, activeCell: 'A2' }] });
   const firstRow = 2;
-  const lastRow = IMPORT_MAX_ROWS + 1;
+  const lastRow = Math.max(IMPORT_MAX_ROWS, spec.rows?.length ?? 0) + 1;
   columns.forEach((col, i) => {
     const column = ws.getColumn(i + 1);
     column.width = col.width;
@@ -249,6 +252,10 @@ export async function buildImportTemplate(spec: TemplateSpec): Promise<Buffer> {
     }
   });
   ws.getRow(1).height = 20;
+  spec.rows?.forEach((row, r) => columns.forEach((col, i) => {
+    const value = row[col.key];
+    if (value) ws.getCell(r + 2, i + 1).value = value;
+  }));
 
   // ---- Giá trị hợp lệ (nguồn của các ô thả xuống — không sửa ở đây).
   const vs = wb.addWorksheet(valuesName, { views: [{ state: 'frozen', ySplit: 1 }] });

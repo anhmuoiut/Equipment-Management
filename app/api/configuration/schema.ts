@@ -31,6 +31,7 @@ export function schemaFor(list: ConfigListDef, mode: 'create' | 'update') {
     shape = { display_name: reqText(200), sort_order: order, is_active: z.boolean() };
     if (list.hasDescription) shape.description = optText(1000);
     if (list.hasManufacturer) shape.manufacturer = optText(200);
+    if (list.hasRemark) shape.remark = optText(1000);
     // Bắt buộc, không xóa trống được (sửa: chỉ gửi khi đổi; đã có thiết bị dùng thì database từ chối: PART_NUMBER_IN_USE).
     if (list.hasType) shape.type_id = reqId;
     // Không bắt buộc: bỏ trống / null = chưa chọn Level cho part number.

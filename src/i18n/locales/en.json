@@ -318,6 +318,7 @@
     "display_name": "Name",
     "description": "Description",
     "manufacturer": "Manufacturer",
+    "part_number_remark": "Part number remark",
     "sort_order": "Order",
     "is_active": "In use",
     "applies_to": "Used for",
@@ -466,7 +467,9 @@
       "parent_type_invalid": "{{column}}: \"{{value}}\" cannot be the parent here (Tester ⊃ Base ⊃ Fixture; sub-equipment and golden boards go under a Tester / Fixture).",
       "usage_invalid": "{{column}}: \"{{value}}\" is not a Status — use In use or Not in use.",
       "usage_follows_parent": "{{column}}: a child follows its parent's status ({{value}}) — leave this blank.",
-      "usage_needs_parent": "{{column}}: only a Tester can be In use without a parent — attach it to a parent, or use Not in use."
+      "usage_needs_parent": "{{column}}: only a Tester can be In use without a parent — attach it to a parent, or use Not in use.",
+      "invalid_value": "{{column}}: \"{{value}}\" is not valid.",
+      "name_in_file": "{{column}}: \"{{value}}\" is already on row {{count}} of this file — remove this row."
     },
     "file": {
       "required": "No file chosen.",
@@ -484,6 +487,8 @@
       "errorList": "Pick a value from the list. If a value is missing, ask an admin to add it in Configuration, then download the template again.",
       "errorText": "Max {{max}} characters."
     },
+    "checkFile": "Download the file with problems marked",
+    "checkSheet": "Import check",
     "importing": "Importing…"
   },
   "cal": {
@@ -536,6 +541,20 @@
     "step1Desc": "The template has drop-down lists for Location and Parent part number, taken from Configuration at download time. Download it again after Configuration changes.",
     "import": "Import {{count}} golden boards",
     "done": "Imported {{count}} golden boards."
+  },
+  "cimp": {
+    "title": "Import {{list}} from Excel",
+    "step1Desc": "The template has the same columns as the table, including Order and In use. Names are not case-sensitive. A blank Order means 0 and a blank In use means In use.",
+    "step1DescLists": "The template has the same columns as the table, including Order and In use, with drop-down lists (Type, Level, Group, In use) taken from Configuration at download time. Names are not case-sensitive. A blank Order means 0 and a blank In use means In use. Download it again after Configuration changes.",
+    "colName": "Name",
+    "duplicates": "Already exist",
+    "duplicateRow": "Already exists in Configuration.",
+    "duplicateNotice": "{{count}} rows already exist in Configuration (same name). Choose what to do with them before importing.",
+    "keep": "Keep the original (skip these rows)",
+    "overwrite": "Overwrite the original with the file (blank cells keep the current value)",
+    "import": "Import {{count}} rows",
+    "done": "Added {{count}} new rows.",
+    "doneUpdated": "Added {{count}} new rows and updated {{updated}} existing rows."
   },
   "gs": {
     "add": "Add golden sample",

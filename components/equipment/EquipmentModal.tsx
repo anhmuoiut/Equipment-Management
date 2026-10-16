@@ -127,6 +127,9 @@ export function useEquipmentModal(ctx: DetailCtx<EquipmentRow>, opts: {
         { key: 'part_number_description', label: t('fields.description'), readOnly: true, wide: true,
           view: (r) => partOption(r.part_number_id)?.description ?? null,
           draftView: (d) => partOption(d.part_number_id)?.description ?? null },
+        { key: 'part_number_remark', label: t('fields.part_number_remark'), readOnly: true, wide: true,
+          view: (r) => partOption(r.part_number_id)?.remark ?? null,
+          draftView: (d) => partOption(d.part_number_id)?.remark ?? null },
       ],
     },
     {
